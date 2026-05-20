@@ -1284,8 +1284,9 @@ async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, An
         session_id=req.session_id,
         plan_id=req.plan_id,
     )
-    if not result.get("success") and "не доступна" in (result.get("error") or "").lower() or \
-       (not result.get("success") and "недоступна" in (result.get("error") or "")):
+    if not result.get("success") and any(
+        k in (result.get("error") or "").lower() for k in ("не доступна", "недоступна")
+    ):
         # Tariff gate — return 402 Payment Required
         return Response(
             content=json.dumps(result, ensure_ascii=False),
