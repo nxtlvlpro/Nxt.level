@@ -1,0 +1,65 @@
+"""
+MongoDB collections for NXT8.
+
+Collections:
+- sessions          : short-term memory (per session messages)
+- memories          : long-term memory (corporate / episodic / semantic) with metadata
+- requests          : every routed request (audit log)
+- employees         : employee profiles
+- performance       : monthly performance metrics per employee
+- weak_patterns     : detected weak patterns
+- costs             : cost records (deepseek api, compute, escalations)
+- deals             : closed deals
+- interactions      : agent-deal interactions
+- roi_history      : hourly ROI snapshots
+- alerts            : reliability / ROI alerts
+"""
+
+from __future__ import annotations
+
+import os
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+
+
+_client: AsyncIOMotorClient | None = None
+_db: AsyncIOMotorDatabase | None = None
+
+
+def get_db() -> AsyncIOMotorDatabase:
+    global _client, _db
+    if _db is None:
+        _client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+        _db = _client[os.environ["DB_NAME"]]
+    assert _db is not None  # for type checkers
+    return _db
+
+
+async def ensure_indexes() -> None:
+    db = get_db()
+    await db.sessions.create_index("session_id", unique=True)
+    await db.memories.create_index([("type", 1), ("created_at", -1)])
+    await db.memories.create_index("metadata.department")
+    await db.requests.create_index([("session_id", 1), ("created_at", -1)])
+    await db.employees.create_index("employee_id", unique=True)
+    await db.performance.create_index([("employee_id", 1), ("period_end", -1)])
+    await db.weak_patterns.create_index([("employee_id", 1), ("detected_at", -1)])
+    await db.costs.create_index([("agent", 1), ("created_at", -1)])
+    await db.deals.create_index("deal_id", unique=True)
+    await db.interactions.create_index([("deal_id", 1), ("agent", 1)])
+    await db.roi_history.create_index("hour_end", unique=True)
+    await db.alerts.create_index([("created_at", -1)])
+    await db.cross_dept_tasks.create_index([("created_at", -1)])
+    await db.contradictions.create_index("pair_key", unique=True)
+    await db.contradictions.create_index([("detected_at", -1)])
+    await db.skills.create_index([("intent", 1), ("updated_at", -1)])
+    await db.market_signals.create_index([("ingested_at", -1)])
+    await db.market_signals.create_index("category")
+    await db.market_digests.create_index([("created_at", -1)])
+
+
+def close_db() -> None:
+    global _client, _db
+    if _client is not None:
+        _client.close()
+    _client = None
+    _db = None

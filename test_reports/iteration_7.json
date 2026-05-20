@@ -1,0 +1,52 @@
+{
+  "summary": "Iter 7: MemPalace (ChromaDB long-term memory, wings/rooms/drawers) backend integration testing. 17/18 pytest green; the 1 failure is a real concurrency bug in mempalace 3.3.5's palace lock (only 1/5 concurrent writes succeed). Endpoints covered: GET /api/mempalace/health, POST /api/mempalace/store (UTF-8 Russian, sanitisation, empty content, missing field 422), POST /api/mempalace/search (semantic, similarity=1-distance, sort desc, wing filter, wing+room filter, empty query, top_k), GET /api/mempalace/wings. Regression: /api/chat/stream SSE emits meta+delta+done and asynchronously writes USER:/ASSISTANT: drawer to wing=chats/room={session_id} (verified by polling search); /api/health, /api/memory/store, /api/memory/search, /api/chat (non-stream), /api/hermes/chat all green.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/mempalace/store (concurrent)",
+        "issue": "mempalace 3.3.5 acquires an exclusive process-level palace lock per add_drawer; 5 concurrent calls from the same uvicorn PID yield 4 failures with message 'palace /app/data/mempalace is held by PID 1626 ... wait for it to finish or stop the holder before retrying' and only 1 success. The bridge swallows this in the /api/chat/stream fire-and-forget autosave path (asyncio.create_task) — so under load, chat transcripts can silently fail to land in long-term memory.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/mempalace/store",
+        "issue": "Empty/whitespace content returns 200 with {ok:false, error:'empty content'} instead of HTTP 400/422. Acceptable but inconsistent with Pydantic-validation paths (missing field returns 422)."
+      },
+      {
+        "endpoint": "POST /api/chat/stream",
+        "issue": "MemPalace autosave is gated by len(req.message.strip())>=12 AND len(full.strip())>=20 — short user pings (<12 chars) are never persisted to long-term memory. Possibly intentional but undocumented."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_mempalace.py",
+    "/app/test_reports/pytest/iter7_mempalace.xml"
+  ],
+  "action_items": [
+    "Serialize MemPalace writes inside MemPalaceBridge.store via an asyncio.Lock (and/or batch via a single-writer queue) to work around mempalace 3.3.5's exclusive palace lock. Add a small retry-with-backoff (e.g. 3x with 100ms jitter) on the 'palace ... is held by PID' error string to make concurrent /api/chat/stream autosaves reliable. Without this, simultaneous chat sessions will silently drop transcripts from long-term memory.",
+    "Consider returning HTTP 400 (not 200 ok:false) for empty content in /api/mempalace/store for API consistency.",
+    "Document the >=12/>=20 char thresholds for /api/chat/stream autosave (or make them env-tunable)."
+  ],
+  "critical_code_review_comments": [
+    "mempalace_bridge.py:_safe_name lowercases and replaces non [A-Za-z0-9_-] with _, capped 64 chars — good. Verified 'Clients Wing!' -> 'clients_wing_' and 'ACME Corp 2026' -> 'acme_corp_2026'.",
+    "mempalace_bridge.py:_ensure uses an asyncio.Lock for double-checked init — correct singleton pattern. Sync init runs in thread pool. Good.",
+    "mempalace_bridge.py:search correctly maps ChromaDB cosine distance to similarity = clamp(1 - distance, 0..1) and returns id/content/wing/room/similarity/distance/metadata. Sort-by-similarity-desc was verified — ChromaDB already returns ordered, so no extra sort needed.",
+    "mempalace_bridge.py:search where-clause builds $and only when wing AND room both provided — correct ChromaDB filter syntax. Verified wing-only and wing+room filters return ONLY matching docs (no leakage across wings).",
+    "server.py:/api/chat/stream fire-and-forget autosave via asyncio.create_task is good for latency but its exception is swallowed (logger.debug). Under mempalace lock contention (see HIGH issue) this means silent data loss. Consider logger.warning + retry.",
+    "mempalace_bridge.py:store NO asyncio.Lock around add_drawer — relies on mempalace handling concurrency, which it does NOT in 3.3.5. ROOT CAUSE of the concurrency failure.",
+    "mempalace_bridge.py:list_wings uses an in-Python aggregation over all metadatas — O(N) on every call. Fine for now (drawer_count grows slowly), but consider caching with TTL once N>10k.",
+    "server.py: /api/mempalace/* endpoints have no auth/rate limit. Aligned with the rest of the NXT8 API, but worth noting if going to production."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_mempalace.py (new, 18 tests; 17 functional pass, 1 concurrency test exposes mempalace 3.3.5 lock bug)"
+  ],
+  "success_rate": {"backend": "94% (17/18)", "frontend": "n/a (not requested)"},
+  "test_credentials": "n/a — no auth",
+  "seed_data_creation": "Tests insert TEST_-prefixed drawers across wings: internal/general, internal/concurrency, internal/concurrency_diag, clients/acme, clients/globex, projects/alpha, employees/ivanov, plus 1 transient drawer in chats/{TEST_sess_*}. All tagged via metadata.tag = TEST_mempalace_* / TEST_search_* for traceability. Not cleaned up (mempalace bridge exposes no delete API).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "MemPalace endpoints are functional. Run: REACT_APP_BACKEND_URL=... pytest backend/tests/test_mempalace.py -v. The concurrency test (TestStore::test_store_concurrent) will keep failing until mempalace_bridge.MemPalaceBridge.store gains an asyncio.Lock or retry on 'palace is held by PID'. SSE autosave verified by polling /api/mempalace/search with the unique phrase + wing=chats, room=session_id (up to 25s deadline). Hermes COO tools (mempalace_search/mempalace_store) NOT tested per request — Hermes Gateway offline in preview, fallback path doesn't exercise tools.",
+  "rca of the issue": "mempalace 3.3.5 (pip-installed) acquires an exclusive palace lock inside add_drawer/collection.upsert that is keyed by the holder PID and rejects re-entrant/concurrent calls from the same process. MemPalaceBridge.store uses asyncio.to_thread(miner.add_drawer, ...) without any serialization, so when 2+ stores fire simultaneously (e.g. multiple parallel /api/chat/stream completions), all but one fail. Mitigation: add `self._write_lock = asyncio.Lock()` in MemPalaceBridge.__init__ and wrap the to_thread call with `async with self._write_lock:`. For autosave in server.py:/api/chat/stream, also add 2-3 retry attempts on the 'palace ... is held by PID' substring with 100-300ms backoff. Reproducer: POST /api/mempalace/store 5x in parallel — only 1 succeeds, 4 return {ok:false, error:'palace ... is held by PID ...'}."
+}

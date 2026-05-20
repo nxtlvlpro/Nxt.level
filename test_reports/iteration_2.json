@@ -1,0 +1,46 @@
+{
+  "summary": "Backend-only test run for the new Voice Module (Whisper STT + OpenAI TTS via Emergent Universal Key) plus full regression on the existing NXT8 surface. 25/25 pytest cases pass. Voice STT, TTS and the one-shot /voice/converse loop all work end-to-end against the public preview URL. All required regression endpoints (/api/health, /api/chat, /api/mentor/employees, /api/roi/dashboard, /api/alerts) still pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/voice/stt and /api/voice/converse",
+        "issue": "When the client session has Content-Type: application/json sticky-set, FastAPI's UploadFile parser returns 422 because the multipart boundary cannot be parsed. Not a server bug per se — but worth documenting: for browser/JS clients, do NOT set Content-Type manually when sending FormData; the browser will set multipart/form-data; boundary=... automatically. Test fixture now uses a separate requests.Session without forced JSON header."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) When the new Voice UI is wired in the frontend, ensure axios/fetch does NOT manually set Content-Type for FormData uploads to /api/voice/stt and /api/voice/converse — let the browser set the multipart boundary. Otherwise you will see 422 from FastAPI.",
+    "(Optional) The /voice/converse endpoint depends on the orchestrator; while DeepSeek is in HTTP 402 mock fallback, replies are synthetic Russian boilerplate. Confirm with product whether the demo voice loop should detect language and reply in English when transcript language=='english' — currently the orchestrator mock always replies in Russian regardless of STT language."
+  ],
+  "critical_code_review_comments": [
+    "agents/voice.py correctly lazy-initialises OpenAISpeechToText / OpenAITextToSpeech singletons against EMERGENT_LLM_KEY — clean.",
+    "voice.synthesize() silently coerces unknown voices to 'nova' and clamps speed to [0.25, 4.0] — defensive and good. Worth surfacing the coercion in the /voice/tts response headers (e.g. X-Voice-Used) for debuggability, but not required.",
+    "voice.transcribe() coerces unknown extensions to 'webm' (good for browser MediaRecorder), and sets BytesIO.name so the OpenAI SDK can detect the format — correct.",
+    "server.voice_stt enforces empty-body 400 and 25 MB ceiling (413). Good. server.voice_tts maps ValueError→400 for empty text, all other exceptions →502 — clean separation.",
+    "server.voice_converse correctly returns audio_b64 + tts_error fields; assertion in tests confirmed audio_b64 is a valid mp3 frame.",
+    "health endpoint now exposes voice.enabled / stt_model=whisper-1 / tts_model=tts-1 as required by review_request — verified by test_health.",
+    "Pre-existing observation (still applies): all routers use /api prefix and async Motor I/O; no ObjectId leak found in any voice endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py — replaced obsolete voice stub tests with 8 real voice cases (TTS happy path + empty/whitespace rejection + unknown voice coercion + STT roundtrip + STT empty 400 + converse full loop with audio_b64 validation + converse empty 400). Added multipart_client fixture to avoid the sticky JSON Content-Type header. Relaxed test_health to allow live OR mock DeepSeek and added required voice.* assertions."
+  ],
+  "success_rate": {
+    "backend": "100% (25/25)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "test_credentials": "N/A — no auth in MVP. EMERGENT_LLM_KEY is the only required secret and is already configured in /app/backend/.env.",
+  "seed_data_creation": "POST /api/seed still idempotent and auto-invoked by session fixture. No new seed data needed for voice.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Voice tests rely on a *real* round-trip: /voice/tts is called first to generate /tmp/test_audio.mp3, then those bytes are uploaded to /voice/stt and /voice/converse. This avoids needing to commit a binary fixture. DeepSeek is in HTTP 402 mock fallback (user is topping up balance) — chat / converse replies will be synthetic Russian boilerplate; this is expected and not a bug. The Whisper transcription on our generated TTS sample reliably contains the tokens 'hello' / 'world' / 'NXT', so the assertion is robust. The pytest session uses two fixtures: `client` (sticky JSON Content-Type for /chat etc.) and `multipart_client` (vanilla requests.Session for /voice/stt and /voice/converse uploads). Do NOT merge them."
+}

@@ -1,0 +1,29 @@
+{
+  "summary": "Iter 8 retest: both fixes verified. (1) Concurrency: 5/5 and 10/10 parallel POST /api/mempalace/store now succeed — drawer_count grew by exactly +N and all N drawers retrievable via filtered search. (2) Empty/whitespace content now returns HTTP 400 with FastAPI {detail:'content must not be empty'} envelope. (3) 3 parallel /api/chat/stream sessions each persisted USER:/ASSISTANT: drawer to wing=chats/room={session_id}; verified by per-session search + /api/mempalace/wings listing. Regression on /api/health, /api/memory/{store,search}, /api/chat (non-stream), /api/hermes/chat all green. 20/20 pytest pass (was 17/18 in iter7).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_mempalace.py",
+    "/app/test_reports/pytest/iter8_mempalace.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "mempalace_bridge.MemPalaceBridge.store: self._write_lock (asyncio.Lock) wraps a 4-attempt loop with exponential backoff (100/200/300/400 ms) on 'is held by pid'/'lock' substrings. Verified working under 10-way contention from threadpool clients hitting the same uvicorn PID. Non-lock exceptions still return {ok:false, error} immediately — correct.",
+    "server.py:/api/mempalace/store: empty-content gate moved to endpoint level via HTTPException(400) BEFORE invoking the bridge. The bridge keeps its own defensive empty check (returns {ok:false}) — fine for direct callers.",
+    "/api/chat/stream autosave (asyncio.create_task) now reliably lands all 3 concurrent sessions' drawers; exception path still logger.debug — if mempalace ever hard-fails the retry chain, the silent drop returns. Consider promoting to logger.warning for ops visibility.",
+    "Note: serialising all writes through self._write_lock means store throughput is bounded by single-writer mempalace 3.3.5; acceptable for chat autosave volumes but a future bottleneck if MemPalace is used for high-write ingestion (e.g. bulk import). Worth keeping on the roadmap if mempalace adds multi-writer support."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_mempalace.py (added test_store_concurrent_stress_10 — 10 parallel + retrieval check; added test_concurrent_streams_each_persist — 3 parallel SSE chats with per-session autosave + wings listing verification; flipped test_store_empty_content_rejected to assert 400+detail envelope)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "n/a (not requested)"},
+  "test_credentials": "n/a — no auth",
+  "seed_data_creation": "Inserts TEST_-prefixed drawers across wings: internal/{general,concurrency,stress}, clients/{acme,globex}, projects/alpha, employees/ivanov, and 4 transient drawers in chats/{sess_par_*,sess_test_*}. Tags: TEST_mempalace_*, TEST_search_*. No teardown — bridge exposes no delete API.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "MemPalace native integration is fully functional after iter8 fixes. Concurrency safe up to at least 10-way under same-PID load via asyncio.Lock + 4-attempt 100/200/300/400ms backoff. Run: REACT_APP_BACKEND_URL=... pytest backend/tests/test_mempalace.py -v. Suite takes ~60s. If future regressions appear in concurrent writes, first check mempalace package version (currently 3.3.5 — single-writer process lock).",
+  "rca of the issue": "Confirmed fixed. Root cause was mempalace 3.3.5 holding an exclusive PID-keyed palace lock inside add_drawer. Fix in /app/backend/agents/mempalace_bridge.py adds self._write_lock = asyncio.Lock() serialising add_drawer calls within the same uvicorn process, plus a 4-attempt exponential backoff loop on 'is held by pid'/'lock' substrings — covers any residual contention from sibling processes or thread-internal races. Verified with 10-way ThreadPoolExecutor + 3-way concurrent /api/chat/stream sessions."
+}

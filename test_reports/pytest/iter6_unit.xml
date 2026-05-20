@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="7" time="13.546" timestamp="2026-05-17T04:19:24.126252+00:00" hostname="agent-env-76533a7f-6f57-4a7e-8571-3ec585db2743"><testcase classname="backend.tests.test_hermes_ultra.TestUnitToolsAndPersistence" name="test_extract_tool_calls_parses_json_block" time="0.278" /><testcase classname="backend.tests.test_hermes_ultra.TestUnitToolsAndPersistence" name="test_extract_tool_calls_ignores_unknown_tool" time="0.000" /><testcase classname="backend.tests.test_hermes_ultra.TestUnitToolsAndPersistence" name="test_extract_tool_calls_multiple" time="0.000" /><testcase classname="backend.tests.test_hermes_ultra.TestUnitToolsAndPersistence" name="test_tools_node_executes_create_task_and_persists" time="0.099"><failure message="RuntimeError: Event loop is closed">backend/tests/test_hermes_ultra.py:250: in test_tools_node_executes_create_task_and_persists
+    get_db().tasks.find_one({"title": title})
+/root/.venv/lib/python3.11/site-packages/motor/metaprogramming.py:74: in method
+    return framework.run_on_executor(
+/root/.venv/lib/python3.11/site-packages/motor/frameworks/asyncio/__init__.py:85: in run_on_executor
+    return loop.run_in_executor(_EXECUTOR, functools.partial(fn, *args, **kwargs))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:817: in run_in_executor
+    self._check_closed()
+/usr/local/lib/python3.11/asyncio/base_events.py:520: in _check_closed
+    raise RuntimeError('Event loop is closed')
+E   RuntimeError: Event loop is closed</failure></testcase><testcase classname="backend.tests.test_hermes_ultra.TestUnitToolsAndPersistence" name="test_stub_tools_return_mock_true" time="0.001" /><testcase classname="backend.tests.test_hermes_ultra.TestUnitToolsAndPersistence" name="test_real_tools_no_mock_field" time="0.916"><failure message="AssertionError: assert False is True&#10; +  where False = &lt;built-in method get of dict object at 0xf9b5312cf240&gt;('ok')&#10; +    where &lt;built-in method get of dict object at 0xf9b5312cf240&gt; = {'error': 'Event loop is closed', 'ok': False}.get">backend/tests/test_hermes_ultra.py:288: in test_real_tools_no_mock_field
+    assert res.get("ok") is True
+E   AssertionError: assert False is True
+E    +  where False = &lt;built-in method get of dict object at 0xf9b5312cf240&gt;('ok')
+E    +    where &lt;built-in method get of dict object at 0xf9b5312cf240&gt; = {'error': 'Event loop is closed', 'ok': False}.get</failure></testcase><testcase classname="backend.tests.test_hermes_ultra.TestUnitToolsAndPersistence" name="test_ultra_persists_session_messages" time="12.022"><failure message="RuntimeError: Event loop is closed">backend/tests/test_hermes_ultra.py:315: in test_ultra_persists_session_messages
+    msgs = loop.run_until_complete(
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/agents/memory.py:68: in get_session
+    doc = await db.sessions.find_one({"session_id": session_id}, {"_id": 0, "messages": 1})
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/motor/metaprogramming.py:74: in method
+    return framework.run_on_executor(
+/root/.venv/lib/python3.11/site-packages/motor/frameworks/asyncio/__init__.py:85: in run_on_executor
+    return loop.run_in_executor(_EXECUTOR, functools.partial(fn, *args, **kwargs))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:817: in run_in_executor
+    self._check_closed()
+/usr/local/lib/python3.11/asyncio/base_events.py:520: in _check_closed
+    raise RuntimeError('Event loop is closed')
+E   RuntimeError: Event loop is closed</failure></testcase></testsuite></testsuites>

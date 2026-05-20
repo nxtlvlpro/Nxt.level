@@ -1,0 +1,60 @@
+{
+  "summary": "Backend (19 pytest) + Frontend (Playwright mobile 420x900) full smoke covering all NXT8 MVP modules. Found and FIXED one ObjectId leak in /api/mentor/performance. All endpoints and all 6 UI views verified working in MOCK DeepSeek mode.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/mentor/performance",
+        "issue": "FIXED — record_performance() returned the mongo-mutated dict (with ObjectId in _id) → PydanticSerializationError 500. Patched mentor.py to pop _id before returning."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Initial page load → AGENTS view",
+        "issue": "If user navigates to AGENTS before App-level auto-seed promise resolves AND BEFORE the AgentsView mounts, the view shows empty 'нет данных — запустите seed'. Component fetches only on mount. Consider re-fetching after `seedStatus==='ready'` or making AgentsView retry on empty. Not blocking — seed is idempotent and fast (~150 ms after backend is warm).",
+        "affected_selectors": ["[data-testid=\"agents-view\"]"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Top of every view (mobile 420w)",
+        "issues": [
+          "TopTicker marquee text visually overlaps the very first chars of the page (e.g. 'AI INDEX:2' clipped) on narrow viewports — purely cosmetic, marquee animates correctly."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Re-fetch employees/patterns inside AgentsView when seedStatus transitions to 'ready' (lift seedStatus via context or pass as prop) to prevent empty-state flash on cold first load.",
+    "(Optional) On Junior Lee row, 5 identical 'повторяющиеся ошибки' badges are rendered — dedupe weak_patterns by pattern type for prettier UI."
+  ],
+  "critical_code_review_comments": [
+    "mentor.record_performance returned the post-insert dict — Mongo mutated _id ObjectId into it, breaking FastAPI JSON encoder. FIXED. Recommend a project-wide convention: never return the dict you passed to insert_one (build a fresh response dict or pop _id).",
+    "core/deepseek.py correctly self-reports mock_mode=true when DEEPSEEK_API_KEY is empty — expected per user choice 1a.",
+    "App.js auto-seed promise is fire-and-forget; child views do not subscribe to seedStatus, so they may render empty on first load. Low priority but worth wiring through a context provider.",
+    "All FastAPI handlers correctly use /api prefix and async I/O via Motor. Pydantic schemas in place.",
+    "Frontend axios client correctly uses process.env.REACT_APP_BACKEND_URL — no hardcoded URLs found."
+  ],
+  "updated_files": [
+    "/app/backend/agents/mentor.py (popped _id after insert_one in record_performance)",
+    "/app/backend/tests/__init__.py (new, empty package marker)",
+    "/app/backend/tests/backend_test.py (new — 19 pytest cases)"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 after 1 fix)",
+    "frontend": "100% of required flows verified"
+  },
+  "test_credentials": "N/A — no auth in MVP",
+  "seed_data_creation": "POST /api/seed (idempotent) seeds 6 corporate memories, 4 employees (junior/mid/senior/lead), 4 demo deals with interactions, weak performance for emp_jr triggering patterns, and synthetic ROI costs. Auto-invoked by frontend on load.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Tests live in /app/backend/tests/backend_test.py and run via `pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. Seed is idempotent so the fixture POST /api/seed at session start is safe. DeepSeek runs in MOCK mode by design (DEEPSEEK_API_KEY empty in /app/backend/.env) — DO NOT flag as a bug. Frontend public URL: https://deepseek-memory-core.preview.emergentagent.com . Mobile viewport 420x900 is the intended UX. All data-testids documented in the review request are present and correct.",
+  "rca of the issue": "Initial pytest run had 1 FAIL on test_mentor_record_performance with HTTP 500. Backend log: pydantic_core._pydantic_core.PydanticSerializationError: Unable to serialize unknown type: <class 'bson.objectid.ObjectId'>. Root cause: mentor.record_performance() in /app/backend/agents/mentor.py constructed a dict, called db.performance.insert_one(doc), then returned doc directly. Motor mutates the passed dict in place, injecting _id=ObjectId(...). FastAPI's Pydantic JSON encoder can't serialize ObjectId → 500. Fix: pop _id before return. After patch, pytest run re-executed → 19/19 PASS."
+}

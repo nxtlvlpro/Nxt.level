@@ -1,0 +1,257 @@
+"""
+Profit Intelligence (ROI) Engine for NXT8 (Module 7).
+
+Per ТЗ:
+- Cost sources: deepseek_api ($0.50/1M tokens), compute ($0.05/cpu-hour),
+                human_escalation ($35/hour, avg 5min)
+- Revenue attribution: time-decay over 7-day window
+                       weight = 1 / (days_before_deal + 1)
+- ROI formula: (revenue_last_hour - cost_last_hour) / cost_last_hour
+- Update cadence: hourly (near real-time)
+- Alerts:
+    hourly_roi < -0.1            → warning
+    agent.roi < -0.3 for 3h      → critical (would pause agent)
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, List, Optional
+
+from core.db import get_db
+
+logger = logging.getLogger("nxt8.roi")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ---------- cost tracking ----------
+
+
+COST_PER_1M_TOKENS = 0.50
+COST_PER_CPU_HOUR = 0.05
+ESCALATION_USD_PER_MIN = 35.0 / 60.0
+
+
+async def record_api_cost(agent: str, tokens: int, model: str = "deepseek-chat") -> Dict[str, Any]:
+    amount = (tokens / 1_000_000.0) * COST_PER_1M_TOKENS
+    return await _record_cost("deepseek_api", agent, amount, tokens, "tokens", {"model": model})
+
+
+async def record_compute_cost(agent: str, cpu_seconds: float) -> Dict[str, Any]:
+    amount = (cpu_seconds / 3600.0) * COST_PER_CPU_HOUR
+    return await _record_cost("compute", agent, amount, cpu_seconds, "cpu_seconds", {})
+
+
+async def record_escalation_cost(agent: str, minutes: float = 5.0) -> Dict[str, Any]:
+    amount = minutes * ESCALATION_USD_PER_MIN
+    return await _record_cost("human_escalation", agent, amount, minutes, "minutes", {})
+
+
+async def _record_cost(
+    cost_type: str,
+    agent: str,
+    amount_usd: float,
+    quantity: float,
+    unit: str,
+    metadata: Dict[str, Any],
+) -> Dict[str, Any]:
+    db = get_db()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "cost_type": cost_type,
+        "agent": agent,
+        "amount_usd": float(amount_usd),
+        "quantity": float(quantity),
+        "unit": unit,
+        "metadata": metadata,
+        "created_at": _now(),
+    }
+    await db.costs.insert_one(doc)
+    return doc
+
+
+# ---------- revenue attribution ----------
+
+
+async def record_deal(
+    deal_id: str,
+    value_usd: float,
+    team: str,
+    closed_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    db = get_db()
+    doc = {
+        "deal_id": deal_id,
+        "value_usd": float(value_usd),
+        "team": team,
+        "closed_at": closed_at or _now(),
+        "created_at": _now(),
+    }
+    await db.deals.update_one({"deal_id": deal_id}, {"$set": doc}, upsert=True)
+    await attribute_deal(deal_id)
+    return doc
+
+
+async def record_interaction(
+    deal_id: str, agent: str, interaction_type: str = "touch"
+) -> None:
+    db = get_db()
+    await db.interactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "deal_id": deal_id,
+        "agent": agent,
+        "interaction_type": interaction_type,
+        "interaction_time": _now(),
+        "attributed_revenue": None,
+    })
+
+
+async def attribute_deal(deal_id: str, window_days: int = 7) -> Dict[str, float]:
+    db = get_db()
+    deal = await db.deals.find_one({"deal_id": deal_id}, {"_id": 0})
+    if not deal:
+        return {}
+    closed = datetime.fromisoformat(deal["closed_at"].replace("Z", "+00:00"))
+    interactions = await db.interactions.find(
+        {"deal_id": deal_id}, {"_id": 0}
+    ).to_list(length=1000)
+    if not interactions:
+        return {}
+
+    weights: Dict[str, float] = {}
+    total = 0.0
+    for it in interactions:
+        try:
+            t = datetime.fromisoformat(it["interaction_time"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        days_before = max(0.0, (closed - t).total_seconds() / 86400)
+        if days_before > window_days:
+            continue
+        w = 1.0 / (days_before + 1.0)
+        weights[it["agent"]] = weights.get(it["agent"], 0.0) + w
+        total += w
+
+    attribution: Dict[str, float] = {}
+    if total > 0:
+        for agent, w in weights.items():
+            attributed = float(deal["value_usd"]) * (w / total)
+            attribution[agent] = round(attributed, 4)
+
+    # persist
+    for agent, revenue in attribution.items():
+        await db.interactions.update_many(
+            {"deal_id": deal_id, "agent": agent},
+            {"$set": {"attributed_revenue": revenue}},
+        )
+    return attribution
+
+
+# ---------- aggregated views ----------
+
+
+async def _sum_costs_since(since_iso: str) -> Dict[str, Any]:
+    db = get_db()
+    pipeline = [
+        {"$match": {"created_at": {"$gte": since_iso}}},
+        {"$group": {
+            "_id": {"type": "$cost_type", "agent": "$agent"},
+            "total": {"$sum": "$amount_usd"},
+        }},
+    ]
+    rows = await db.costs.aggregate(pipeline).to_list(length=1000)
+    by_type: Dict[str, float] = {}
+    by_agent: Dict[str, float] = {}
+    total = 0.0
+    for r in rows:
+        t = r["_id"]["type"]
+        a = r["_id"]["agent"]
+        v = float(r["total"])
+        total += v
+        by_type[t] = by_type.get(t, 0.0) + v
+        by_agent[a] = by_agent.get(a, 0.0) + v
+    return {"total": round(total, 4), "by_type": by_type, "by_agent": by_agent}
+
+
+async def _sum_revenue_since(since_iso: str) -> Dict[str, Any]:
+    db = get_db()
+    pipeline = [
+        {"$match": {"interaction_time": {"$gte": since_iso}, "attributed_revenue": {"$ne": None}}},
+        {"$group": {"_id": "$agent", "total": {"$sum": "$attributed_revenue"}}},
+    ]
+    rows = await db.interactions.aggregate(pipeline).to_list(length=1000)
+    by_agent: Dict[str, float] = {}
+    total = 0.0
+    for r in rows:
+        v = float(r["total"])
+        by_agent[r["_id"]] = v
+        total += v
+    return {"total": round(total, 4), "by_agent": by_agent}
+
+
+async def calculate_hourly_roi() -> Dict[str, Any]:
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(hours=1)
+    costs = await _sum_costs_since(start.isoformat())
+    revenue = await _sum_revenue_since(start.isoformat())
+    total_cost = costs["total"]
+    total_revenue = revenue["total"]
+    if total_cost > 0:
+        roi = (total_revenue - total_cost) / total_cost
+    else:
+        roi = None
+
+    alert = None
+    if roi is not None and roi < -0.1:
+        alert = f"warning: hourly ROI {roi:.2%} below -10%"
+
+    by_agent: Dict[str, Optional[float]] = {}
+    for agent, agent_cost in costs["by_agent"].items():
+        agent_rev = revenue["by_agent"].get(agent, 0.0)
+        by_agent[agent] = (
+            round((agent_rev - agent_cost) / agent_cost, 4) if agent_cost > 0 else None
+        )
+
+    snapshot = {
+        "hour_start": start.isoformat(),
+        "hour_end": end.isoformat(),
+        "roi": round(roi, 4) if roi is not None else None,
+        "total_cost": total_cost,
+        "total_revenue": total_revenue,
+        "by_type_cost": costs["by_type"],
+        "by_agent_cost": costs["by_agent"],
+        "by_agent_revenue": revenue["by_agent"],
+        "by_agent_roi": by_agent,
+        "alert": alert,
+        "created_at": _now(),
+    }
+
+    db = get_db()
+    await db.roi_history.update_one(
+        {"hour_end": snapshot["hour_end"]}, {"$set": snapshot}, upsert=True
+    )
+    if alert:
+        await db.alerts.insert_one(
+            {"id": str(uuid.uuid4()), "source": "roi", "severity": "warning",
+             "message": alert, "created_at": _now()}
+        )
+    return snapshot
+
+
+async def roi_trend(hours: int = 24) -> List[Dict[str, Any]]:
+    db = get_db()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    return await db.roi_history.find(
+        {"hour_end": {"$gte": cutoff}}, {"_id": 0}
+    ).sort("hour_end", -1).to_list(length=hours + 4)
+
+
+async def dashboard_summary() -> Dict[str, Any]:
+    snap = await calculate_hourly_roi()
+    trend = await roi_trend(24)
+    return {"current_hour": snap, "trend_24h": trend}
