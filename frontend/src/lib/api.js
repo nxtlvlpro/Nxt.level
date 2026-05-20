@@ -106,6 +106,30 @@ export const api = {
       })
       .then((r) => ({ status: r.status, data: r.data })),
 
+  // Documents (Compliance persona)
+  documentsList: (company_id, limit = 50) =>
+    http
+      .get(
+        `/documents?${company_id ? `company_id=${company_id}&` : ""}limit=${limit}`
+      )
+      .then((r) => r.data),
+  documentGet: (document_id) =>
+    http.get(`/documents/${document_id}`).then((r) => r.data),
+  documentUpload: (file, opts = {}) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    if (opts.company_id) fd.append("company_id", opts.company_id);
+    if (opts.user_id) fd.append("user_id", opts.user_id);
+    if (opts.title) fd.append("title", opts.title);
+    if (opts.notes) fd.append("notes", opts.notes);
+    return http
+      .post("/documents/upload", fd, {
+        headers: { "Content-Type": undefined },
+        timeout: 180000,
+      })
+      .then((r) => r.data);
+  },
+
   voiceConverse: (blob, opts = {}) => {
     const fd = new FormData();
     const filename = opts.filename || "speech.webm";

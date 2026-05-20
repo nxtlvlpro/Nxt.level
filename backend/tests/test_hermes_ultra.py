@@ -251,20 +251,70 @@ class TestUnitToolsAndPersistence:
         assert doc.get("source") == "hermes"
 
     @pytest.mark.asyncio
-    async def test_stub_tools_return_mock_true(self):
+    async def test_communication_tools_real_llm_backed(self):
+        """Previously-stub tools are now real LLM-backed (no `mock=True` flag
+        unless provider chain falls through to the mock client)."""
         from agents.hermes_max_tools_and_coo import HERMES_TOOLS
-        stub_names = [
-            "generate_communication_summary",
-            "suggest_next_best_action",
-            "find_opportunities_in_contact",
-            "suggest_reply_template",
-            "evaluate_action_roi",
-        ]
-        for name in stub_names:
+
+        # generate_communication_summary
+        res = await HERMES_TOOLS["generate_communication_summary"]({
+            "text": "Клиент Acme спросил про скидку 15% на годовой контракт. "
+                    "Менеджер ответил, что подумаем до пятницы.",
+        })
+        assert res.get("ok") is True, res
+        assert "summary" in res
+
+        # suggest_next_best_action
+        res = await HERMES_TOOLS["suggest_next_best_action"]({
+            "context": "Сделка с Acme зависла на этапе согласования цены.",
+            "goal": "закрыть до конца недели",
+        })
+        assert res.get("ok") is True, res
+        assert "action" in res
+
+        # find_opportunities_in_contact
+        res = await HERMES_TOOLS["find_opportunities_in_contact"]({
+            "contact_id": "contact_acme",
+            "context": "Купили базовый план 6 месяцев назад, активно используют API.",
+        })
+        assert res.get("ok") is True, res
+        assert isinstance(res.get("opportunities"), list)
+
+        # suggest_reply_template (with context — real LLM path)
+        res = await HERMES_TOOLS["suggest_reply_template"]({
+            "last_message": "Здравствуйте, можно ли получить расширенную лицензию?",
+            "intent": "квалифицировать запрос",
+            "tone": "professional",
+        })
+        assert res.get("ok") is True, res
+        assert res.get("template")
+
+        # evaluate_action_roi
+        res = await HERMES_TOOLS["evaluate_action_roi"]({
+            "action": "Запустить email-кампанию для 500 trial-пользователей",
+            "expected_cost_usd": 200,
+            "expected_revenue_usd": 4000,
+            "horizon_days": 14,
+        })
+        assert res.get("ok") is True, res
+        assert "estimated_roi" in res
+
+    @pytest.mark.asyncio
+    async def test_communication_tools_validate_input(self):
+        """Real tools must reject empty input (no more no-op stubs)."""
+        from agents.hermes_max_tools_and_coo import HERMES_TOOLS
+        # empty args → ok=False with explicit error
+        for name in ("generate_communication_summary",
+                     "suggest_next_best_action",
+                     "find_opportunities_in_contact",
+                     "evaluate_action_roi"):
             res = await HERMES_TOOLS[name]({})
-            assert res.get("ok") is True, name
-            if name != "evaluate_action_roi":
-                assert res.get("mock") is True, f"{name} missing mock=true"
+            assert res.get("ok") is False, f"{name} should reject empty args"
+            assert res.get("error"), name
+        # suggest_reply_template falls back to canned template when no context
+        res = await HERMES_TOOLS["suggest_reply_template"]({})
+        assert res.get("ok") is True
+        assert res.get("context_used") is False
 
     @pytest.mark.asyncio
     async def test_real_tools_no_mock_field(self):

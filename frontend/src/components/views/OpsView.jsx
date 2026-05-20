@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Network, Activity, Wrench, Radar, Bot } from "lucide-react";
+import { Network, Activity, Wrench, Radar, Bot, FileText } from "lucide-react";
 import api from "../../lib/api";
 import { WidgetCard } from "./ops/widgets";
 import CrossDeptPanel from "./ops/CrossDeptPanel";
@@ -7,6 +7,7 @@ import DiagnosticsPanel from "./ops/DiagnosticsPanel";
 import SkillsPanel from "./ops/SkillsPanel";
 import MarketPanel from "./ops/MarketPanel";
 import HermesPanel from "./ops/HermesPanel";
+import DocumentsPanel from "./ops/DocumentsPanel";
 
 function CrossDeptWidget({ data, onOpen }) {
   const tasks = data?.tasks || [];
@@ -148,8 +149,7 @@ function MarketWidget({ data, onOpen }) {
   );
 }
 
-function HermesWidget({ data, onOpen }) {
-  const status = data?.health?.status || "offline";
+function HermesWidget({ data, onOpen }) {  const status = data?.health?.status || "offline";
   const jobs = data?.jobs || [];
   const online = status === "online";
   return (
@@ -187,6 +187,48 @@ function HermesWidget({ data, onOpen }) {
   );
 }
 
+function DocumentsWidget({ data, onOpen }) {
+  const docs = data?.documents || [];
+  const last = docs[0];
+  const critical = docs.filter(
+    (d) => d.severity === "critical" || d.severity === "high"
+  ).length;
+  const alertish = critical > 0;
+  return (
+    <WidgetCard
+      title="documents · compliance"
+      onOpen={onOpen}
+      testId="widget-documents"
+      accent={alertish ? "text-orange-400" : "text-brand-turquoise"}
+      status={`${docs.length} files`}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className={`w-10 h-10 rounded-xl border flex items-center justify-center ${
+            alertish
+              ? "bg-orange-500/10 border-orange-500/30"
+              : "bg-brand-turquoise/10 border-brand-turquoise/30"
+          }`}
+        >
+          <FileText
+            className={`w-5 h-5 ${
+              alertish ? "text-orange-400" : "text-brand-turquoise"
+            }`}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-slate-200 text-[12px] truncate">
+            {last ? last.title || last.filename : "загрузите первый документ"}
+          </div>
+          <div className="text-[9px] uppercase tracking-widest text-slate-500 mt-0.5">
+            {critical} risk · {docs.length - critical} ok
+          </div>
+        </div>
+      </div>
+    </WidgetCard>
+  );
+}
+
 export default function OpsView() {
   const [sub, setSub] = useState(null);
   const [data, setData] = useState({
@@ -195,22 +237,33 @@ export default function OpsView() {
     skills: null,
     market: null,
     hermes: null,
+    documents: null,
   });
 
   useEffect(() => {
     let mounted = true;
     const load = async () => {
-      const [cd, summary, contras, skills, signals, digests, hHealth, hJobs] =
-        await Promise.all([
-          api.crossDeptTasks(10).catch(() => ({ tasks: [] })),
-          api.diagnosticsSummary(200).catch(() => null),
-          api.diagnosticsList(30).catch(() => ({ contradictions: [] })),
-          api.skillsList(false, 50).catch(() => ({ skills: [] })),
-          api.marketSignals(undefined, 20).catch(() => ({ signals: [] })),
-          api.marketDigests(1).catch(() => ({ digests: [] })),
-          api.hermesHealth().catch(() => null),
-          api.hermesJobsList().catch(() => ({ jobs: [] })),
-        ]);
+      const [
+        cd,
+        summary,
+        contras,
+        skills,
+        signals,
+        digests,
+        hHealth,
+        hJobs,
+        docs,
+      ] = await Promise.all([
+        api.crossDeptTasks(10).catch(() => ({ tasks: [] })),
+        api.diagnosticsSummary(200).catch(() => null),
+        api.diagnosticsList(30).catch(() => ({ contradictions: [] })),
+        api.skillsList(false, 50).catch(() => ({ skills: [] })),
+        api.marketSignals(undefined, 20).catch(() => ({ signals: [] })),
+        api.marketDigests(1).catch(() => ({ digests: [] })),
+        api.hermesHealth().catch(() => null),
+        api.hermesJobsList().catch(() => ({ jobs: [] })),
+        api.documentsList(undefined, 20).catch(() => ({ documents: [] })),
+      ]);
       if (!mounted) return;
       setData({
         crossDept: { tasks: cd.tasks || [] },
@@ -227,6 +280,7 @@ export default function OpsView() {
           health: hHealth,
           jobs: hJobs.jobs || [],
         },
+        documents: { documents: docs.documents || [] },
       });
     };
     load();
@@ -244,6 +298,8 @@ export default function OpsView() {
   if (sub === "skills") return <SkillsPanel onBack={() => setSub(null)} />;
   if (sub === "market") return <MarketPanel onBack={() => setSub(null)} />;
   if (sub === "hermes") return <HermesPanel onBack={() => setSub(null)} />;
+  if (sub === "documents")
+    return <DocumentsPanel onBack={() => setSub(null)} />;
 
   return (
     <div className="space-y-3" data-testid="ops-view">
@@ -252,7 +308,7 @@ export default function OpsView() {
           ops.cockpit
         </span>
         <span className="text-slate-500 text-[10px] uppercase tracking-widest animate-flicker">
-          live · 5 modules
+          live · 6 modules
         </span>
       </div>
       <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4">
@@ -267,6 +323,10 @@ export default function OpsView() {
         <SkillsWidget data={data.skills} onOpen={() => setSub("skills")} />
         <MarketWidget data={data.market} onOpen={() => setSub("market")} />
         <HermesWidget data={data.hermes} onOpen={() => setSub("hermes")} />
+        <DocumentsWidget
+          data={data.documents}
+          onOpen={() => setSub("documents")}
+        />
       </div>
     </div>
   );

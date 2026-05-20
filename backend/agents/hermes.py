@@ -248,50 +248,308 @@ async def _t_mempalace_store(args: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-# ---- legacy stub tools (still mock=True until real impl) -----------
+# ---- previously-stub tools, now real LLM-backed implementations ---
+
+
+_JSON_FENCED_RE = re.compile(
+    r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", re.IGNORECASE
+)
+
+
+def _parse_fenced_json(content: str) -> Optional[Dict[str, Any]]:
+    """Best-effort extraction of a single JSON object from an LLM reply."""
+    if not content:
+        return None
+    m = _JSON_FENCED_RE.search(content)
+    raw = m.group(1) if m else content.strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        start, end = raw.find("{"), raw.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                data = json.loads(raw[start:end + 1])
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+    return data if isinstance(data, dict) else None
 
 
 async def _t_generate_communication_summary(args: Dict[str, Any]) -> Dict[str, Any]:
-    return {"ok": True, "summary": args.get("summary", ""),
-            "suggested_next_action": args.get("suggested_next_action"),
-            "mock": True}
+    """Summarise a thread of messages / emails / CRM notes with DeepSeek."""
+    text = (args.get("text") or "").strip()
+    messages_in = args.get("messages") or []
+    if not text and isinstance(messages_in, list) and messages_in:
+        parts: List[str] = []
+        for m in messages_in:
+            if isinstance(m, dict):
+                who = m.get("from") or m.get("role") or "—"
+                body = m.get("text") or m.get("content") or ""
+                parts.append(f"[{who}] {body}")
+            elif isinstance(m, str):
+                parts.append(m)
+        text = "\n".join(parts)
+    if not text:
+        return {"ok": False, "error": "text or messages required"}
+
+    system = (
+        "Ты — операционный аналитик NXT8. Дай краткую сводку переписки. "
+        "Ответ строго в fenced-JSON:\n"
+        "```json\n"
+        '{"summary":"2-4 предложения","sentiment":"positive|neutral|negative",'
+        '"key_topics":["..."],"open_questions":["..."],'
+        '"suggested_next_action":"одно конкретное действие"}\n'
+        "```"
+    )
+    snippet = text[:8000]
+    deepseek = get_deepseek()
+    resp = await deepseek.chat(
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": f"Переписка:\n\n{snippet}"}],
+        temperature=0.2, max_tokens=900,
+    )
+    parsed = _parse_fenced_json(resp.get("content") or "") or {}
+    return {
+        "ok": True,
+        "summary": parsed.get("summary") or (resp.get("content") or "").strip()[:400],
+        "sentiment": parsed.get("sentiment", "neutral"),
+        "key_topics": parsed.get("key_topics", []),
+        "open_questions": parsed.get("open_questions", []),
+        "suggested_next_action": parsed.get("suggested_next_action"),
+        "tokens_total": int(resp.get("tokens_total") or 0),
+        "mock": bool(resp.get("mock")),
+        "provider": resp.get("provider"),
+    }
 
 
 async def _t_suggest_next_best_action(args: Dict[str, Any]) -> Dict[str, Any]:
-    return {"ok": True,
-            "action": args.get("action") or "Follow-up через 48 часов",
-            "confidence": 0.9, "context": args.get("context"), "mock": True}
+    """LLM-driven Next Best Action recommender."""
+    context = (args.get("context") or args.get("situation") or "").strip()
+    goal = (args.get("goal") or "").strip()
+    if not context and not goal:
+        return {"ok": False, "error": "context or goal required"}
+
+    system = (
+        "Ты — Hermes COO. Предложи ОДНО следующее лучшее действие (NBA) "
+        "под цели операционной системы. Ответ строго fenced-JSON:\n"
+        "```json\n"
+        '{"action":"глагол + объект","owner":"роль/отдел",'
+        '"urgency":"low|medium|high|critical","horizon_hours":24,'
+        '"rationale":"1-2 предложения почему","expected_impact":"измеримый эффект"}\n'
+        "```"
+    )
+    user = f"Контекст:\n{context or '—'}\n\nЦель: {goal or '—'}"
+    deepseek = get_deepseek()
+    resp = await deepseek.chat(
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": user}],
+        temperature=0.3, max_tokens=600,
+    )
+    parsed = _parse_fenced_json(resp.get("content") or "") or {}
+    return {
+        "ok": True,
+        "action": parsed.get("action") or "Уточнить детали с владельцем процесса",
+        "owner": parsed.get("owner"),
+        "urgency": parsed.get("urgency", "medium"),
+        "horizon_hours": int(parsed.get("horizon_hours") or 24),
+        "rationale": parsed.get("rationale"),
+        "expected_impact": parsed.get("expected_impact"),
+        "confidence": float(resp.get("confidence") or 0.7),
+        "tokens_total": int(resp.get("tokens_total") or 0),
+        "mock": bool(resp.get("mock")),
+        "provider": resp.get("provider"),
+    }
 
 
 async def _t_find_opportunities_in_contact(args: Dict[str, Any]) -> Dict[str, Any]:
-    return {"ok": True, "contact_id": args.get("contact_id"),
-            "opportunities": [
-                {"type": "upsell", "potential": "15000-30000 USD",
-                 "confidence": 0.7}
-            ],
-            "mock": True}
+    """Surface upsell / cross-sell / retention signals for a contact.
+
+    Pulls prior interactions from MemPalace (best-effort) and asks DeepSeek
+    to enumerate concrete monetary opportunities.
+    """
+    contact_id = (args.get("contact_id") or "").strip()
+    contact_context = (args.get("context") or args.get("notes") or "").strip()
+    if not contact_id and not contact_context:
+        return {"ok": False, "error": "contact_id or context required"}
+
+    # Best-effort context retrieval from MemPalace
+    mem_snippets: List[str] = []
+    if contact_id:
+        try:
+            from agents import mempalace_bridge as mempalace_agent
+            bridge = mempalace_agent.get_mempalace()
+            results = await bridge.search(
+                query=f"contact {contact_id}", top_k=5,
+            )
+            for r in results or []:
+                snippet = r.get("content") or r.get("text") or ""
+                if snippet:
+                    mem_snippets.append(snippet[:400])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("mempalace lookup for contact failed: %s", e)
+
+    system = (
+        "Ты — Hermes COO + revenue strategist NXT8. Найди реальные monetisation "
+        "opportunities (upsell, cross-sell, renewal, retention). "
+        "Ответ строго fenced-JSON:\n"
+        "```json\n"
+        '{"opportunities":['
+        '{"type":"upsell|cross-sell|renewal|retention|new-product",'
+        '"description":"что предложить","value_usd_min":0,"value_usd_max":0,'
+        '"confidence":0.0,"why_now":"триггер","next_step":"конкретное действие"}'
+        "]}\n"
+        "```\n"
+        "Если данных мало — верни 0-2 гипотезы с честно низким confidence."
+    )
+    parts = [f"contact_id: {contact_id or '—'}"]
+    if contact_context:
+        parts.append(f"Контекст:\n{contact_context}")
+    if mem_snippets:
+        parts.append("Память (последние взаимодействия):\n- " +
+                     "\n- ".join(mem_snippets))
+    deepseek = get_deepseek()
+    resp = await deepseek.chat(
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": "\n\n".join(parts)}],
+        temperature=0.4, max_tokens=900,
+    )
+    parsed = _parse_fenced_json(resp.get("content") or "") or {}
+    opps = parsed.get("opportunities")
+    if not isinstance(opps, list):
+        opps = []
+    return {
+        "ok": True,
+        "contact_id": contact_id or None,
+        "opportunities": opps,
+        "memory_snippets_used": len(mem_snippets),
+        "tokens_total": int(resp.get("tokens_total") or 0),
+        "mock": bool(resp.get("mock")),
+        "provider": resp.get("provider"),
+    }
 
 
 async def _t_suggest_reply_template(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Draft a contextual reply (not just canned tone strings)."""
+    last_message = (args.get("last_message") or args.get("incoming") or "").strip()
+    intent = (args.get("intent") or args.get("goal") or "").strip()
     tone = (args.get("tone") or "professional").lower()
-    templates = {
-        "professional": "Здравствуйте! Спасибо за обращение — подготовим ответ в течение 24 часов.",
-        "friendly": "Привет! Спасибо, что написали — скоро вернёмся с деталями.",
-        "concise": "Принято. Ответим в течение 24ч.",
+    language = (args.get("language") or "ru").lower()
+
+    if not last_message and not intent:
+        # graceful fallback: pure tone template
+        canned = {
+            "professional": "Здравствуйте! Спасибо за обращение — подготовим ответ в течение 24 часов.",
+            "friendly": "Привет! Спасибо, что написали — скоро вернёмся с деталями.",
+            "concise": "Принято. Ответим в течение 24ч.",
+        }
+        return {"ok": True, "template": canned.get(tone, canned["professional"]),
+                "tone": tone, "context_used": False, "mock": False}
+
+    system = (
+        "Ты — Hermes communications assistant. Напиши ответ на входящее сообщение. "
+        "Учти tone, language и intent. Ответ строго fenced-JSON:\n"
+        "```json\n"
+        '{"subject":"кратко (если письмо)","body":"полный текст ответа",'
+        '"call_to_action":"одно конкретное действие","tone":"...","language":"ru|en"}\n'
+        "```"
+    )
+    user = (
+        f"Tone: {tone}\nLanguage: {language}\nIntent: {intent or '—'}\n\n"
+        f"Входящее сообщение:\n{last_message or '—'}"
+    )
+    deepseek = get_deepseek()
+    resp = await deepseek.chat(
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": user}],
+        temperature=0.4, max_tokens=700,
+    )
+    parsed = _parse_fenced_json(resp.get("content") or "") or {}
+    body = parsed.get("body") or (resp.get("content") or "").strip()
+    return {
+        "ok": True,
+        "subject": parsed.get("subject"),
+        "template": body,
+        "body": body,
+        "call_to_action": parsed.get("call_to_action"),
+        "tone": parsed.get("tone") or tone,
+        "language": parsed.get("language") or language,
+        "context_used": True,
+        "tokens_total": int(resp.get("tokens_total") or 0),
+        "mock": bool(resp.get("mock")),
+        "provider": resp.get("provider"),
     }
-    return {"ok": True, "template": templates.get(tone, templates["professional"]),
-            "tone": tone, "mock": True}
 
 
 async def _t_evaluate_action_roi(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Estimate ROI of a proposed action using DeepSeek + recent ROI snapshot."""
+    action = (args.get("action") or args.get("description") or "").strip()
+    if not action:
+        return {"ok": False, "error": "action description required"}
+    expected_cost = args.get("expected_cost_usd")
+    expected_revenue = args.get("expected_revenue_usd")
+    horizon_days = int(args.get("horizon_days") or 30)
+
+    # Pull last hour ROI snapshot for context (best-effort, non-blocking)
+    roi_snapshot: Dict[str, Any] = {}
     try:
         from agents import roi as roi_agent
-        if hasattr(roi_agent, "assess_action_impact"):
-            return await roi_agent.assess_action_impact(args)
-    except Exception:  # noqa: BLE001
-        pass
-    return {"ok": True, "estimated_roi": "high", "value": "12000 USD",
-            "horizon_days": 30, "mock": True}
+        snap = await get_db().roi_history.find_one(
+            {}, {"_id": 0}, sort=[("hour_end", -1)],
+        )
+        if snap:
+            roi_snapshot = {
+                "hour_roi": snap.get("roi"),
+                "total_cost": snap.get("total_cost"),
+                "total_revenue": snap.get("total_revenue"),
+            }
+        _ = roi_agent  # imported for side-effect / future hook
+    except Exception as e:  # noqa: BLE001
+        logger.warning("roi snapshot lookup failed: %s", e)
+
+    system = (
+        "Ты — Profit Intelligence (ROI engine) NXT8. Оцени ROI предложенного "
+        "действия. Ответ строго fenced-JSON:\n"
+        "```json\n"
+        '{"estimated_roi":"low|medium|high|negative",'
+        '"value_usd_low":0,"value_usd_high":0,'
+        '"horizon_days":30,"cost_estimate_usd":0,'
+        '"confidence":0.0,"rationale":"1-3 предложения",'
+        '"risks":["..."]}\n'
+        "```\n"
+        "Если входные данные о cost/revenue указаны — используй их как ориентир."
+    )
+    context_parts = [f"Action: {action}", f"Horizon: {horizon_days} days"]
+    if expected_cost is not None:
+        context_parts.append(f"Expected cost (USD): {expected_cost}")
+    if expected_revenue is not None:
+        context_parts.append(f"Expected revenue (USD): {expected_revenue}")
+    if roi_snapshot:
+        context_parts.append(
+            f"Текущий часовой ROI компании: {roi_snapshot}"
+        )
+    deepseek = get_deepseek()
+    resp = await deepseek.chat(
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": "\n".join(context_parts)}],
+        temperature=0.3, max_tokens=700,
+    )
+    parsed = _parse_fenced_json(resp.get("content") or "") or {}
+    return {
+        "ok": True,
+        "estimated_roi": parsed.get("estimated_roi", "medium"),
+        "value_usd_low": parsed.get("value_usd_low"),
+        "value_usd_high": parsed.get("value_usd_high"),
+        "cost_estimate_usd": parsed.get("cost_estimate_usd", expected_cost),
+        "horizon_days": int(parsed.get("horizon_days") or horizon_days),
+        "confidence": float(parsed.get("confidence") or resp.get("confidence") or 0.6),
+        "rationale": parsed.get("rationale"),
+        "risks": parsed.get("risks", []),
+        "company_roi_context": roi_snapshot or None,
+        "tokens_total": int(resp.get("tokens_total") or 0),
+        "mock": bool(resp.get("mock")),
+        "provider": resp.get("provider"),
+    }
 
 
 # =====================================================================
@@ -311,7 +569,7 @@ HERMES_TOOLS: Dict[str, Any] = {
     "generate_daily_digest": _t_generate_daily_digest,
     "mempalace_search": _t_mempalace_search,
     "mempalace_store": _t_mempalace_store,
-    # Legacy stub tools (mock=True; honored by tests/test_hermes_ultra.py)
+    # Communications & opportunity tools — real LLM-backed (DeepSeek)
     "generate_communication_summary": _t_generate_communication_summary,
     "suggest_next_best_action": _t_suggest_next_best_action,
     "find_opportunities_in_contact": _t_find_opportunities_in_contact,
@@ -332,11 +590,11 @@ _TOOLS_DOC = (
     "- `generate_daily_digest(recipient_user_id, period?)` — оперативный дайджест\n"
     "- `mempalace_search(query, wing?, room?, top_k?)` — долговременная память\n"
     "- `mempalace_store(content, wing?, room?)` — записать факт\n"
-    "- `suggest_reply_template(tone)` — шаблон ответа\n"
-    "- `suggest_next_best_action(action?, context?)` — NBA\n"
-    "- `find_opportunities_in_contact(contact_id)` — апсейл\n"
-    "- `evaluate_action_roi(action)` — оценка ROI\n"
-    "- `generate_communication_summary(summary)` — резюме переписки"
+    "- `suggest_reply_template(last_message, intent?, tone?, language?)` — драфт ответа\n"
+    "- `suggest_next_best_action(context, goal?)` — NBA с обоснованием\n"
+    "- `find_opportunities_in_contact(contact_id?, context?)` — upsell/cross-sell\n"
+    "- `evaluate_action_roi(action, expected_cost_usd?, expected_revenue_usd?, horizon_days?)` — оценка ROI\n"
+    "- `generate_communication_summary(text|messages)` — резюме переписки"
 )
 
 
