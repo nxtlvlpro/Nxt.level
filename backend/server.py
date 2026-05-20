@@ -15,6 +15,7 @@ All 10 ТЗ MVP components live in this process:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import uuid
@@ -45,6 +46,7 @@ from agents import market_radar as market_agent  # noqa: E402
 from agents import hermes_proxy as hermes_agent  # noqa: E402
 from agents import hermes_coo as hermes_coo_agent  # noqa: E402
 from agents import mempalace_bridge as mempalace_agent  # noqa: E402
+from agents import personas as personas_agent  # noqa: E402
 from nxt8_langgraph_ultra import run_nxt8_ultra  # noqa: E402
 from core.db import close_db, ensure_indexes, get_db  # noqa: E402
 from core.deepseek import get_deepseek  # noqa: E402
@@ -1160,6 +1162,59 @@ async def hermes_jobs_list() -> Dict[str, Any]:
 @api.post("/hermes/jobs")
 async def hermes_jobs_create(req: HermesJobRequest) -> Dict[str, Any]:
     return await hermes_agent.create_job(req.model_dump(exclude_none=True))
+
+
+# =====================================================================
+# Personas Layer (marketing-aligned 8 agents + tariff gate)
+# =====================================================================
+
+
+class PersonaChatRequest(BaseModel):
+    message: str
+    company_id: str = "default"
+    user_id: str = "anonymous"
+    session_id: Optional[str] = None
+    plan_id: Optional[str] = None  # basic|simple|pro|enterprise
+
+
+@api.get("/personas")
+async def personas_list(plan_id: Optional[str] = None) -> Dict[str, Any]:
+    """List all 8 personas with availability flag for the given plan."""
+    plan = personas_agent.get_plan(plan_id)
+    return {
+        "plan": plan,
+        "plans": [
+            {"id": pid, **{k: v for k, v in p.items() if k != "personas"}, "personas": p["personas"]}
+            for pid, p in personas_agent.PLANS.items()
+        ],
+        "personas": personas_agent.list_personas(plan_id),
+    }
+
+
+@api.post("/personas/{persona_id}/chat")
+async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, Any]:
+    """Chat with a specific persona. Enforces tariff gate."""
+    if not req.message or not req.message.strip():
+        raise HTTPException(status_code=400, detail="message is required")
+    result = await personas_agent.run_persona(
+        persona_id=persona_id,
+        message=req.message,
+        company_id=req.company_id,
+        user_id=req.user_id,
+        session_id=req.session_id,
+        plan_id=req.plan_id,
+    )
+    if not result.get("success") and "не доступна" in (result.get("error") or "").lower() or \
+       (not result.get("success") and "недоступна" in (result.get("error") or "")):
+        # Tariff gate — return 402 Payment Required
+        return Response(
+            content=json.dumps(result, ensure_ascii=False),
+            status_code=402,
+            media_type="application/json",
+        )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "persona chat failed")
+    return result
 
 
 # =====================================================================

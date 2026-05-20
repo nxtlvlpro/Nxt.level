@@ -93,6 +93,19 @@ export const api = {
   hermesJobCreate: (payload) =>
     http.post("/hermes/jobs", payload).then((r) => r.data),
 
+  // Personas Layer (8 marketing-aligned agents + tariff gate)
+  personasList: (plan_id) =>
+    http
+      .get(`/personas${plan_id ? `?plan_id=${plan_id}` : ""}`)
+      .then((r) => r.data),
+  personaChat: (persona_id, payload) =>
+    http
+      .post(`/personas/${persona_id}/chat`, payload, {
+        // 402 (tariff gate) is expected — let frontend handle it
+        validateStatus: (s) => s < 500,
+      })
+      .then((r) => ({ status: r.status, data: r.data })),
+
   voiceConverse: (blob, opts = {}) => {
     const fd = new FormData();
     const filename = opts.filename || "speech.webm";
