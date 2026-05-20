@@ -76,6 +76,8 @@ class AgentState(TypedDict, total=False):
     tool_traces: List[Dict[str, Any]]
     approved: bool
     tools_just_executed: bool
+    tokens_total: int
+    mock: bool
 
 
 # =====================================================================
@@ -149,6 +151,8 @@ async def hermes_node(state: AgentState) -> Dict[str, Any]:
         # Reset the tools-just-executed flag — Hermes has now consumed
         # the tool results (if any) and produced its next message.
         "tools_just_executed": False,
+        "tokens_total": int(state.get("tokens_total", 0) or 0) + int(resp.get("tokens_total", 0) or 0),
+        "mock": bool(state.get("mock")) or bool(resp.get("mock")),
     }
 
 
@@ -344,6 +348,8 @@ async def run_nxt8_ultra(
             "iterations": result.get("iterations", 0),
             "tool_traces": result.get("tool_traces") or [],
             "requires_human_approval": bool(result.get("requires_human_approval")),
+            "tokens_total": int(result.get("tokens_total", 0) or 0),
+            "mock": bool(result.get("mock")),
             "success": True,
         }
     except Exception as e:  # noqa: BLE001

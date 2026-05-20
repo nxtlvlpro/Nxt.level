@@ -47,6 +47,8 @@ from agents import hermes_proxy as hermes_agent  # noqa: E402
 from agents import hermes_coo as hermes_coo_agent  # noqa: E402
 from agents import mempalace_bridge as mempalace_agent  # noqa: E402
 from agents import personas as personas_agent  # noqa: E402
+from agents import documents as documents_agent  # noqa: E402
+from agents._pipeline_hooks import finalize_llm_turn  # noqa: E402
 from nxt8_langgraph_ultra import run_nxt8_ultra  # noqa: E402
 from core.db import close_db, ensure_indexes, get_db  # noqa: E402
 from core.deepseek import get_deepseek  # noqa: E402
@@ -659,7 +661,9 @@ async def voice_converse(
 ) -> Dict[str, Any]:
     """One-shot voice loop: STT → Hermes COO (tools) → trim → TTS (base64 mp3)."""
     import base64
+    import time as _time
 
+    t0 = _time.time()
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="empty audio file")
@@ -734,13 +738,38 @@ async def voice_converse(
     else:
         tts_error = "empty_reply_from_hermes"
 
+    # Universal pipeline hook: cost + reliability + unified audit
+    latency_ms = int((_time.time() - t0) * 1000)
+    hook_res = await finalize_llm_turn(
+        channel="voice",
+        agent="hermes_coo",
+        user_id=user_id,
+        session_id=sid,
+        message=user_text,
+        response_text=reply_text or raw_reply,
+        tokens_total=int(chat_resp.get("tokens_total", 0) or 0),
+        deepseek_confidence=float(chat_resp.get("confidence", 0.7) or 0.7),
+        evidence_count=0,
+        past_responses=[m.get("content", "") for m in history if m.get("role") == "assistant"],
+        memory_context=[],
+        intent="voice",
+        agent_chain=["voice_stt", "hermes_coo", "voice_tts"],
+        mock=bool(chat_resp.get("mock")),
+        latency_ms=latency_ms,
+        extra={"language": stt.get("language"), "voice": voice},
+    )
+
     return {
         "session_id": sid,
         "transcript": user_text,
         "language": stt.get("language"),
         "reply": reply_text,
         "reply_raw": raw_reply if raw_reply != reply_text else None,
-        "confidence": chat_resp.get("confidence"),
+        "confidence": hook_res.get("confidence", chat_resp.get("confidence")),
+        "confidence_level": hook_res.get("confidence_level"),
+        "should_escalate": hook_res.get("should_escalate", False),
+        "verification_status": hook_res.get("verification_status"),
+        "request_id": hook_res.get("request_id"),
         "tools_used": [t.get("name") for t in (chat_resp.get("tool_calls") or []) if isinstance(t, dict)],
         "iterations": chat_resp.get("iterations", 0),
         "provider": chat_resp.get("provider"),
@@ -749,6 +778,7 @@ async def voice_converse(
         "audio_b64": audio_b64,
         "audio_format": "mp3" if audio_b64 else None,
         "tts_error": tts_error,
+        "latency_ms": latency_ms,
     }
 
 
@@ -839,48 +869,37 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
             except Exception as _mp_err:  # noqa: BLE001
                 logger.debug("mempalace autosave skipped: %s", _mp_err)
 
-            # post-stream reliability
+            # post-stream reliability + cost + unified audit via hook
             past = [m["content"] for m in (await mem.get_session(session_id, limit=10))
                     if m.get("role") == "assistant"]
             mem_ctx_texts = [r.get("content", "") for r in ctx.get("retrieved", [])]
-            rel = reliability_agent.assess(
-                response=full,
+            latency_ms = int((_time.time() - t0) * 1000)
+            hook_res = await finalize_llm_turn(
+                channel="stream",
+                agent="orchestrator_stream",
+                user_id=req.user_id,
+                session_id=session_id,
+                message=req.message,
+                response_text=full,
+                tokens_total=int(intent_resp.get("tokens_total", 0) or 0),
                 deepseek_confidence=0.78,  # streamed; no logprobs aggregate
-                source="deepseek",
                 evidence_count=len(mem_ctx_texts),
                 past_responses=past,
                 memory_context=mem_ctx_texts,
+                intent=intent,
+                agent_chain=["orchestrator(stream)"],
+                mock=False,
+                latency_ms=latency_ms,
             )
 
-            latency_ms = int((_time.time() - t0) * 1000)
-            request_id = str(uuid.uuid4())
-            await get_db().requests.insert_one({
-                "id": request_id,
-                "user_id": req.user_id,
-                "session_id": session_id,
-                "channel": "stream",
-                "message": req.message,
-                "intent": intent,
-                "agent_chain": ["orchestrator(stream)"],
-                "response": full,
-                "confidence": rel.score,
-                "confidence_level": rel.level,
-                "should_escalate": rel.should_escalate,
-                "verification_status": rel.verification_status,
-                "tokens_total": 0,
-                "latency_ms": latency_ms,
-                "mock": False,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-
             done_payload = {
-                "request_id": request_id,
+                "request_id": hook_res.get("request_id"),
                 "session_id": session_id,
                 "intent": intent,
-                "confidence": rel.score,
-                "confidence_level": rel.level,
-                "should_escalate": rel.should_escalate,
-                "verification_status": rel.verification_status,
+                "confidence": hook_res.get("confidence"),
+                "confidence_level": hook_res.get("confidence_level"),
+                "should_escalate": hook_res.get("should_escalate"),
+                "verification_status": hook_res.get("verification_status"),
                 "latency_ms": latency_ms,
                 "provider": deepseek.active_provider,
             }
@@ -1068,7 +1087,9 @@ async def hermes_health() -> Dict[str, Any]:
 @api.post("/hermes/chat")
 async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
     """Enhanced Hermes COO endpoint with tool-calling and multi-tenant context."""
-    return await hermes_coo_agent.enhanced_chat(
+    import time as _time
+    t0 = _time.time()
+    result = await hermes_coo_agent.enhanced_chat(
         messages=req.messages,
         company_id=req.company_id,
         user_id=req.user_id,
@@ -1076,6 +1097,35 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
         temperature=req.temperature,
         model=req.model,
     )
+    # Universal pipeline hook
+    last_user_msg = ""
+    for m in reversed(req.messages or []):
+        if isinstance(m, dict) and m.get("role") == "user":
+            last_user_msg = m.get("content") or ""
+            break
+    usage = (result.get("usage") or {}) if isinstance(result.get("usage"), dict) else {}
+    tokens_total = int(result.get("tokens_total") or usage.get("total_tokens") or 0)
+    sid = f"hermes_{uuid.uuid4().hex[:10]}"
+    hook_res = await finalize_llm_turn(
+        channel="hermes_chat",
+        agent="hermes_coo",
+        user_id=req.user_id or "anonymous",
+        session_id=sid,
+        message=last_user_msg,
+        response_text=result.get("content", ""),
+        tokens_total=tokens_total,
+        deepseek_confidence=float(result.get("confidence", 0.7) or 0.7),
+        evidence_count=len(result.get("tool_calls") or []),
+        intent="hermes",
+        agent_chain=["hermes_coo"],
+        mock=bool(result.get("mock")),
+        latency_ms=int((_time.time() - t0) * 1000),
+        extra={"company_id": req.company_id, "mode": req.mode, "fallback": result.get("fallback")},
+    )
+    result["request_id"] = hook_res.get("request_id")
+    result["confidence_level"] = hook_res.get("confidence_level")
+    result["should_escalate"] = hook_res.get("should_escalate", False)
+    return result
 
 
 @api.post("/hermes/daily-digest")
@@ -1111,6 +1161,8 @@ class HermesUltraRequest(BaseModel):
 @api.post("/hermes/ultra")
 async def hermes_ultra_endpoint(req: HermesUltraRequest) -> Dict[str, Any]:
     """Ultra Hermes COO orchestrator (LangGraph supervisor → hermes → tools)."""
+    import time as _time
+    t0 = _time.time()
     allowed = {"read_only", "assistant", "controlled_automation"}
     autonomy = req.autonomy_level if req.autonomy_level in allowed else "assistant"
     session_id = req.session_id or f"sess_{uuid.uuid4().hex[:12]}"
@@ -1141,13 +1193,39 @@ async def hermes_ultra_endpoint(req: HermesUltraRequest) -> Dict[str, Any]:
     except Exception as mem_err:  # noqa: BLE001
         logger.warning("memory append failed: %s", mem_err)
 
+    # Universal pipeline hook
+    hook_res = await finalize_llm_turn(
+        channel="hermes_ultra",
+        agent="hermes_ultra",
+        user_id=req.user_id,
+        session_id=session_id,
+        message=req.message,
+        response_text=result.get("content", ""),
+        tokens_total=int(result.get("tokens_total") or 0),
+        deepseek_confidence=float(result.get("confidence", 0.7) or 0.7),
+        evidence_count=len(result.get("tool_traces") or []),
+        intent="hermes_ultra",
+        agent_chain=["langgraph", "hermes", "tools"],
+        mock=bool(result.get("mock")),
+        latency_ms=int((_time.time() - t0) * 1000),
+        extra={
+            "company_id": req.company_id,
+            "autonomy_level": autonomy,
+            "iterations": result.get("iterations", 0),
+            "fallback": result.get("fallback"),
+        },
+    )
+
     return {
         "success": True,
         "content": result.get("content", ""),
         "autonomy_level": autonomy,
         "thread_id": result.get("thread_id", session_id),
         "iterations": result.get("iterations", 0),
-        "confidence": result.get("confidence", 0.7),
+        "confidence": hook_res.get("confidence", result.get("confidence", 0.7)),
+        "confidence_level": hook_res.get("confidence_level"),
+        "should_escalate": hook_res.get("should_escalate", False),
+        "request_id": hook_res.get("request_id"),
         "tool_traces": result.get("tool_traces") or [],
         "requires_human_approval": bool(result.get("requires_human_approval")),
         "fallback": result.get("fallback"),
@@ -1194,6 +1272,8 @@ async def personas_list(plan_id: Optional[str] = None) -> Dict[str, Any]:
 @api.post("/personas/{persona_id}/chat")
 async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, Any]:
     """Chat with a specific persona. Enforces tariff gate."""
+    import time as _time
+    t0 = _time.time()
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
     result = await personas_agent.run_persona(
@@ -1214,7 +1294,112 @@ async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, An
         )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error") or "persona chat failed")
+
+    # Universal pipeline hook
+    hook_res = await finalize_llm_turn(
+        channel="persona",
+        agent=f"persona:{persona_id}",
+        user_id=req.user_id,
+        session_id=result.get("session_id", f"persona_{uuid.uuid4().hex[:10]}"),
+        message=req.message,
+        response_text=result.get("content", ""),
+        tokens_total=int(result.get("tokens_total") or 0),
+        deepseek_confidence=float(result.get("confidence", 0.7) or 0.7),
+        evidence_count=len(result.get("tool_traces") or []),
+        intent=f"persona:{persona_id}",
+        agent_chain=["personas", persona_id],
+        mock=bool(result.get("mock")),
+        latency_ms=int((_time.time() - t0) * 1000),
+        extra={
+            "persona_id": persona_id,
+            "company_id": req.company_id,
+            "plan_id": result.get("plan_id"),
+            "iterations": result.get("iterations", 0),
+        },
+    )
+    result["request_id"] = hook_res.get("request_id")
+    result["confidence_level"] = hook_res.get("confidence_level")
+    result["should_escalate"] = hook_res.get("should_escalate", False)
     return result
+
+
+# =====================================================================
+# Documents — upload + LLM risk review for Compliance persona
+# =====================================================================
+
+
+@api.post("/documents/upload")
+async def documents_upload(
+    file: UploadFile = File(...),
+    company_id: str = Form("default"),
+    user_id: str = Form("anonymous"),
+    title: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+) -> Dict[str, Any]:
+    """Ingest a document (PDF/DOCX/TXT/MD), run LLM compliance review,
+    store chunks in MemPalace (wing=documents)."""
+    import time as _time
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty file")
+    t0 = _time.time()
+    try:
+        result = await documents_agent.ingest_document(
+            filename=file.filename or "upload.bin",
+            content=raw,
+            company_id=company_id,
+            user_id=user_id,
+            title=title,
+            notes=notes,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        logger.exception("document ingest failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"ingest_failed: {e}")
+
+    # Universal pipeline hook (cost + unified audit, NO reliability assess —
+    # we already have a structured verdict)
+    try:
+        hook_res = await finalize_llm_turn(
+            channel="documents",
+            agent="compliance",
+            user_id=user_id,
+            session_id=f"doc_{result['id']}",
+            message=f"upload:{file.filename}",
+            response_text=result.get("summary") or "",
+            tokens_total=int(result.get("tokens_total", 0) or 0),
+            deepseek_confidence=float(result.get("confidence", 0.7) or 0.7),
+            intent="document_review",
+            agent_chain=["documents", "compliance"],
+            mock=bool(result.get("mock")),
+            latency_ms=int((_time.time() - t0) * 1000),
+            extra={
+                "document_id": result["id"],
+                "severity": result.get("severity"),
+                "findings_count": len(result.get("findings", [])),
+                "filename": file.filename,
+            },
+        )
+        result["request_id"] = hook_res.get("request_id")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("documents hook failed: %s", e)
+    return result
+
+
+@api.get("/documents")
+async def documents_list(company_id: Optional[str] = None,
+                         limit: int = 50) -> Dict[str, Any]:
+    items = await documents_agent.list_documents(company_id=company_id, limit=limit)
+    return {"count": len(items), "documents": items}
+
+
+@api.get("/documents/{document_id}")
+async def documents_get(document_id: str) -> Dict[str, Any]:
+    doc = await documents_agent.get_document(document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="document not found")
+    return doc
 
 
 # =====================================================================

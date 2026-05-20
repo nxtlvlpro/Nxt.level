@@ -58,6 +58,8 @@ def _tools_doc(allowed: List[str]) -> str:
         "monitor_sla_violations": 'monitor_sla_violations() — посмотреть просроченные задачи',
         "suggest_reply_template": 'suggest_reply_template(tone) — шаблон ответа',
         "evaluate_action_roi": 'evaluate_action_roi(action) — оценить ROI действия',
+        "mempalace_search": 'mempalace_search(query, wing?, room?, top_k?) — поиск в долговременной памяти (wing=documents для договоров)',
+        "mempalace_store": 'mempalace_store(content, wing?, room?) — записать факт в долгосрочную память',
     }
     return "\n".join(f"- `{name}` — {descriptions.get(name, '')}" for name in allowed)
 
@@ -210,22 +212,26 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
     "compliance": {
         "id": "compliance",
         "name": "Юрист / Compliance",
-        "role": "Политики, риски, audit",
-        "description": "Хранит политики и SLA. Мониторит противоречия в ответах AI и regulatory сигналы. Помечает рискованные действия для подтверждения человеком.",
+        "role": "Политики, документы, риски, audit",
+        "description": "Хранит политики и SLA. Анализирует загруженные документы (PDF/DOCX/TXT), подсвечивает риски и категории (ответственность, оплата, расторжение, данные, регуляции). Мониторит противоречия и regulatory сигналы.",
         "icon": "Shield",
         "color": "slate",
-        "allowed_tools": ["search_memory"],
+        "allowed_tools": ["search_memory", "mempalace_search"],
         "system_prompt": (
             "Ты — Compliance Officer NXT8.\n\n"
             "Твоя зона:\n"
             "- политики компании (priority=critical в памяти)\n"
             "- audit log (`db.requests`) — что AI отвечал и кому\n"
             "- противоречия в ответах AI (TF-IDF diagnostics)\n"
-            "- regulatory сигналы из market radar (например AI Act)\n\n"
-            "Подсвечивай риски, ссылайся на конкретные политики, предлагай action items "
-            "ДО того, как проблема стала инцидентом.\n\n"
-            "Ты — compliance, не юрист-документник. Проверку договоров пока не делаешь "
-            "(нет загрузки PDF/DOCX). Об этом сообщи честно, если попросят."
+            "- regulatory сигналы из market radar (например AI Act)\n"
+            "- загруженные документы (договоры, NDA, оферты) в MemPalace "
+            "wing=`documents` — ищи через `mempalace_search` с wing='documents'.\n\n"
+            "Если пользователь спрашивает про конкретный договор / документ — "
+            "сначала вызови `mempalace_search` с wing='documents' и room=<document_id> "
+            "(если id известен), либо без room — чтобы поднять контекст. "
+            "Затем подсвети риски со ссылкой на цитату.\n\n"
+            "Подсвечивай риски, ссылайся на конкретные политики и пункты документов, "
+            "предлагай action items ДО того, как проблема стала инцидентом."
         ),
         "data_fetchers": ["compliance_context"],
     },
@@ -397,6 +403,10 @@ async def _fetch_compliance_context() -> str:
         critical_mem = await memory_agent.get_memory().search(query="политика SLA", top_k=5)
         db = get_db()
         alerts = await db.alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=10)
+        recent_docs = await db.documents.find(
+            {}, {"_id": 0, "id": 1, "title": 1, "filename": 1, "severity": 1,
+                 "summary": 1, "created_at": 1, "findings": 1},
+        ).sort("created_at", -1).to_list(length=10)
     except Exception as e:
         return f"(compliance ctx unavailable: {e})"
     lines = []
@@ -407,6 +417,15 @@ async def _fetch_compliance_context() -> str:
             lines.append(
                 f"- [priority={meta.get('priority', '?')}, dept={meta.get('department', '?')}] "
                 f"{m.get('content', '')[:160]}"
+            )
+    if recent_docs:
+        lines.append(f"\n## Недавно загруженные документы ({len(recent_docs)})")
+        for d in recent_docs[:5]:
+            findings_n = len(d.get("findings") or [])
+            lines.append(
+                f"- [{d.get('severity', '?')}] {d.get('title') or d.get('filename')} "
+                f"(id={d.get('id', '?')[:8]}, рисков {findings_n}): "
+                f"{(d.get('summary') or '')[:140]}"
             )
     if contras:
         lines.append(f"\n## Противоречия в ответах AI ({len(contras)})")
@@ -552,6 +571,7 @@ async def run_persona(
     last_content = ""
     iterations = 0
     mock = False
+    tokens_total = 0
 
     for iteration in range(MAX_ITER + 1):
         iterations = iteration + 1
@@ -560,6 +580,7 @@ async def run_persona(
         confidence = float(resp.get("confidence") or 0.7)
         provider = resp.get("provider") or provider
         mock = mock or bool(resp.get("mock"))
+        tokens_total += int(resp.get("tokens_total") or 0)
 
         if iteration >= MAX_ITER:
             break
@@ -638,4 +659,5 @@ async def run_persona(
         "provider": provider,
         "mock": mock,
         "plan_id": plan["id"],
+        "tokens_total": tokens_total,
     }
