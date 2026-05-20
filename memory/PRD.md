@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.6.0-unified (additive over v1.5.0-personas)
+**Current version:** v1.7.0-p1 (additive over v1.6.0-unified)
 **Last updated:** 2026-05-20 by Главный Системный Архитектор (E1)
 
 ## What was built (in chronological order)
@@ -12,11 +12,19 @@
 5. **v1.4 MemPalace** — ChromaDB long-term memory layer + auto-save from chat/stream.
 6. **v1.4.1 Router-fix** — fixed LangGraph router bug where tool results never returned to Hermes for final answer.
 7. **v1.5 Personas Layer** — 8 marketing-aligned persona wrappers + tariff gate.
-8. **v1.6 Unification (this release):**
+8. **v1.6 Unification:**
    - **Phase 1: Universal Audit Hooks** — `agents/_pipeline_hooks.py` injected into 5 LLM channels (chat-stream, hermes/chat, hermes/ultra, personas/*, voice/converse). ROI dashboard now sees real cost across ALL channels (was undercounting ~10×).
    - **Phase 3: Hermes Unification** — `agents/hermes.py` is now the single source of truth (15 unified tools, fenced-JSON only). `hermes_coo.py` + `hermes_max_tools_and_coo.py` reduced to thin shims (re-exports). Tasks + Followups now stored in unified `db.tasks` with `kind` field.
    - **Voice/converse `should_escalate` fix** — was missing in response payload; broke `test_voice_converse_full_loop`.
    - **Document Parsing (Compliance persona)** — new `agents/documents.py`, `POST /api/documents/upload`, `GET /api/documents`, `GET /api/documents/{id}`. PDF/DOCX/TXT extraction → MemPalace ingestion (wing=documents) → DeepSeek risk pass → persisted verdict (severity / findings / recommended_actions). Compliance persona system_prompt updated to use mempalace_search wing=documents.
+9. **v1.7 P1 Wave (this release):**
+   - **DocumentsPanel UI** — `frontend/src/components/views/ops/DocumentsPanel.jsx`: drag-and-drop upload zone, severity stats grid (CRITICAL/HIGH/MEDIUM/LOW), document cards with expandable findings + recommended actions, real-time list refresh. Added as 6th widget in OpsView (`widget-documents`).
+   - **5 Real-LLM Hermes tools** — replaced legacy stubs (`mock=True`) with DeepSeek-backed implementations:
+     - `generate_communication_summary` → summary + sentiment + key_topics + open_questions + suggested_next_action
+     - `suggest_next_best_action` → action + owner + urgency + horizon_hours + rationale + expected_impact
+     - `find_opportunities_in_contact` → opportunities[] (upsell/cross-sell/renewal/retention) with value range + memory snippet retrieval from MemPalace
+     - `suggest_reply_template` → contextual draft (subject + body + CTA) tailored to last_message + intent + tone + language (with canned fallback for tone-only invocations)
+     - `evaluate_action_roi` → estimated_roi + value range + cost estimate + horizon + rationale + risks + company_roi_context from latest `db.roi_history` snapshot
 
 ## Architecture (as built)
 
@@ -79,15 +87,19 @@
 | P0 | LangGraph router-bug | ✅ Fixed v1.4.1 |
 | P0 | `should_escalate` missing in `/voice/converse` | ✅ Fixed v1.6 |
 | P1 | Hermes Gateway :8642 offline | Deferred — gateway is optional |
-| P1 | 5/15 hermes tools are stubs with mock=True | Deferred |
-| P1 | No frontend UI for documents upload | Deferred |
+| P1 | 5/15 hermes tools are stubs with mock=True | ✅ Fixed v1.7 (real LLM-backed) |
+| P1 | No frontend UI for documents upload | ✅ Fixed v1.7 (DocumentsPanel) |
 | P2 | Slack/WhatsApp/CRM/Email channel adapters | Deferred |
 | P2 | Multi-tenant org_id scoping in all collections | Deferred |
+| P2 | `agents/hermes.py` exceeds 700-line guideline (785 lines) | Refactor candidate — split comms tools out |
+| P2 | Delete legacy shims `hermes_coo.py` + `hermes_max_tools_and_coo.py` once all references migrated | Refactor candidate |
 
-## Next action items (P1+)
+## Next action items (P2+)
 
-- Frontend: AGENTS view — add upload button for Compliance persona pointing at `/api/documents/upload` + table of past reviews.
-- Real implementations for 5 stub tools (`generate_communication_summary`, `suggest_next_best_action`, `find_opportunities_in_contact`, `suggest_reply_template`, `evaluate_action_roi`).
-- Channel adapters (Slack/WhatsApp/CRM/Email).
-- Multi-tenant `org_id` scoping in all collections.
-- VPS deployment validation under `nxt8.pro` (kit already exists in `/app/deploy/`).
+- **Channel adapters** (Slack / WhatsApp / CRM / Email) — feed real comm data into `generate_communication_summary`.
+- **Multi-tenant `org_id` scoping** in all collections (tasks, requests, documents, roi_history, alerts).
+- **Refactor** `agents/hermes.py` (785 lines) — split tool implementations into `agents/hermes_tools_comms.py` + DRY the LLM-JSON-parse helper into `_llm_json_tool()` wrapper.
+- **Delete legacy shims** `hermes_coo.py` + `hermes_max_tools_and_coo.py` after migrating remaining imports.
+- **VPS deployment validation** under `nxt8.pro` (kit already exists in `/app/deploy/`).
+- **DocumentsPanel UX polish** — show severity-stats grid with zeros on first empty load; add explicit fetch-error banner instead of silent empty list.
+- Hermes Gateway (`:8642`) optional native execution path.
