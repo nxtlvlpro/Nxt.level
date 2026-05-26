@@ -295,7 +295,7 @@ function AgentsSwipe({ t }) {
   const [paused, setPaused] = useState(false);
   const pauseTimerRef = useRef(null);
 
-  const totalCards = AGENTS.length + 1;
+  const totalCards = AGENTS.length + 1 + TARIFFS.length;
 
   useEffect(() => {
     const el = trackRef.current;
@@ -394,17 +394,25 @@ function AgentsSwipe({ t }) {
     ...AGENTS.map((a, i) => (
       <AgentCard key={a.id} agent={a} idx={i + 1} t={t} />
     )),
+    ...TARIFFS.map((tt, i) => (
+      <CarouselTariffCard
+        key={`tariff-${tt.id}`}
+        tariff={tt}
+        idx={AGENTS.length + 1 + i}
+        t={t}
+      />
+    )),
   ];
 
   return (
     <section
-      className="relative py-6"
+      className="relative pt-1 pb-6"
       data-testid="home-agents"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onTouchStart={() => pauseTemporarily(10000)}
     >
-      <div className="flex items-end justify-end mb-4 gap-2">
+      <div className="flex items-end justify-end mb-1 gap-2 min-h-0 sm:min-h-[36px]">
         <div className="hidden sm:flex items-center gap-2 shrink-0">
           <button
             onClick={() => scrollBy(-1)}
@@ -417,7 +425,7 @@ function AgentsSwipe({ t }) {
           </button>
           <button
             onClick={() => scrollBy(1)}
-            disabled={active === AGENTS.length}
+            disabled={active === totalCards - 1}
             className="neo-btn rounded-full w-9 h-9 flex items-center justify-center text-slate-400 hover:text-brand-turquoise transition-colors disabled:opacity-30"
             data-testid="home-agents-next"
             aria-label="next"
@@ -836,26 +844,58 @@ function TariffCard({ tariff, t }) {
   );
 }
 
-function Tariffs({ t }) {
+// Carousel-shaped variant — keeps the same TariffCard visuals but matches
+// the agent-card frame so the Coverflow looks consistent.
+function CarouselTariffCard({ tariff, idx, t }) {
   return (
-    <section className="relative py-6" data-testid="home-tariffs">
-      <div className="mb-5">
-        <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-1.5">
-          {t("home.tariffs.eyebrow")}
+    <article
+      className={`snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise-subtle rounded-2xl p-5 flex flex-col font-mono tracking-tight ${
+        tariff.highlight ? "ring-1 ring-brand-turquoise/40" : ""
+      }`}
+      data-testid={`home-tariff-card-${tariff.id}`}
+      data-card-idx={idx}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className={`${tariff.accent} font-light tracking-widest uppercase text-sm`}>
+          {tariff.name}
         </div>
-        <h2 className="text-xl lg:text-2xl font-light text-slate-100 mb-1">
-          {t("home.tariffs.title")}
-        </h2>
-        <p className="text-[12px] text-slate-400">
-          {t("home.tariffs.subtitle")}
-        </p>
+        <span className="text-[9px] uppercase tracking-widest text-slate-500 border border-white/10 rounded-full px-2 py-1">
+          plan
+        </span>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {TARIFFS.map((tt) => (
-          <TariffCard key={tt.id} tariff={tt} t={t} />
+      {tariff.highlight && (
+        <div className="text-[9px] uppercase tracking-[0.3em] text-brand-turquoise mb-2 flex items-center gap-1">
+          <Sparkles className="w-3 h-3" /> {t("home.tariffs.popular")}
+        </div>
+      )}
+      <div className="flex items-baseline gap-1">
+        <span className="text-4xl font-extralight text-slate-100">
+          {tariff.price}
+        </span>
+      </div>
+      <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-3 border-b border-white/5 pb-3">
+        {t("home.tariffs.period")}
+      </div>
+      <ul className="space-y-2 mb-4 flex-1">
+        {tariff.featureKeys.map((fk, i) => (
+          <li
+            key={i}
+            className="flex items-start gap-2 text-[12px] text-slate-300 tracking-tight"
+          >
+            <span className={`${tariff.accent} mt-0.5`}>›</span>
+            <span>{t(fk)}</span>
+          </li>
         ))}
-      </div>
-    </section>
+      </ul>
+      <button
+        type="button"
+        onClick={() => goToCheckout(tariff.id)}
+        className="neo-btn rounded-full px-4 py-2.5 text-brand-turquoise text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-brand-turquoise/10 transition-colors"
+        data-testid={`home-tariff-cta-${tariff.id}`}
+      >
+        {t("home.tariffs.cta")} <ChevronRight className="w-3.5 h-3.5" />
+      </button>
+    </article>
   );
 }
 
@@ -944,7 +984,6 @@ export default function HomeView() {
       <HermesChat t={t} lang={lang} />
 
       <InlineTicker items={featuresItems} testId="home-ticker-features" />
-      <Tariffs t={t} />
 
       <InlineTicker items={pilotItems} testId="home-ticker-pilot" />
       <HowItWorks t={t} />

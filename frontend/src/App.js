@@ -108,7 +108,7 @@ function App() {
             className="relative z-10 flex-1 overflow-y-auto overscroll-contain w-full max-w-md lg:max-w-screen-2xl mx-auto px-4 lg:px-8"
             data-testid="main-scroll"
           >
-            <div className="py-4" data-testid={`view-${view}`}>
+            <div className={view === "home" ? "pt-1 pb-4" : "py-4"} data-testid={`view-${view}`}>
               {renderView()}
             </div>
           </main>
