@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.8.0-landing (additive over v1.7.0-p1)
+**Current version:** v1.9.0-i18n (additive over v1.8.1-landing)
 **Last updated:** 2026-05-26 by Главный Системный Архитектор (E1)
 
 ## What was built (in chronological order)
@@ -25,11 +25,19 @@
      - `find_opportunities_in_contact` → opportunities[] (upsell/cross-sell/renewal/retention) with value range + memory snippet retrieval from MemPalace
      - `suggest_reply_template` → contextual draft (subject + body + CTA) tailored to last_message + intent + tone + language (with canned fallback for tone-only invocations)
      - `evaluate_action_roi` → estimated_roi + value range + cost estimate + horizon + rationale + risks + company_roi_context from latest `db.roi_history` snapshot
-10. **v1.8 Landing-as-HomeView (this release):**
+10. **v1.8 Landing-as-HomeView:**
     - **HomeView переработан** в маркетинговый лендинг по ТЗ — заменён старый дашборд (TasksCard + PipelineCard + quickchat) на: Hero-блок → ticker → горизонтальный свайп AI-агентов (7 карточек) → встроенный Hermes-чат с переключателем текст/голос → ticker → Тарифы (4 карты $9/$14/$19/$24) → ticker → Как работает (3 шага) → Пилот CTA. Существующий app shell (TopTicker / Header / SideNav / BottomNav) сохранён без изменений.
     - **Hermes inline chat** — `POST /api/hermes/chat` для текста, `POST /api/voice/converse` (Whisper STT → Hermes → TTS) для голоса.
     - **CTA routing** — все «Подключить» / «Начать» / «Запустить пилот» открывают `https://nxt8.pro/checkout?plan={id}` в новой вкладке (placeholder; Stripe integration отложена).
     - **Цвет/стиль** — без изменений (turquoise glass-cards + LED-matrix).
+11. **v1.9 i18n / EN default + RU switcher (this release, 2026-05-26):**
+    - **Lightweight in-house i18n** — `frontend/src/i18n/translations.js` (flat dotted keys for EN/RU) + `LanguageContext.jsx` (React Context + `useT()` hook + `localStorage` persistence under `nxt8.lang`).
+    - **Default language = English**; previous Russian-only UI moved to opt-in via the burger.
+    - **Real language switcher** in Burger → `Languages` panel: two pill-cards (EN / RU) with native + translated name, active check-mark, persists across reloads.
+    - **Voice respects language** — `MicView` and the inline HomeView voice mode now pass the current `lang` to `POST /api/voice/converse` so Whisper STT transcribes accurately in EN or RU and TTS replies in the matching language.
+    - **Hermes inline chat respects language** — the HomeView Hermes chat prepends a system instruction (`Reply in English / Отвечай по-русски`) so DeepSeek answers in the chosen language regardless of the user's input language.
+    - **Translated surfaces (in this pass):** Header / Seed error / BurgerMenu (all sections incl. pricing tiers) / HomeView (carousel intro + 7 agent cards + Hermes chat + tariffs + how-it-works + pilot CTA) / MicView (status + captions + errors) / ChatPanel (welcome + thinking + connection errors) / AlertsView (events count + empty state + locale-aware time) / MapView (titles + empty/loading states) / AgentsView personas modal (welcome + plan-gate + typing + ask placeholder + footer) / OpsView widget fallback copy (cross-dept / skills / market / hermes / documents).
+    - **Untranslated by design:** technical cockpit labels (`ops.cockpit`, `cross-dept · coordinator`, `roi.map · hourly`, etc.) and global ticker symbols remain as-is.
 
 ## Architecture (as built)
 

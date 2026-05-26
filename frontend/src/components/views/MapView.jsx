@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "../../lib/api";
 import CollapsibleCard from "../CollapsibleCard";
+import { useT } from "../../i18n/LanguageContext";
 
 function StatCard({ label, value, accent = "text-brand-turquoise", testId }) {
   return (
@@ -26,6 +27,7 @@ function fmtPct(n) {
 }
 
 export default function MapView() {
+  const { t } = useT();
   const [snap, setSnap] = useState(null);
   const [trend, setTrend] = useState([]);
 
@@ -49,12 +51,12 @@ export default function MapView() {
         className="lg:col-span-2"
         title={
           <span className="text-brand-turquoise font-light text-xs">
-            roi.map · hourly
+            {t("map.title")}
           </span>
         }
         titleRight={
           <span className="text-slate-500 text-[10px] uppercase tracking-widest">
-            {snap?.alert ? "ALERT" : "stable"}
+            {snap?.alert ? t("map.alert") : t("map.stable")}
           </span>
         }
       >
@@ -99,13 +101,13 @@ export default function MapView() {
         testId="map-cost-card"
         title={
           <span className="text-brand-turquoise font-light text-xs">
-            cost.by_agent
+            {t("map.cost.title")}
           </span>
         }
       >
         <div className="space-y-2">
           {byAgentCost.length === 0 && (
-            <div className="text-slate-500 text-xs">нет данных за час</div>
+            <div className="text-slate-500 text-xs">{t("map.no_data")}</div>
           )}
           {byAgentCost.map(([agent, amount]) => {
             const max = byAgentCost[0][1] || 1;
@@ -133,18 +135,18 @@ export default function MapView() {
         testId="map-trend-card"
         title={
           <span className="text-brand-turquoise font-light text-xs">
-            roi.trend · 24h
+            {t("map.trend.title")}
           </span>
         }
         titleRight={
           <span className="text-slate-500 text-[10px]">
-            {trend.length} hours
+            {t("map.trend.hours", { n: trend.length })}
           </span>
         }
       >
         <div className="flex items-end gap-0.5 h-20" data-testid="roi-trend-bars">
           {trend.length === 0 && (
-            <div className="text-slate-500 text-xs">накапливаю данные…</div>
+            <div className="text-slate-500 text-xs">{t("map.trend.collecting")}</div>
           )}
           {trend
             .slice()

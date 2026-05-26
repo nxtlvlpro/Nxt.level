@@ -11,106 +11,101 @@ import {
   Volume2,
 } from "lucide-react";
 import api from "../../lib/api";
+import { useT } from "../../i18n/LanguageContext";
 
 // ============================================================
-// Static content (TZ — Russian-first, no AI jargon)
+// Static content keys (texts come from i18n dictionary)
 // ============================================================
 
-const HERO_TICKER_ITEMS = [
-  "Добро пожаловать в NXT8",
-  "AI-координация для современной команды",
-  "Работает внутри ваших процессов",
-  "Меньше хаоса · Больше координации",
-  "Без сложного внедрения",
+const HERO_TICKER_KEYS = [
+  "home.ticker.hero.1",
+  "home.ticker.hero.2",
+  "home.ticker.hero.3",
+  "home.ticker.hero.4",
+  "home.ticker.hero.5",
 ];
 
-const FEATURES_TICKER_ITEMS = [
-  "WhatsApp",
-  "Telegram",
-  "CRM",
-  "Документы",
-  "Задачи",
-  "Календарь",
-  "Email",
-  "Всё работает вместе",
+const FEATURES_TICKER_KEYS = [
+  // brand names stay verbatim — no translation
+  { raw: "WhatsApp" },
+  { raw: "Telegram" },
+  { raw: "CRM" },
+  { key: "home.ticker.features.documents" },
+  { key: "home.ticker.features.tasks" },
+  { key: "home.ticker.features.calendar" },
+  { raw: "Email" },
+  { key: "home.ticker.features.together" },
 ];
 
-const PILOT_TICKER_ITEMS = [
-  "Подключите первых 10 сотрудников бесплатно",
-  "Диагностический пилот — 14 дней",
-  "Без долгих контрактов",
-  "Без обязательств",
+const PILOT_TICKER_KEYS = [
+  "home.ticker.pilot.1",
+  "home.ticker.pilot.2",
+  "home.ticker.pilot.3",
+  "home.ticker.pilot.4",
 ];
 
 const AGENTS = [
   {
     id: "hermes",
     name: "HERMES",
-    role: "Главный операционный координатор",
-    plan: "Personal — $9 / сотрудник",
+    roleKey: "home.agent.hermes.role",
+    planKey: "home.agent.hermes.plan",
     planId: "personal",
-    description:
-      "Координирует задачи, фиксирует договорённости, помогает команде не терять контекст и связывает процессы компании в единую систему.",
+    descKey: "home.agent.hermes.desc",
     accent: "text-brand-turquoise",
   },
   {
     id: "hr-mentor",
     name: "HR-MENTOR",
-    role: "Развитие сотрудников",
-    plan: "Team — $14 / сотрудник",
+    roleKey: "home.agent.hr.role",
+    planKey: "home.agent.hr.plan",
     planId: "team",
-    description:
-      "Помогает каждому в команде расти. Замечает паттерны выгорания, подсказывает зоны роста и подбирает индивидуальный план развития.",
+    descKey: "home.agent.hr.desc",
     accent: "text-purple-400",
   },
   {
     id: "client-ops",
     name: "CLIENT OPERATIONS",
-    role: "Менеджер по клиентам",
-    plan: "Team — $14 / сотрудник",
+    roleKey: "home.agent.client.role",
+    planKey: "home.agent.client.plan",
     planId: "team",
-    description:
-      "Ведёт переписку с клиентами, не теряет сделки в потоке, предлагает шаблоны ответов и фиксирует договорённости в CRM.",
+    descKey: "home.agent.client.desc",
     accent: "text-emerald-400",
   },
   {
     id: "analytics",
     name: "ANALYTICS",
-    role: "Аналитик команды",
-    plan: "Headquarters — $24 / сотрудник",
+    roleKey: "home.agent.analytics.role",
+    planKey: "home.agent.analytics.plan",
     planId: "hq",
-    description:
-      "Собирает данные из всех источников и показывает, что происходит в компании прямо сейчас. Простые ответы вместо сложных дашбордов.",
+    descKey: "home.agent.analytics.desc",
     accent: "text-sky-400",
   },
   {
     id: "financial",
     name: "FINANCIAL AGENT",
-    role: "Финансовый помощник",
-    plan: "Operations — $19 / сотрудник",
+    roleKey: "home.agent.financial.role",
+    planKey: "home.agent.financial.plan",
     planId: "operations",
-    description:
-      "Контролирует движение денег, напоминает про платежи и помогает планировать бюджет без таблиц и ручных подсчётов.",
+    descKey: "home.agent.financial.desc",
     accent: "text-yellow-300",
   },
   {
     id: "legal",
     name: "LEGAL REVIEW",
-    role: "Compliance с разбором документов",
-    plan: "Operations — $19 / сотрудник",
+    roleKey: "home.agent.legal.role",
+    planKey: "home.agent.legal.plan",
     planId: "operations",
-    description:
-      "Читает договоры, политики и оферты. Подсвечивает рисковые пункты и предлагает, что согласовать перед подписью.",
+    descKey: "home.agent.legal.desc",
     accent: "text-orange-400",
   },
   {
     id: "marketing",
     name: "MARKETING OPS",
-    role: "Маркетолог",
-    plan: "Operations — $19 / сотрудник",
+    roleKey: "home.agent.marketing.role",
+    planKey: "home.agent.marketing.plan",
     planId: "operations",
-    description:
-      "Отслеживает рыночные сигналы и работает с воронкой. Помогает запускать кампании и проверять, что они дают результат.",
+    descKey: "home.agent.marketing.desc",
     accent: "text-pink-400",
   },
 ];
@@ -120,39 +115,36 @@ const TARIFFS = [
     id: "personal",
     name: "Personal",
     price: "$9",
-    period: "/ сотрудник в месяц",
     accent: "text-brand-turquoise",
-    features: [
-      "Hermes — главный координатор",
-      "Базовая память компании",
-      "Голосовой и текстовый интерфейс",
-      "До 1 000 запросов в месяц",
+    featureKeys: [
+      "home.plan.personal.f1",
+      "home.plan.personal.f2",
+      "home.plan.personal.f3",
+      "home.plan.personal.f4",
     ],
   },
   {
     id: "team",
     name: "Team",
     price: "$14",
-    period: "/ сотрудник в месяц",
     accent: "text-purple-400",
-    features: [
-      "Всё из Personal",
-      "HR-Mentor — развитие сотрудников",
-      "Client Operations — работа с клиентами",
-      "Интеграция WhatsApp / Telegram",
+    featureKeys: [
+      "home.plan.team.f1",
+      "home.plan.team.f2",
+      "home.plan.team.f3",
+      "home.plan.team.f4",
     ],
   },
   {
     id: "operations",
     name: "Operations",
     price: "$19",
-    period: "/ сотрудник в месяц",
     accent: "text-emerald-400",
-    features: [
-      "Всё из Team",
-      "Financial Agent — финансы",
-      "Legal Review — разбор документов",
-      "Marketing Ops — маркетинг",
+    featureKeys: [
+      "home.plan.operations.f1",
+      "home.plan.operations.f2",
+      "home.plan.operations.f3",
+      "home.plan.operations.f4",
     ],
     highlight: true,
   },
@@ -160,37 +152,21 @@ const TARIFFS = [
     id: "hq",
     name: "Headquarters",
     price: "$24",
-    period: "/ сотрудник в месяц",
     accent: "text-orange-400",
-    features: [
-      "Всё из Operations",
-      "Analytics — аналитик команды",
-      "Координатор проектов",
-      "Кросс-департаментная координация",
-      "Приоритетная поддержка",
+    featureKeys: [
+      "home.plan.hq.f1",
+      "home.plan.hq.f2",
+      "home.plan.hq.f3",
+      "home.plan.hq.f4",
+      "home.plan.hq.f5",
     ],
   },
 ];
 
 const STEPS = [
-  {
-    n: "01",
-    title: "Подключаем источники",
-    description:
-      "Чаты, документы и рабочие инструменты, которыми пользуется команда каждый день.",
-  },
-  {
-    n: "02",
-    title: "Понимание процессов",
-    description:
-      "NXT8 начинает понимать структуру компании, роли и контекст задач без ручной настройки.",
-  },
-  {
-    n: "03",
-    title: "AI-команда в работе",
-    description:
-      "AI-агенты помогают команде в ежедневных задачах — координация, ответы, контроль, аналитика.",
-  },
+  { n: "01", titleKey: "home.how.step1.title", descKey: "home.how.step1.desc" },
+  { n: "02", titleKey: "home.how.step2.title", descKey: "home.how.step2.desc" },
+  { n: "03", titleKey: "home.how.step3.title", descKey: "home.how.step3.desc" },
 ];
 
 const CHECKOUT_BASE = "https://nxt8.pro/checkout";
@@ -203,7 +179,7 @@ function goToCheckout(planId) {
 }
 
 // ============================================================
-// Inline ticker — reusable between sections
+// Inline ticker
 // ============================================================
 
 function InlineTicker({ items, testId }) {
@@ -231,10 +207,10 @@ function InlineTicker({ items, testId }) {
 }
 
 // ============================================================
-// Intro card (first slide — описание проекта)
+// Intro card (first slide)
 // ============================================================
 
-function IntroCard() {
+function IntroCard({ t }) {
   return (
     <article
       className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise rounded-2xl p-5 flex flex-col bg-gradient-to-br from-brand-turquoise/[0.06] to-transparent font-mono tracking-tight"
@@ -244,45 +220,36 @@ function IntroCard() {
       <div className="flex items-center gap-3 mb-4">
         <div className="w-2 h-2 rounded-full bg-brand-turquoise shadow-[0_0_10px_var(--brand-turquoise)] animate-pulse" />
         <span className="text-brand-turquoise text-[10px] uppercase tracking-[0.3em]">
-          operational ai system
+          {t("home.intro.eyebrow")}
         </span>
       </div>
       <h2
         className="text-2xl sm:text-[26px] font-extralight tracking-tight text-slate-100 leading-tight mb-3"
         data-testid="home-hero-title"
       >
-        Операционная AI-система{" "}
-        <span className="text-brand-turquoise">для современного бизнеса</span>
+        {t("home.intro.title.before")}{" "}
+        <span className="text-brand-turquoise">{t("home.intro.title.accent")}</span>
       </h2>
       <p className="text-[12px] text-slate-300 leading-relaxed tracking-tight mb-4">
-        Готовая AI-команда, которая работает вместе с вашей компанией. Меньше
-        хаоса. Больше координации. Без сложного внедрения.
+        {t("home.intro.body")}
       </p>
       <div className="mt-auto pt-3 border-t border-white/5">
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-400">
           <ArrowRight className="w-3 h-3 text-brand-turquoise" />
-          <span>выберите AI-агентов</span>
+          <span>{t("home.intro.cta")}</span>
         </div>
       </div>
     </article>
   );
 }
 
-// (Hero block removed — описание перенесено в первую карточку карусели)
-
 // ============================================================
-// Agents — horizontal scroll/swipe
+// Agent card
 // ============================================================
 
-function AgentCard({ agent, idx, transform }) {
+function AgentCard({ agent, idx, t }) {
   return (
     <article
-      style={{
-        transform,
-        transformStyle: "preserve-3d",
-        transition: "transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s",
-        transformOrigin: "center center",
-      }}
       className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise-subtle rounded-2xl p-5 flex flex-col font-mono tracking-tight"
       data-testid={`home-agent-${agent.id}`}
       data-card-idx={idx}
@@ -296,18 +263,18 @@ function AgentCard({ agent, idx, transform }) {
               {agent.name}
             </h3>
             <div className="text-slate-200 text-[12px] mt-1.5 tracking-tight">
-              {agent.role}
+              {t(agent.roleKey)}
             </div>
           </div>
           <span className="text-[9px] uppercase tracking-widest text-slate-500 border border-white/10 rounded-full px-2 py-1">
-            agent
+            {t("home.agent.label")}
           </span>
         </div>
         <div className="text-[10px] uppercase tracking-widest text-slate-500 border-t border-white/5 pt-3 mb-3">
-          {agent.plan}
+          {t(agent.planKey)}
         </div>
         <p className="text-[12px] text-slate-300 leading-relaxed tracking-tight">
-          {agent.description}
+          {t(agent.descKey)}
         </p>
       </div>
       <button
@@ -316,21 +283,20 @@ function AgentCard({ agent, idx, transform }) {
         className="mt-5 neo-btn rounded-full px-4 py-2.5 text-brand-turquoise text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-brand-turquoise/10 transition-colors"
         data-testid={`home-agent-cta-${agent.id}`}
       >
-        Подключить <ChevronRight className="w-3.5 h-3.5" />
+        {t("home.agent.cta")} <ChevronRight className="w-3.5 h-3.5" />
       </button>
     </article>
   );
 }
 
-function AgentsSwipe() {
+function AgentsSwipe({ t }) {
   const trackRef = useRef(null);
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
   const pauseTimerRef = useRef(null);
 
-  const totalCards = AGENTS.length + 1; // intro + 7 agents
+  const totalCards = AGENTS.length + 1;
 
-  // Compute the centered card index based on scroll position.
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
@@ -375,7 +341,6 @@ function AgentsSwipe() {
     el.scrollTo({ left: target, behavior: "smooth" });
   };
 
-  // Pause autoplay briefly after user interaction
   const pauseTemporarily = (ms = 8000) => {
     setPaused(true);
     if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
@@ -388,7 +353,6 @@ function AgentsSwipe() {
     pauseTemporarily();
   };
 
-  // Autoplay — advance once every 5s; loop back to start; pause on hover / interaction
   useEffect(() => {
     if (paused) return undefined;
     const id = setInterval(() => {
@@ -405,14 +369,13 @@ function AgentsSwipe() {
     []
   );
 
-  // Coverflow transform: closer to active → flat & bigger; further → tilted trapezoid
   const getTransform = (idx) => {
     const diff = idx - active;
     const abs = Math.abs(diff);
     if (abs === 0) {
       return "perspective(1200px) rotateY(0deg) scale(1) translateZ(0)";
     }
-    const dir = diff < 0 ? 1 : -1; // tilt left card to face right, vice versa
+    const dir = diff < 0 ? 1 : -1;
     const rotate = Math.min(38, 18 + (abs - 1) * 10) * dir;
     const scale = Math.max(0.7, 1 - abs * 0.1);
     const translateZ = -40 * abs;
@@ -427,14 +390,9 @@ function AgentsSwipe() {
   };
 
   const cards = [
-    <IntroCard key="intro" />,
+    <IntroCard key="intro" t={t} />,
     ...AGENTS.map((a, i) => (
-      <AgentCard
-        key={a.id}
-        agent={a}
-        idx={i + 1}
-        transform={getTransform(i + 1)}
-      />
+      <AgentCard key={a.id} agent={a} idx={i + 1} t={t} />
     )),
   ];
 
@@ -487,7 +445,6 @@ function AgentsSwipe() {
           })
         )}
       </div>
-      {/* dots indicator */}
       <div
         className="flex items-center justify-center gap-1.5 mt-1"
         data-testid="home-agents-dots"
@@ -514,11 +471,11 @@ function AgentsSwipe() {
 }
 
 // ============================================================
-// Hermes chat + voice toggle
+// Hermes chat + voice
 // ============================================================
 
-function VoiceModeStub({ onTranscript }) {
-  const [state, setState] = useState("idle"); // idle | requesting | recording | processing | speaking | error
+function VoiceModeStub({ onTranscript, t, lang }) {
+  const [state, setState] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -540,7 +497,7 @@ function VoiceModeStub({ onTranscript }) {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
+        stream.getTracks().forEach((tr) => tr.stop());
         setState("processing");
         try {
           const blob = new Blob(chunksRef.current, {
@@ -549,7 +506,7 @@ function VoiceModeStub({ onTranscript }) {
           const res = await api.voiceConverse(blob, {
             session_id: "home_voice",
             user_id: "home_visitor",
-            language: "ru",
+            language: lang,
           });
           if (res?.transcript) onTranscript?.(res.transcript);
           if (res?.audio_b64) {
@@ -563,7 +520,7 @@ function VoiceModeStub({ onTranscript }) {
             setState("idle");
           }
         } catch (e) {
-          setErrorMsg("Не удалось обработать запись");
+          setErrorMsg(t("voice.error.process"));
           setState("error");
         }
       };
@@ -571,7 +528,7 @@ function VoiceModeStub({ onTranscript }) {
       rec.start();
       setState("recording");
     } catch (e) {
-      setErrorMsg("Микрофон недоступен — разрешите доступ в браузере");
+      setErrorMsg(t("voice.error.mic"));
       setState("error");
     }
   };
@@ -615,12 +572,12 @@ function VoiceModeStub({ onTranscript }) {
       </button>
       <div className="mt-3 text-[10px] uppercase tracking-widest text-slate-500">
         {recording
-          ? "запись… нажмите чтобы остановить"
+          ? t("voice.recording")
           : busy
-            ? "обработка…"
+            ? t("voice.processing")
             : speaking
-              ? "hermes говорит"
-              : "нажмите чтобы записать"}
+              ? t("voice.speaking")
+              : t("voice.idle")}
       </div>
       {errorMsg && (
         <div className="text-[10px] text-red-400 mt-2">{errorMsg}</div>
@@ -629,20 +586,26 @@ function VoiceModeStub({ onTranscript }) {
   );
 }
 
-function HermesChat() {
-  const [mode, setMode] = useState("text"); // 'text' | 'voice'
+function HermesChat({ t, lang }) {
+  const [mode, setMode] = useState("text");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content:
-        "Привет! Я Hermes — главный координатор NXT8. Спросите что-нибудь о вашей команде, или попросите помочь спланировать день.",
-    },
+    { role: "assistant", content: t("home.hermes.welcome") },
   ]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const scrollRef = useRef(null);
   const cancelledRef = useRef(false);
+
+  // Reset welcome message language when lang changes (only if user hasn't chatted yet)
+  useEffect(() => {
+    setMessages((prev) =>
+      prev.length === 1 && prev[0].role === "assistant"
+        ? [{ role: "assistant", content: t("home.hermes.welcome") }]
+        : prev
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -665,22 +628,31 @@ function HermesChat() {
     setInput("");
     setSending(true);
     setError("");
+    // Prepend a language directive as a system instruction (won't display in UI)
+    const sysHint =
+      lang === "en"
+        ? "Reply in English regardless of the user's language."
+        : "Отвечай по-русски независимо от языка пользователя.";
+    const payloadMessages = [
+      { role: "system", content: sysHint },
+      ...next.map((m) => ({ role: m.role, content: m.content })),
+    ];
     try {
       const res = await api.hermesChat({
-        messages: next.map((m) => ({ role: m.role, content: m.content })),
+        messages: payloadMessages,
         company_id: "default",
         user_id: "home_visitor",
         mode: "operational",
         temperature: 0.3,
+        language: lang,
       });
       if (cancelledRef.current) return;
       const reply =
-        (res && (res.content || res.text)) ||
-        "Не получилось получить ответ — попробуйте ещё раз.";
+        (res && (res.content || res.text)) || t("home.hermes.empty_reply");
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (e) {
       if (!cancelledRef.current) {
-        setError("Сейчас Hermes недоступен. Попробуйте через минуту.");
+        setError(t("home.hermes.error"));
       }
     } finally {
       if (!cancelledRef.current) setSending(false);
@@ -692,13 +664,13 @@ function HermesChat() {
       <div className="flex items-end justify-between mb-4 gap-3">
         <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-1.5">
-            try it now · hermes
+            {t("home.hermes.eyebrow")}
           </div>
           <h2 className="text-xl lg:text-2xl font-light text-slate-100">
-            Поговорите с координатором
+            {t("home.hermes.title")}
           </h2>
           <p className="text-[11px] text-slate-500 mt-1">
-            Без регистрации. Сразу здесь.
+            {t("home.hermes.subtitle")}
           </p>
         </div>
 
@@ -713,7 +685,7 @@ function HermesChat() {
             }`}
             data-testid="home-chat-mode-text"
           >
-            <MessageSquare className="w-3 h-3" /> текст
+            <MessageSquare className="w-3 h-3" /> {t("home.hermes.mode.text")}
           </button>
           <button
             type="button"
@@ -725,7 +697,7 @@ function HermesChat() {
             }`}
             data-testid="home-chat-mode-voice"
           >
-            <Mic className="w-3 h-3" /> голос
+            <Mic className="w-3 h-3" /> {t("home.hermes.mode.voice")}
           </button>
         </div>
       </div>
@@ -757,7 +729,7 @@ function HermesChat() {
             <div className="flex justify-start">
               <div className="bubble-ai max-w-[85%] rounded-2xl px-4 py-2.5 text-[12px] text-slate-400 flex items-center gap-2">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                hermes думает…
+                {t("home.hermes.thinking")}
               </div>
             </div>
           )}
@@ -780,7 +752,7 @@ function HermesChat() {
                 }
               }}
               rows={1}
-              placeholder="Напишите Hermes…"
+              placeholder={t("home.hermes.placeholder")}
               disabled={sending}
               className="flex-1 bg-brand-dark/60 border border-white/10 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-brand-turquoise/50 resize-none disabled:opacity-50"
               data-testid="home-chat-input"
@@ -793,7 +765,7 @@ function HermesChat() {
               data-testid="home-chat-send"
             >
               <Send className="w-3.5 h-3.5" />
-              send
+              {t("home.hermes.send")}
             </button>
           </div>
         ) : (
@@ -802,6 +774,8 @@ function HermesChat() {
               setInput(txt);
               setMode("text");
             }}
+            t={t}
+            lang={lang}
           />
         )}
       </div>
@@ -813,7 +787,7 @@ function HermesChat() {
 // Tariffs
 // ============================================================
 
-function TariffCard({ tariff }) {
+function TariffCard({ tariff, t }) {
   return (
     <article
       className={`glass-card window-border glow-turquoise-subtle rounded-2xl p-5 flex flex-col ${
@@ -823,7 +797,7 @@ function TariffCard({ tariff }) {
     >
       {tariff.highlight && (
         <div className="text-[9px] uppercase tracking-[0.3em] text-brand-turquoise mb-2 flex items-center gap-1">
-          <Sparkles className="w-3 h-3" /> популярный выбор
+          <Sparkles className="w-3 h-3" /> {t("home.tariffs.popular")}
         </div>
       )}
       <div
@@ -837,16 +811,16 @@ function TariffCard({ tariff }) {
         </span>
       </div>
       <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-4">
-        {tariff.period}
+        {t("home.tariffs.period")}
       </div>
       <ul className="space-y-2 mb-5 flex-1">
-        {tariff.features.map((f, i) => (
+        {tariff.featureKeys.map((fk, i) => (
           <li
             key={i}
             className="flex items-start gap-2 text-[12.5px] text-slate-300"
           >
             <span className={`${tariff.accent} mt-0.5`}>›</span>
-            <span>{f}</span>
+            <span>{t(fk)}</span>
           </li>
         ))}
       </ul>
@@ -856,30 +830,29 @@ function TariffCard({ tariff }) {
         className="neo-btn rounded-full px-4 py-2.5 text-brand-turquoise text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-brand-turquoise/10 transition-colors"
         data-testid={`home-tariff-cta-${tariff.id}`}
       >
-        Начать <ChevronRight className="w-3.5 h-3.5" />
+        {t("home.tariffs.cta")} <ChevronRight className="w-3.5 h-3.5" />
       </button>
     </article>
   );
 }
 
-function Tariffs() {
+function Tariffs({ t }) {
   return (
     <section className="relative py-6" data-testid="home-tariffs">
       <div className="mb-5">
         <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-1.5">
-          pricing · per seat
+          {t("home.tariffs.eyebrow")}
         </div>
         <h2 className="text-xl lg:text-2xl font-light text-slate-100 mb-1">
-          Тарифы NXT8
+          {t("home.tariffs.title")}
         </h2>
         <p className="text-[12px] text-slate-400">
-          Цена за одного сотрудника в месяц. Компания может комбинировать тарифы
-          между сотрудниками и отделами.
+          {t("home.tariffs.subtitle")}
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {TARIFFS.map((t) => (
-          <TariffCard key={t.id} tariff={t} />
+        {TARIFFS.map((tt) => (
+          <TariffCard key={tt.id} tariff={tt} t={t} />
         ))}
       </div>
     </section>
@@ -890,15 +863,15 @@ function Tariffs() {
 // How it works
 // ============================================================
 
-function HowItWorks() {
+function HowItWorks({ t }) {
   return (
     <section className="relative py-6" data-testid="home-how">
       <div className="mb-5">
         <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-1.5">
-          how it works · 3 steps
+          {t("home.how.eyebrow")}
         </div>
         <h2 className="text-xl lg:text-2xl font-light text-slate-100">
-          Как работает NXT8
+          {t("home.how.title")}
         </h2>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -912,10 +885,10 @@ function HowItWorks() {
               step {s.n}
             </div>
             <h3 className="text-slate-100 text-base font-light mb-2">
-              {s.title}
+              {t(s.titleKey)}
             </h3>
             <p className="text-[13px] text-slate-400 leading-relaxed">
-              {s.description}
+              {t(s.descKey)}
             </p>
           </div>
         ))}
@@ -925,35 +898,32 @@ function HowItWorks() {
 }
 
 // ============================================================
-// Pilot CTA
+// Pilot
 // ============================================================
 
-function Pilot() {
+function Pilot({ t }) {
   return (
     <section className="relative py-8 lg:py-10" data-testid="home-pilot">
       <div className="glass-card window-border glow-turquoise-subtle rounded-3xl p-6 lg:p-10 text-center">
         <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-3">
-          free pilot
+          {t("home.pilot.eyebrow")}
         </div>
         <h2 className="text-2xl lg:text-4xl font-extralight text-slate-100 leading-tight mb-3">
-          10 сотрудников <span className="text-slate-600">·</span> 14 дней{" "}
-          <span className="text-slate-600">·</span>{" "}
-          <span className="text-brand-turquoise">бесплатно</span>
+          {t("home.pilot.title.10")} <span className="text-slate-600">·</span>{" "}
+          {t("home.pilot.title.14")} <span className="text-slate-600">·</span>{" "}
+          <span className="text-brand-turquoise">{t("home.pilot.title.free")}</span>
         </h2>
         <p className="text-[13px] lg:text-sm text-slate-400 max-w-2xl mx-auto leading-relaxed mb-2">
-          Проверьте NXT8 внутри вашей компании на реальных процессах и задачах.
+          {t("home.pilot.body1")}
         </p>
-        <p className="text-[11px] text-slate-500 mb-6">
-          Без долгих контрактов. Без сложного внедрения. Без давления и
-          обязательств.
-        </p>
+        <p className="text-[11px] text-slate-500 mb-6">{t("home.pilot.body2")}</p>
         <button
           type="button"
           onClick={() => goToCheckout("pilot")}
           className="neo-btn rounded-full px-6 py-3 text-brand-turquoise text-[11px] uppercase tracking-widest inline-flex items-center gap-2 hover:bg-brand-turquoise/10 transition-colors"
           data-testid="home-pilot-cta"
         >
-          Запустить пилот <ArrowRight className="w-4 h-4" />
+          {t("home.pilot.cta")} <ArrowRight className="w-4 h-4" />
         </button>
       </div>
     </section>
@@ -965,20 +935,22 @@ function Pilot() {
 // ============================================================
 
 export default function HomeView() {
+  const { t, lang } = useT();
+  const featuresItems = FEATURES_TICKER_KEYS.map((it) => (it.raw ? it.raw : t(it.key)));
+  const pilotItems = PILOT_TICKER_KEYS.map((k) => t(k));
   return (
     <div data-testid="home-view">
-      <AgentsSwipe />
-      <HermesChat />
+      <AgentsSwipe t={t} />
+      <HermesChat t={t} lang={lang} />
 
-      <InlineTicker
-        items={FEATURES_TICKER_ITEMS}
-        testId="home-ticker-features"
-      />
-      <Tariffs />
+      <InlineTicker items={featuresItems} testId="home-ticker-features" />
+      <Tariffs t={t} />
 
-      <InlineTicker items={PILOT_TICKER_ITEMS} testId="home-ticker-pilot" />
-      <HowItWorks />
-      <Pilot />
+      <InlineTicker items={pilotItems} testId="home-ticker-pilot" />
+      <HowItWorks t={t} />
+      <Pilot t={t} />
     </div>
   );
 }
+
+export { HERO_TICKER_KEYS };

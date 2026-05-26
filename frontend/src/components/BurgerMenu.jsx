@@ -14,21 +14,23 @@ import {
   Tag,
   ChevronRight,
   ArrowLeft,
+  Check,
 } from "lucide-react";
+import { useT } from "../i18n/LanguageContext";
 
-const MENU_ITEMS = [
-  { key: "auth", label: "Авторизация", icon: LogIn },
-  { key: "lang", label: "Языки", icon: Languages },
-  { key: "about", label: "О проекте", icon: Info },
-  { key: "support", label: "Поддержка", icon: LifeBuoy },
-  { key: "settings", label: "Настройки", icon: SettingsIcon },
-  { key: "pricing", label: "Тарифы", icon: Tag },
+const MENU_KEYS = [
+  { key: "auth", labelKey: "menu.auth", icon: LogIn },
+  { key: "lang", labelKey: "menu.lang", icon: Languages },
+  { key: "about", labelKey: "menu.about", icon: Info },
+  { key: "support", labelKey: "menu.support", icon: LifeBuoy },
+  { key: "settings", labelKey: "menu.settings", icon: SettingsIcon },
+  { key: "pricing", labelKey: "menu.pricing", icon: Tag },
 ];
 
-function MenuList({ onSelect }) {
+function MenuList({ onSelect, t }) {
   return (
     <ul className="space-y-1" data-testid="burger-menu-list">
-      {MENU_ITEMS.map(({ key, label, icon: Icon }) => (
+      {MENU_KEYS.map(({ key, labelKey, icon: Icon }) => (
         <li key={key}>
           <button
             type="button"
@@ -39,7 +41,7 @@ function MenuList({ onSelect }) {
             <span className="flex items-center gap-3">
               <Icon className="w-4 h-4 text-brand-turquoise/80 group-hover:text-brand-turquoise" />
               <span className="tracking-wide text-slate-200 group-hover:text-white text-sm">
-                {label}
+                {t(labelKey)}
               </span>
             </span>
             <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-brand-turquoise" />
@@ -63,11 +65,11 @@ function SectionShell({ title, children }) {
   );
 }
 
-function PricingTier({ name, prices, description }) {
+function PricingTier({ name, prices, description, testIdKey }) {
   return (
     <div
       className="border border-white/10 rounded-md p-5 bg-white/[0.02]"
-      data-testid={`pricing-tier-${name.toLowerCase()}`}
+      data-testid={`pricing-tier-${testIdKey}`}
     >
       <h4 className="text-2xl font-light text-white tracking-wide mb-4">
         {name}
@@ -85,76 +87,118 @@ function PricingTier({ name, prices, description }) {
   );
 }
 
-function AuthBlock() {
+function AuthBlock({ t }) {
   return (
-    <SectionShell title="Авторизация">
-      <p className="text-slate-400">
-        Здесь будет вход и регистрация.
-      </p>
+    <SectionShell title={t("menu.auth")}>
+      <p className="text-slate-400">{t("menu.auth.body")}</p>
       <div className="border border-dashed border-white/10 rounded-md p-4 text-slate-500 text-xs uppercase tracking-widest">
-        Блок-заглушка · подключим позже
+        {t("menu.placeholder")}
       </div>
     </SectionShell>
   );
 }
 
-function LangBlock() {
+function LangBlock({ t, lang, setLang }) {
+  const OPTIONS = [
+    { code: "en", labelKey: "menu.lang.english", native: "English" },
+    { code: "ru", labelKey: "menu.lang.russian", native: "Русский" },
+  ];
   return (
-    <SectionShell title="Языки">
-      <p className="text-slate-400">
-        Переключение языка интерфейса.
+    <SectionShell title={t("menu.lang")}>
+      <p className="text-slate-400">{t("menu.lang.body")}</p>
+      <div
+        className="text-[10px] uppercase tracking-widest text-slate-500"
+        data-testid="lang-current-label"
+      >
+        {t("menu.lang.current")}
+      </div>
+      <div className="space-y-2" data-testid="lang-options">
+        {OPTIONS.map(({ code, labelKey, native }) => {
+          const active = lang === code;
+          return (
+            <button
+              key={code}
+              type="button"
+              onClick={() => setLang(code)}
+              data-testid={`lang-option-${code}`}
+              aria-pressed={active}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-md border transition-colors text-left ${
+                active
+                  ? "bg-brand-turquoise/10 border-brand-turquoise/50 text-white"
+                  : "bg-white/[0.02] border-white/5 text-slate-300 hover:border-brand-turquoise/30 hover:text-white"
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <span
+                  className={`w-7 h-7 rounded-md border flex items-center justify-center text-[10px] uppercase tracking-widest ${
+                    active
+                      ? "border-brand-turquoise/60 text-brand-turquoise"
+                      : "border-white/10 text-slate-500"
+                  }`}
+                >
+                  {code}
+                </span>
+                <span className="flex flex-col">
+                  <span className="text-sm tracking-wide">{native}</span>
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                    {t(labelKey)}
+                  </span>
+                </span>
+              </span>
+              {active && (
+                <Check className="w-4 h-4 text-brand-turquoise" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-slate-500 leading-relaxed pt-1">
+        {t("menu.lang.note")}
       </p>
+    </SectionShell>
+  );
+}
+
+function AboutBlock({ t }) {
+  return (
+    <SectionShell title={t("menu.about")}>
+      <p className="text-slate-400">{t("menu.about.body")}</p>
       <div className="border border-dashed border-white/10 rounded-md p-4 text-slate-500 text-xs uppercase tracking-widest">
-        Блок-заглушка · подключим позже
+        {t("menu.placeholder")}
       </div>
     </SectionShell>
   );
 }
 
-function AboutBlock() {
+function SupportBlock({ t }) {
   return (
-    <SectionShell title="О проекте">
-      <p className="text-slate-400">
-        Информация о NXT8.PRO.
-      </p>
+    <SectionShell title={t("menu.support")}>
+      <p className="text-slate-400">{t("menu.support.body")}</p>
       <div className="border border-dashed border-white/10 rounded-md p-4 text-slate-500 text-xs uppercase tracking-widest">
-        Блок-заглушка · подключим позже
+        {t("menu.placeholder")}
       </div>
     </SectionShell>
   );
 }
 
-function SupportBlock() {
+function SettingsBlock({ t }) {
   return (
-    <SectionShell title="Поддержка">
-      <p className="text-slate-400">
-        Контакты поддержки и форма обращения.
-      </p>
-      <div className="border border-dashed border-white/10 rounded-md p-4 text-slate-500 text-xs uppercase tracking-widest">
-        Блок-заглушка · подключим позже
-      </div>
-    </SectionShell>
-  );
-}
-
-function SettingsBlock() {
-  return (
-    <SectionShell title="Настройки">
+    <SectionShell title={t("menu.settings")}>
       <div className="space-y-4">
         <div>
           <div className="text-xs uppercase tracking-widest text-slate-500 mb-2">
-            Вход для администратора
+            {t("menu.settings.admin")}
           </div>
           <div className="border border-dashed border-white/10 rounded-md p-4 text-slate-500 text-xs uppercase tracking-widest">
-            PIN-код 4 цифры · подключим позже
+            {t("menu.settings.admin.body")}
           </div>
         </div>
         <div>
           <div className="text-xs uppercase tracking-widest text-slate-500 mb-2">
-            Настройки экрана и клиента
+            {t("menu.settings.client")}
           </div>
           <div className="border border-dashed border-white/10 rounded-md p-4 text-slate-500 text-xs uppercase tracking-widest">
-            Блок-заглушка · подключим позже
+            {t("menu.placeholder")}
           </div>
         </div>
       </div>
@@ -162,19 +206,21 @@ function SettingsBlock() {
   );
 }
 
-function PricingBlock() {
+function PricingBlock({ t }) {
   return (
-    <SectionShell title="Тарифы">
+    <SectionShell title={t("menu.pricing")}>
       <PricingTier
-        name="Individual"
-        prices={["$28 monthly", "$20 annual"]}
-        description="For independent professionals and creators."
+        name={t("pricing.individual")}
+        prices={[t("pricing.individual.monthly"), t("pricing.individual.annual")]}
+        description={t("pricing.individual.desc")}
+        testIdKey="individual"
       />
       <div className="border-t border-white/10 my-4" />
       <PricingTier
-        name="Team"
-        prices={["from $18 per seat/month", "from $14 annual billing"]}
-        description="For companies and distributed teams."
+        name={t("pricing.team")}
+        prices={[t("pricing.team.monthly"), t("pricing.team.annual")]}
+        description={t("pricing.team.desc")}
+        testIdKey="team"
       />
     </SectionShell>
   );
@@ -191,6 +237,7 @@ const SECTION_BLOCKS = {
 
 export default function BurgerMenu({ open, onOpenChange }) {
   const [active, setActive] = useState(null);
+  const { t, lang, setLang } = useT();
 
   const handleOpenChange = (next) => {
     if (!next) setActive(null);
@@ -198,9 +245,8 @@ export default function BurgerMenu({ open, onOpenChange }) {
   };
 
   const ActiveBlock = active ? SECTION_BLOCKS[active] : null;
-  const activeLabel = active
-    ? MENU_ITEMS.find((i) => i.key === active)?.label
-    : null;
+  const activeMeta = active ? MENU_KEYS.find((i) => i.key === active) : null;
+  const activeLabel = activeMeta ? t(activeMeta.labelKey) : null;
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -216,19 +262,23 @@ export default function BurgerMenu({ open, onOpenChange }) {
                 type="button"
                 onClick={() => setActive(null)}
                 className="text-slate-400 hover:text-brand-turquoise"
-                aria-label="back"
+                aria-label={t("menu.back")}
                 data-testid="burger-back"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
             <SheetTitle className="text-white text-base tracking-[0.3em] font-light">
-              {active ? activeLabel : "МЕНЮ"}
+              {active ? activeLabel : t("menu.title")}
             </SheetTitle>
           </div>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-5 py-5">
-          {ActiveBlock ? <ActiveBlock /> : <MenuList onSelect={setActive} />}
+          {ActiveBlock ? (
+            <ActiveBlock t={t} lang={lang} setLang={setLang} />
+          ) : (
+            <MenuList onSelect={setActive} t={t} />
+          )}
         </div>
       </SheetContent>
     </Sheet>

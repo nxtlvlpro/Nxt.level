@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Send, ShieldCheck, AlertTriangle } from "lucide-react";
 import api from "../lib/api";
+import { useT } from "../i18n/LanguageContext";
 
 function confidenceClass(level) {
   if (level === "high") return "confidence-high";
@@ -67,8 +68,7 @@ function MessageBubble({ msg }) {
 const DEFAULT_WELCOME = {
   id: "msg-welcome",
   role: "assistant",
-  content:
-    "Я NXT8. Спрашивайте про корпоративные знания, ROI, сотрудников и задачи. Каждый мой ответ сопровождается confidence score и проверкой против корпоративной памяти.",
+  content: "__WELCOME__",
   meta: {
     confidence: 0.92,
     confidence_level: "high",
@@ -88,12 +88,18 @@ const DEFAULT_WELCOME = {
  */
 export default function ChatPanel({
   welcomeMessage = DEFAULT_WELCOME,
-  placeholder = "Спросите NXT8…",
+  placeholder,
   heightClassName = "h-[62vh] min-h-[420px]",
   sessionPrefix = "sess",
   testIdPrefix = "chat",
 }) {
-  const [messages, setMessages] = useState([welcomeMessage]);
+  const { t, lang } = useT();
+  const resolvedWelcome =
+    welcomeMessage && welcomeMessage.content === "__WELCOME__"
+      ? { ...welcomeMessage, content: t("chat.welcome") }
+      : welcomeMessage;
+  const resolvedPlaceholder = placeholder ?? t("chat.placeholder");
+  const [messages, setMessages] = useState([resolvedWelcome]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const sessionRef = useRef(
@@ -142,7 +148,7 @@ export default function ChatPanel({
 
     try {
       await api.chatStream(
-        { user_id: "demo", session_id: sessionRef.current, message: text },
+        { user_id: "demo", session_id: sessionRef.current, message: text, language: lang },
         {
           onMeta: (m) => {
             meta = { ...meta, ...m };
@@ -171,7 +177,7 @@ export default function ChatPanel({
               const updated = [...msgs];
               updated[last] = {
                 ...updated[last],
-                content: aggregated || "(пустой ответ)",
+                content: aggregated || t("chat.empty_reply"),
                 meta: {
                   confidence: payload.confidence,
                   confidence_level: payload.confidence_level,
@@ -193,7 +199,7 @@ export default function ChatPanel({
               const updated = [...msgs];
               updated[last] = {
                 ...updated[last],
-                content: `Ошибка соединения: ${err}`,
+                content: t("chat.error.connect", { err }),
                 meta: {
                   ...updated[last].meta,
                   streaming: false,
@@ -250,7 +256,7 @@ export default function ChatPanel({
           !messages[messages.length - 1]?.content && (
             <div className="flex justify-start">
               <div className="bubble-ai rounded-2xl px-4 py-3 text-xs text-slate-400">
-                думаю<span className="animate-pulse">…</span>
+                {t("chat.thinking")}<span className="animate-pulse">…</span>
               </div>
             </div>
           )}
@@ -262,7 +268,7 @@ export default function ChatPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKey}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           className="flex-1 bg-brand-dark/60 border border-white/10 rounded-full px-4 py-2.5 text-xs text-slate-200 placeholder:text-slate-600 outline-none focus:border-brand-turquoise/50"
           data-testid={`${testIdPrefix}-input`}
         />

@@ -12,8 +12,10 @@ import AlertsView from "./components/views/AlertsView";
 import MicView from "./components/views/MicView";
 import OpsView from "./components/views/OpsView";
 import api from "./lib/api";
+import { useT } from "./i18n/LanguageContext";
 
 function App() {
+  const { t } = useT();
   const [view, setView] = useState("home");
   const [alertCount, setAlertCount] = useState(0);
   const [seedStatus, setSeedStatus] = useState("idle");
@@ -97,7 +99,7 @@ function App() {
                 className="text-[10px] text-red-400 border border-red-500/30 bg-red-500/5 rounded-md p-2 mt-2"
                 data-testid="seed-error"
               >
-                backend unreachable — проверьте сервер
+                {t("seed.error")}
               </div>
             )}
           </div>

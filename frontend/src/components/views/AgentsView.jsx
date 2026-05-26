@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import CollapsibleCard from "../CollapsibleCard";
 import api from "../../lib/api";
+import { useT } from "../../i18n/LanguageContext";
 
 const ICON_MAP = {
   Crown,
@@ -87,10 +88,11 @@ function PersonaCard({ persona, onOpen }) {
 }
 
 function PersonaChatModal({ persona, plan, onClose }) {
+  const { t, lang } = useT();
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: `Привет. Я — ${persona.name}. ${persona.role}.\n\nЧто разобрать?`,
+      content: t("agents.welcome", { name: persona.name, role: persona.role }),
     },
   ]);
   const [input, setInput] = useState("");
@@ -108,17 +110,16 @@ function PersonaChatModal({ persona, plan, onClose }) {
       const { status, data } = await api.personaChat(persona.id, {
         message: text,
         plan_id: plan,
+        language: lang,
       });
       if (status === 402) {
-        setError(
-          `Этот агент доступен только на тарифе "${data.required_plan}" или выше.`
-        );
+        setError(t("agents.plan_required", { plan: data.required_plan }));
       } else if (data.success) {
         setMessages((m) => [
           ...m,
           {
             role: "assistant",
-            content: data.content || "(пустой ответ)",
+            content: data.content || t("agents.empty_reply"),
             tool_traces: data.tool_traces || [],
             confidence: data.confidence,
             iterations: data.iterations,
@@ -127,7 +128,7 @@ function PersonaChatModal({ persona, plan, onClose }) {
           },
         ]);
       } else {
-        setError(data.error || "Ошибка");
+        setError(data.error || t("agents.error"));
       }
     } catch (e) {
       setError(e?.message || String(e));
@@ -208,7 +209,7 @@ function PersonaChatModal({ persona, plan, onClose }) {
           {busy && (
             <div className="text-xs text-white/50 flex items-center gap-2 font-mono">
               <Loader2 className="w-3 h-3 animate-spin" />
-              {persona.name} печатает…
+              {t("agents.typing", { name: persona.name })}
             </div>
           )}
           {error && (
@@ -227,7 +228,7 @@ function PersonaChatModal({ persona, plan, onClose }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder={`Спросите ${persona.name}…`}
+            placeholder={t("agents.ask_placeholder", { name: persona.name })}
             disabled={busy}
             data-testid="persona-chat-input"
             className="flex-1 bg-white/5 ring-1 ring-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:ring-cyan-400/50 outline-none font-mono"
@@ -248,6 +249,7 @@ function PersonaChatModal({ persona, plan, onClose }) {
 }
 
 export default function AgentsView() {
+  const { t } = useT();
   const [data, setData] = useState(null);
   const [plan, setPlan] = useState("enterprise");
   const [active, setActive] = useState(null);
@@ -273,7 +275,7 @@ export default function AgentsView() {
       <CollapsibleCard
         storageKey="agents-personas"
         testId="agents-personas-card"
-        title="agents.team"
+        title={t("agents.team.title")}
         titleRight={
           <span className="text-[10px] font-mono text-white/40">
             {planMeta ? `${planMeta.name} · $${planMeta.price_usd}/mo` : ""}
@@ -326,7 +328,7 @@ export default function AgentsView() {
               onOpen={(pp) => {
                 if (!pp.available_on_plan) {
                   setErr(
-                    `Агент "${pp.name}" доступен на тарифе "${pp.min_plan}" и выше. Текущий: "${plan}".`
+                    t("agents.locked", { name: pp.name, minPlan: pp.min_plan, plan })
                   );
                   return;
                 }
@@ -338,9 +340,7 @@ export default function AgentsView() {
         </div>
 
         <div className="mt-4 text-[10px] font-mono text-white/40">
-          Hermes — сердце системы. Остальные персоны опираются на ту же память и инструменты,
-          но в фокусированной роли. Тарифные ворота — реальные: API возвращает 402, если
-          персона не включена в план.
+          {t("agents.footer")}
         </div>
       </CollapsibleCard>
 

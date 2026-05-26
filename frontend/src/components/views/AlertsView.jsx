@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Bell, AlertTriangle, Info } from "lucide-react";
 import api from "../../lib/api";
 import CollapsibleCard from "../CollapsibleCard";
+import { useT } from "../../i18n/LanguageContext";
 
 const SEV_STYLE = {
   critical: { color: "text-red-400", border: "border-red-500/40", icon: AlertTriangle },
@@ -10,11 +11,14 @@ const SEV_STYLE = {
 };
 
 export default function AlertsView() {
+  const { t, lang } = useT();
   const [alerts, setAlerts] = useState([]);
 
   useEffect(() => {
     api.alerts(40).then((d) => setAlerts(d.alerts || [])).catch(() => {});
   }, []);
+
+  const locale = lang === "ru" ? "ru-RU" : "en-US";
 
   return (
     <div className="lg:max-w-3xl lg:mx-auto">
@@ -23,19 +27,19 @@ export default function AlertsView() {
         testId="alerts-view"
       title={
         <span className="text-brand-turquoise font-light text-xs flex items-center gap-2">
-          <Bell className="w-3.5 h-3.5" /> alerts.feed
+          <Bell className="w-3.5 h-3.5" /> {t("alerts.title")}
         </span>
       }
       titleRight={
         <span className="text-slate-500 text-[10px] uppercase tracking-widest">
-          {alerts.length} events
+          {t("alerts.events", { n: alerts.length })}
         </span>
       }
     >
       <div className="space-y-2">
         {alerts.length === 0 && (
           <div className="text-slate-500 text-xs text-center py-8">
-            всё спокойно — алертов нет
+            {t("alerts.empty")}
           </div>
         )}
         {alerts.map((a) => {
@@ -56,7 +60,7 @@ export default function AlertsView() {
                     {a.severity} · {a.source}
                   </span>
                   <span className="text-[9px] text-slate-600">
-                    {new Date(a.created_at).toLocaleTimeString("ru-RU")}
+                    {new Date(a.created_at).toLocaleTimeString(locale)}
                   </span>
                 </div>
                 <div className="text-slate-200 text-[12px] mt-1 break-words">

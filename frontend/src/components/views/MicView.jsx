@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Mic, Square, Loader2, Volume2, AlertTriangle } from "lucide-react";
 import api from "../../lib/api";
 import CollapsibleCard from "../CollapsibleCard";
+import { useT } from "../../i18n/LanguageContext";
 
 const STATES = {
   IDLE: "idle",
@@ -66,6 +67,7 @@ function renderMicIcon({ busy, recording, speaking }) {
 }
 
 export default function MicView() {
+  const { t, lang } = useT();
   const [state, setState] = useState(STATES.IDLE);
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -188,7 +190,7 @@ export default function MicView() {
       startMeter(stream);
       setState(STATES.RECORDING);
     } catch (e) {
-      setError(e?.message || "Микрофон недоступен");
+      setError(e?.message || t("voice.error.mic"));
       setState(STATES.ERROR);
     }
   };
@@ -209,14 +211,14 @@ export default function MicView() {
     try {
       const blob = new Blob(chunksRef.current, { type: mime || "audio/webm" });
       if (blob.size < 800) {
-        setError("Слишком короткая запись");
+        setError(t("voice.too_short"));
         setState(STATES.ERROR);
         return;
       }
       const data = await api.voiceConverse(blob, {
         filename: filenameFromMime(mime),
         session_id: sessionRef.current || undefined,
-        language: "ru",
+        language: lang,
         voice: "nova",
       });
       sessionRef.current = data.session_id || sessionRef.current;
@@ -260,12 +262,12 @@ export default function MicView() {
   };
 
   const statusLabel = {
-    [STATES.IDLE]: "Готов",
-    [STATES.REQUESTING]: "Запрос микрофона…",
-    [STATES.RECORDING]: "Слушаю…",
-    [STATES.PROCESSING]: "Распознаю и обрабатываю…",
-    [STATES.SPEAKING]: "Отвечаю",
-    [STATES.ERROR]: "Ошибка",
+    [STATES.IDLE]: t("voice.status.idle"),
+    [STATES.REQUESTING]: t("voice.status.requesting"),
+    [STATES.RECORDING]: t("voice.status.recording"),
+    [STATES.PROCESSING]: t("voice.status.processing"),
+    [STATES.SPEAKING]: t("voice.status.speaking"),
+    [STATES.ERROR]: t("voice.status.error"),
   }[state];
 
   // Build 24 bars for waveform-like UI
@@ -300,7 +302,7 @@ export default function MicView() {
           onClick={onMainClick}
           disabled={busy || speaking}
           data-testid="mic-button"
-          aria-label={recording ? "Остановить запись" : "Начать запись"}
+          aria-label={recording ? t("voice.mic.aria.stop") : t("voice.mic.aria.start")}
           className={`relative w-28 h-28 rounded-full flex items-center justify-center transition-all
             ${recording ? "neo-icon-active animate-glow" : "neo-icon-active"}
             ${busy || speaking ? "opacity-60 cursor-not-allowed" : "hover:scale-[1.03] active:scale-[0.98]"}
@@ -326,7 +328,7 @@ export default function MicView() {
         <div className="w-full text-left space-y-3" data-testid="voice-result">
           {transcript && (
             <div className="rounded-lg border border-brand-turquoise/15 bg-black/30 p-3">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">You said</div>
+              <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">{t("voice.you_said")}</div>
               <div className="text-slate-200 text-sm" data-testid="voice-transcript">{transcript}</div>
             </div>
           )}
@@ -353,7 +355,7 @@ export default function MicView() {
         </div>
 
         <div className="text-[10px] text-slate-500 max-w-xs">
-          Whisper (STT) → Hermes COO → OpenAI TTS. Тапните на микрофон и говорите — после 3 секунд тишины запрос уйдёт агенту автоматически.
+          {t("voice.module_caption")}
         </div>
 
         <audio ref={audioElRef} className="hidden" data-testid="voice-audio" />

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Network, Activity, Wrench, Radar, Bot, FileText } from "lucide-react";
 import api from "../../lib/api";
+import { useT } from "../../i18n/LanguageContext";
 import { WidgetCard } from "./ops/widgets";
 import CrossDeptPanel from "./ops/CrossDeptPanel";
 import DiagnosticsPanel from "./ops/DiagnosticsPanel";
@@ -9,7 +10,7 @@ import MarketPanel from "./ops/MarketPanel";
 import HermesPanel from "./ops/HermesPanel";
 import DocumentsPanel from "./ops/DocumentsPanel";
 
-function CrossDeptWidget({ data, onOpen }) {
+function CrossDeptWidget({ data, onOpen, t }) {
   const tasks = data?.tasks || [];
   const multi = tasks.filter((t) => t.multi_department).length;
   const last = tasks[0];
@@ -26,7 +27,7 @@ function CrossDeptWidget({ data, onOpen }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-slate-200 text-[12px] truncate">
-            {last?.query || "пока нет координаций"}
+            {last?.query || t("ops.crossdept.no_coord")}
           </div>
           <div className="text-[9px] uppercase tracking-widest text-slate-500 mt-0.5">
             {multi} multi-dept · {tasks.length - multi} single
@@ -87,7 +88,7 @@ function DiagnosticsWidget({ data, onOpen }) {
   );
 }
 
-function SkillsWidget({ data, onOpen }) {
+function SkillsWidget({ data, onOpen, t }) {
   const skills = data?.skills || [];
   const enabled = skills.filter((s) => s.enabled).length;
   const auto = skills.filter((s) => s.auto_generated).length;
@@ -105,7 +106,7 @@ function SkillsWidget({ data, onOpen }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-slate-200 text-[12px] truncate">
-            {top ? `top: ${top.name}` : "навыков ещё нет"}
+            {top ? t("ops.skills.top", { name: top.name }) : t("ops.skills.empty")}
           </div>
           <div className="text-[9px] uppercase tracking-widest text-slate-500 mt-0.5">
             {auto} auto · {skills.length - auto} manual
@@ -116,7 +117,7 @@ function SkillsWidget({ data, onOpen }) {
   );
 }
 
-function MarketWidget({ data, onOpen }) {
+function MarketWidget({ data, onOpen, t, lang }) {
   const signals = data?.signals || [];
   const digest = data?.digest;
   return (
@@ -134,14 +135,16 @@ function MarketWidget({ data, onOpen }) {
           <div className="text-slate-200 text-[12px] truncate">
             {digest?.digest
               ? digest.digest.split("\n")[0].slice(0, 80)
-              : signals[0]?.headline || "нет сигналов"}
+              : signals[0]?.headline || t("ops.market.no_signals")}
           </div>
           <div className="text-[9px] uppercase tracking-widest text-slate-500 mt-0.5">
             {digest
-              ? `digest ${new Date(digest.created_at).toLocaleDateString(
-                  "ru-RU"
-                )}`
-              : "ожидание скана"}
+              ? t("ops.market.digest_on", {
+                  date: new Date(digest.created_at).toLocaleDateString(
+                    lang === "ru" ? "ru-RU" : "en-US"
+                  ),
+                })
+              : t("ops.market.awaiting")}
           </div>
         </div>
       </div>
@@ -149,7 +152,7 @@ function MarketWidget({ data, onOpen }) {
   );
 }
 
-function HermesWidget({ data, onOpen }) {  const status = data?.health?.status || "offline";
+function HermesWidget({ data, onOpen, t }) {  const status = data?.health?.status || "offline";
   const jobs = data?.jobs || [];
   const online = status === "online";
   return (
@@ -175,8 +178,8 @@ function HermesWidget({ data, onOpen }) {  const status = data?.health?.status |
         <div className="min-w-0 flex-1">
           <div className="text-slate-200 text-[12px] truncate">
             {online
-              ? `${jobs.length} активных заданий`
-              : "gateway не запущен (порт 8642)"}
+              ? t("ops.hermes.jobs", { n: jobs.length })
+              : t("ops.hermes.offline")}
           </div>
           <div className="text-[9px] uppercase tracking-widest text-slate-500 mt-0.5">
             NousResearch · OpenAI-compatible
@@ -187,7 +190,7 @@ function HermesWidget({ data, onOpen }) {  const status = data?.health?.status |
   );
 }
 
-function DocumentsWidget({ data, onOpen }) {
+function DocumentsWidget({ data, onOpen, t }) {
   const docs = data?.documents || [];
   const last = docs[0];
   const critical = docs.filter(
@@ -218,7 +221,7 @@ function DocumentsWidget({ data, onOpen }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-slate-200 text-[12px] truncate">
-            {last ? last.title || last.filename : "загрузите первый документ"}
+            {last ? last.title || last.filename : t("ops.docs.upload_first")}
           </div>
           <div className="text-[9px] uppercase tracking-widest text-slate-500 mt-0.5">
             {critical} risk · {docs.length - critical} ok
@@ -230,6 +233,7 @@ function DocumentsWidget({ data, onOpen }) {
 }
 
 export default function OpsView() {
+  const { t, lang } = useT();
   const [sub, setSub] = useState(null);
   const [data, setData] = useState({
     crossDept: null,
@@ -305,27 +309,29 @@ export default function OpsView() {
     <div className="space-y-3" data-testid="ops-view">
       <div className="flex justify-between items-center px-1">
         <span className="text-brand-turquoise font-light text-xs">
-          ops.cockpit
+          {t("ops.cockpit")}
         </span>
         <span className="text-slate-500 text-[10px] uppercase tracking-widest animate-flicker">
-          live · 6 modules
+          {t("ops.live")}
         </span>
       </div>
       <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4">
         <CrossDeptWidget
           data={data.crossDept}
           onOpen={() => setSub("cross-dept")}
+          t={t}
         />
         <DiagnosticsWidget
           data={data.diagnostics}
           onOpen={() => setSub("diagnostics")}
         />
-        <SkillsWidget data={data.skills} onOpen={() => setSub("skills")} />
-        <MarketWidget data={data.market} onOpen={() => setSub("market")} />
-        <HermesWidget data={data.hermes} onOpen={() => setSub("hermes")} />
+        <SkillsWidget data={data.skills} onOpen={() => setSub("skills")} t={t} />
+        <MarketWidget data={data.market} onOpen={() => setSub("market")} t={t} lang={lang} />
+        <HermesWidget data={data.hermes} onOpen={() => setSub("hermes")} t={t} />
         <DocumentsWidget
           data={data.documents}
           onOpen={() => setSub("documents")}
+          t={t}
         />
       </div>
     </div>
