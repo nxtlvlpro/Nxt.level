@@ -11,12 +11,35 @@ import MapView from "./components/views/MapView";
 import AlertsView from "./components/views/AlertsView";
 import MicView from "./components/views/MicView";
 import OpsView from "./components/views/OpsView";
+import LandingView from "./components/views/LandingView";
 import api from "./lib/api";
+
+const LANDING_STORAGE_KEY = "nxt8_landing_seen";
 
 function App() {
   const [view, setView] = useState("home");
   const [alertCount, setAlertCount] = useState(0);
   const [seedStatus, setSeedStatus] = useState("idle");
+  const [showLanding, setShowLanding] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("landing") === "1") return true;
+      if (params.get("skip_landing") === "1") return false;
+      return !window.localStorage.getItem(LANDING_STORAGE_KEY);
+    } catch {
+      return false;
+    }
+  });
+
+  const dismissLanding = () => {
+    try {
+      window.localStorage.setItem(LANDING_STORAGE_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    setShowLanding(false);
+  };
 
   useEffect(() => {
     // Auto-seed on first load (idempotent on backend side)
@@ -67,10 +90,14 @@ function App() {
   };
 
   return (
-    <div
-      className="App led-matrix h-screen flex flex-col relative overflow-hidden"
-      data-testid="app-root"
-    >
+    <>
+      {showLanding && <LandingView onEnter={dismissLanding} />}
+      <div
+        className={`App led-matrix h-screen flex flex-col relative overflow-hidden ${
+          showLanding ? "hidden" : ""
+        }`}
+        data-testid="app-root"
+      >
       <div className="fixed inset-0 led-matrix pointer-events-none -z-10"></div>
 
       {/* Full-width ticker — pinned at very top */}
@@ -121,6 +148,7 @@ function App() {
         <BottomNav active={view} onChange={setView} alertCount={alertCount} />
       </div>
     </div>
+    </>
   );
 }
 
