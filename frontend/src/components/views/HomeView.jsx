@@ -231,14 +231,15 @@ function InlineTicker({ items, testId }) {
 }
 
 // ============================================================
-// Hero (no logo — Header above already shows NXT8)
+// Intro card (first slide — описание проекта)
 // ============================================================
 
-function HeroBlock() {
+function IntroCard() {
   return (
-    <section
-      className="relative py-6 lg:py-10"
-      data-testid="home-hero"
+    <article
+      className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise rounded-2xl p-5 flex flex-col bg-gradient-to-br from-brand-turquoise/[0.06] to-transparent"
+      data-testid="home-agent-intro"
+      data-card-idx="0"
     >
       <div className="flex items-center gap-3 mb-4">
         <div className="w-2 h-2 rounded-full bg-brand-turquoise shadow-[0_0_10px_var(--brand-turquoise)] animate-pulse" />
@@ -246,34 +247,45 @@ function HeroBlock() {
           operational ai system
         </span>
       </div>
-      <h1
-        className="text-3xl sm:text-4xl lg:text-5xl font-extralight tracking-tight text-slate-100 leading-tight mb-3"
+      <h2
+        className="text-2xl sm:text-[26px] font-extralight tracking-tight text-slate-100 leading-tight mb-3"
         data-testid="home-hero-title"
       >
-        Операционная AI-система
-        <br className="hidden sm:block" />{" "}
+        Операционная AI-система{" "}
         <span className="text-brand-turquoise">для современного бизнеса</span>
-      </h1>
-      <p className="text-sm lg:text-base text-slate-400 max-w-2xl leading-relaxed">
-        Готовая AI-команда, которая работает вместе с вашей компанией.
+      </h2>
+      <p className="text-[13px] text-slate-300 leading-relaxed mb-4">
+        Готовая AI-команда, которая работает вместе с вашей компанией. Меньше
+        хаоса. Больше координации. Без сложного внедрения.
       </p>
-      <div className="mt-6 flex items-center gap-3 text-slate-400 text-[10px] uppercase tracking-widest">
-        <span className="inline-block w-10 h-px bg-gradient-to-r from-transparent to-brand-turquoise/60" />
-        <span>→ Выберите AI-агентов для вашей команды</span>
+      <div className="mt-auto pt-3 border-t border-white/5">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-400">
+          <ArrowRight className="w-3 h-3 text-brand-turquoise" />
+          <span>выберите AI-агентов</span>
+        </div>
       </div>
-    </section>
+    </article>
   );
 }
+
+// (Hero block removed — описание перенесено в первую карточку карусели)
 
 // ============================================================
 // Agents — horizontal scroll/swipe
 // ============================================================
 
-function AgentCard({ agent }) {
+function AgentCard({ agent, idx, transform }) {
   return (
     <article
+      style={{
+        transform,
+        transformStyle: "preserve-3d",
+        transition: "transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s",
+        transformOrigin: "center center",
+      }}
       className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise-subtle rounded-2xl p-5 flex flex-col"
       data-testid={`home-agent-${agent.id}`}
+      data-card-idx={idx}
     >
       <div className="flex-1">
         <div className="flex items-start justify-between mb-3">
@@ -312,36 +324,109 @@ function AgentCard({ agent }) {
 
 function AgentsSwipe() {
   const trackRef = useRef(null);
-  const scroll = (dir) => {
+  const [active, setActive] = useState(0);
+
+  // Compute the centered card index based on scroll position.
+  useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
-    const card = el.querySelector("[data-testid^='home-agent-']");
-    const step = card ? card.clientWidth + 16 : 320;
-    el.scrollBy({ left: dir * step, behavior: "smooth" });
+    let raf = 0;
+    const recompute = () => {
+      const cards = el.querySelectorAll("[data-card-idx]");
+      if (!cards.length) return;
+      const center = el.scrollLeft + el.clientWidth / 2;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      cards.forEach((c, i) => {
+        const cardCenter = c.offsetLeft + c.clientWidth / 2;
+        const dist = Math.abs(cardCenter - center);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
+        }
+      });
+      setActive(bestIdx);
+    };
+    const onScroll = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(recompute);
+    };
+    recompute();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", recompute);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", recompute);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  const scrollToIdx = (idx) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const card = el.querySelector(`[data-card-idx="${idx}"]`);
+    if (!card) return;
+    const target =
+      card.offsetLeft - (el.clientWidth - card.clientWidth) / 2;
+    el.scrollTo({ left: target, behavior: "smooth" });
   };
+
+  const scrollBy = (dir) => {
+    const total = AGENTS.length + 1; // +1 intro
+    const next = Math.max(0, Math.min(total - 1, active + dir));
+    scrollToIdx(next);
+  };
+
+  // Coverflow transform: closer to active → flat & bigger; further → tilted trapezoid
+  const getTransform = (idx) => {
+    const diff = idx - active;
+    const abs = Math.abs(diff);
+    if (abs === 0) {
+      return "perspective(1200px) rotateY(0deg) scale(1) translateZ(0)";
+    }
+    const dir = diff < 0 ? 1 : -1; // tilt left card to face right, vice versa
+    const rotate = Math.min(38, 18 + (abs - 1) * 10) * dir;
+    const scale = Math.max(0.7, 1 - abs * 0.1);
+    const translateZ = -40 * abs;
+    return `perspective(1200px) rotateY(${rotate}deg) scale(${scale}) translateZ(${translateZ}px)`;
+  };
+
+  const opacityFor = (idx) => {
+    const abs = Math.abs(idx - active);
+    if (abs === 0) return 1;
+    if (abs === 1) return 0.7;
+    return 0.4;
+  };
+
+  const cards = [
+    <IntroCard key="intro" />,
+    ...AGENTS.map((a, i) => (
+      <AgentCard
+        key={a.id}
+        agent={a}
+        idx={i + 1}
+        transform={getTransform(i + 1)}
+      />
+    )),
+  ];
+
   return (
     <section className="relative py-6" data-testid="home-agents">
-      <div className="flex items-end justify-between mb-4 gap-3">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-1.5">
-            ai team · 7 ролей
-          </div>
-          <h2 className="text-xl lg:text-2xl font-light text-slate-100">
-            AI-агенты для каждой задачи
-          </h2>
-        </div>
+      <div className="flex items-end justify-end mb-4 gap-2">
         <div className="hidden sm:flex items-center gap-2 shrink-0">
           <button
-            onClick={() => scroll(-1)}
-            className="neo-btn rounded-full w-9 h-9 flex items-center justify-center text-slate-400 hover:text-brand-turquoise transition-colors"
+            onClick={() => scrollBy(-1)}
+            disabled={active === 0}
+            className="neo-btn rounded-full w-9 h-9 flex items-center justify-center text-slate-400 hover:text-brand-turquoise transition-colors disabled:opacity-30"
             data-testid="home-agents-prev"
             aria-label="prev"
           >
             <ChevronRight className="w-4 h-4 rotate-180" />
           </button>
           <button
-            onClick={() => scroll(1)}
-            className="neo-btn rounded-full w-9 h-9 flex items-center justify-center text-slate-400 hover:text-brand-turquoise transition-colors"
+            onClick={() => scrollBy(1)}
+            disabled={active === AGENTS.length}
+            className="neo-btn rounded-full w-9 h-9 flex items-center justify-center text-slate-400 hover:text-brand-turquoise transition-colors disabled:opacity-30"
             data-testid="home-agents-next"
             aria-label="next"
           >
@@ -351,13 +436,41 @@ function AgentsSwipe() {
       </div>
       <div
         ref={trackRef}
-        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-3 -mx-4 lg:-mx-8 px-4 lg:px-8 no-scrollbar"
+        style={{ perspective: "1400px", scrollSnapType: "x mandatory" }}
+        className="flex gap-6 overflow-x-auto pb-6 pt-2 -mx-4 lg:-mx-8 px-[calc(50%-39vw)] sm:px-[calc(50%-180px)] no-scrollbar"
         data-testid="home-agents-track"
       >
-        {AGENTS.map((a) => (
-          <AgentCard key={a.id} agent={a} />
+        {cards.map((card, i) =>
+          React.cloneElement(card, {
+            style: {
+              transform: getTransform(i),
+              opacity: opacityFor(i),
+              transformStyle: "preserve-3d",
+              transition:
+                "transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s",
+              transformOrigin: "center center",
+            },
+          })
+        )}
+      </div>
+      {/* dots indicator */}
+      <div
+        className="flex items-center justify-center gap-1.5 mt-1"
+        data-testid="home-agents-dots"
+      >
+        {cards.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => scrollToIdx(i)}
+            className={`h-1.5 rounded-full transition-all ${
+              i === active
+                ? "w-6 bg-brand-turquoise shadow-[0_0_6px_var(--brand-turquoise)]"
+                : "w-1.5 bg-slate-600 hover:bg-slate-400"
+            }`}
+            aria-label={`go to card ${i + 1}`}
+          />
         ))}
-        <div className="shrink-0 w-1" />
       </div>
     </section>
   );
@@ -817,7 +930,6 @@ function Pilot() {
 export default function HomeView() {
   return (
     <div data-testid="home-view">
-      <HeroBlock />
       <InlineTicker items={HERO_TICKER_ITEMS} testId="home-ticker-hero" />
 
       <AgentsSwipe />
