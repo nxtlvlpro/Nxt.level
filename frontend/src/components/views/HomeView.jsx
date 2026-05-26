@@ -237,7 +237,7 @@ function InlineTicker({ items, testId }) {
 function IntroCard() {
   return (
     <article
-      className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise rounded-2xl p-5 flex flex-col bg-gradient-to-br from-brand-turquoise/[0.06] to-transparent"
+      className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise rounded-2xl p-5 flex flex-col bg-gradient-to-br from-brand-turquoise/[0.06] to-transparent font-mono tracking-tight"
       data-testid="home-agent-intro"
       data-card-idx="0"
     >
@@ -254,7 +254,7 @@ function IntroCard() {
         Операционная AI-система{" "}
         <span className="text-brand-turquoise">для современного бизнеса</span>
       </h2>
-      <p className="text-[13px] text-slate-300 leading-relaxed mb-4">
+      <p className="text-[12px] text-slate-300 leading-relaxed tracking-tight mb-4">
         Готовая AI-команда, которая работает вместе с вашей компанией. Меньше
         хаоса. Больше координации. Без сложного внедрения.
       </p>
@@ -283,7 +283,7 @@ function AgentCard({ agent, idx, transform }) {
         transition: "transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s",
         transformOrigin: "center center",
       }}
-      className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise-subtle rounded-2xl p-5 flex flex-col"
+      className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise-subtle rounded-2xl p-5 flex flex-col font-mono tracking-tight"
       data-testid={`home-agent-${agent.id}`}
       data-card-idx={idx}
     >
@@ -295,7 +295,7 @@ function AgentCard({ agent, idx, transform }) {
             >
               {agent.name}
             </h3>
-            <div className="text-slate-200 text-[13px] mt-1.5">
+            <div className="text-slate-200 text-[12px] mt-1.5 tracking-tight">
               {agent.role}
             </div>
           </div>
@@ -306,7 +306,7 @@ function AgentCard({ agent, idx, transform }) {
         <div className="text-[10px] uppercase tracking-widest text-slate-500 border-t border-white/5 pt-3 mb-3">
           {agent.plan}
         </div>
-        <p className="text-[13px] text-slate-300 leading-relaxed">
+        <p className="text-[12px] text-slate-300 leading-relaxed tracking-tight">
           {agent.description}
         </p>
       </div>
