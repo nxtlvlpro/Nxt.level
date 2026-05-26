@@ -42,21 +42,6 @@ export default function Header({ aiIndex = 8.1, streakDays = 14 }) {
           </button>
         </div>
       </header>
-      <div
-        className="flex justify-between items-center text-[10px] tracking-widest text-slate-400 pb-1 px-1"
-        data-testid="ai-index-strip"
-      >
-        <div className="flex items-center space-x-2">
-          <span className="font-light">AI_INDEX</span>
-          <span className="text-brand-turquoise">
-            {aiIndex.toFixed(1)} + 0.3 ▲
-          </span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <span className="text-orange-500">▲</span>
-          <span className="font-light">{streakDays} d. streak</span>
-        </div>
-      </div>
       <BurgerMenu open={menuOpen} onOpenChange={setMenuOpen} />
     </>
   );

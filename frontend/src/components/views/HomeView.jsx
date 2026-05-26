@@ -930,8 +930,6 @@ function Pilot() {
 export default function HomeView() {
   return (
     <div data-testid="home-view">
-      <InlineTicker items={HERO_TICKER_ITEMS} testId="home-ticker-hero" />
-
       <AgentsSwipe />
       <HermesChat />
 
