@@ -1,7 +1,7 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.7.0-p1 (additive over v1.6.0-unified)
-**Last updated:** 2026-05-20 by Главный Системный Архитектор (E1)
+**Current version:** v1.8.0-landing (additive over v1.7.0-p1)
+**Last updated:** 2026-05-26 by Главный Системный Архитектор (E1)
 
 ## What was built (in chronological order)
 
@@ -17,7 +17,7 @@
    - **Phase 3: Hermes Unification** — `agents/hermes.py` is now the single source of truth (15 unified tools, fenced-JSON only). `hermes_coo.py` + `hermes_max_tools_and_coo.py` reduced to thin shims (re-exports). Tasks + Followups now stored in unified `db.tasks` with `kind` field.
    - **Voice/converse `should_escalate` fix** — was missing in response payload; broke `test_voice_converse_full_loop`.
    - **Document Parsing (Compliance persona)** — new `agents/documents.py`, `POST /api/documents/upload`, `GET /api/documents`, `GET /api/documents/{id}`. PDF/DOCX/TXT extraction → MemPalace ingestion (wing=documents) → DeepSeek risk pass → persisted verdict (severity / findings / recommended_actions). Compliance persona system_prompt updated to use mempalace_search wing=documents.
-9. **v1.7 P1 Wave (this release):**
+9. **v1.7 P1 Wave:**
    - **DocumentsPanel UI** — `frontend/src/components/views/ops/DocumentsPanel.jsx`: drag-and-drop upload zone, severity stats grid (CRITICAL/HIGH/MEDIUM/LOW), document cards with expandable findings + recommended actions, real-time list refresh. Added as 6th widget in OpsView (`widget-documents`).
    - **5 Real-LLM Hermes tools** — replaced legacy stubs (`mock=True`) with DeepSeek-backed implementations:
      - `generate_communication_summary` → summary + sentiment + key_topics + open_questions + suggested_next_action
@@ -25,6 +25,11 @@
      - `find_opportunities_in_contact` → opportunities[] (upsell/cross-sell/renewal/retention) with value range + memory snippet retrieval from MemPalace
      - `suggest_reply_template` → contextual draft (subject + body + CTA) tailored to last_message + intent + tone + language (with canned fallback for tone-only invocations)
      - `evaluate_action_roi` → estimated_roi + value range + cost estimate + horizon + rationale + risks + company_roi_context from latest `db.roi_history` snapshot
+10. **v1.8 Landing-as-HomeView (this release):**
+    - **HomeView переработан** в маркетинговый лендинг по ТЗ — заменён старый дашборд (TasksCard + PipelineCard + quickchat) на: Hero-блок → ticker → горизонтальный свайп AI-агентов (7 карточек) → встроенный Hermes-чат с переключателем текст/голос → ticker → Тарифы (4 карты $9/$14/$19/$24) → ticker → Как работает (3 шага) → Пилот CTA. Существующий app shell (TopTicker / Header / SideNav / BottomNav) сохранён без изменений.
+    - **Hermes inline chat** — `POST /api/hermes/chat` для текста, `POST /api/voice/converse` (Whisper STT → Hermes → TTS) для голоса.
+    - **CTA routing** — все «Подключить» / «Начать» / «Запустить пилот» открывают `https://nxt8.pro/checkout?plan={id}` в новой вкладке (placeholder; Stripe integration отложена).
+    - **Цвет/стиль** — без изменений (turquoise glass-cards + LED-matrix).
 
 ## Architecture (as built)
 
