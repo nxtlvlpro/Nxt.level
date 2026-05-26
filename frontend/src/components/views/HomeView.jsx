@@ -325,6 +325,10 @@ function AgentCard({ agent, idx, transform }) {
 function AgentsSwipe() {
   const trackRef = useRef(null);
   const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const pauseTimerRef = useRef(null);
+
+  const totalCards = AGENTS.length + 1; // intro + 7 agents
 
   // Compute the centered card index based on scroll position.
   useEffect(() => {
@@ -371,11 +375,35 @@ function AgentsSwipe() {
     el.scrollTo({ left: target, behavior: "smooth" });
   };
 
-  const scrollBy = (dir) => {
-    const total = AGENTS.length + 1; // +1 intro
-    const next = Math.max(0, Math.min(total - 1, active + dir));
-    scrollToIdx(next);
+  // Pause autoplay briefly after user interaction
+  const pauseTemporarily = (ms = 8000) => {
+    setPaused(true);
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    pauseTimerRef.current = setTimeout(() => setPaused(false), ms);
   };
+
+  const scrollBy = (dir) => {
+    const next = Math.max(0, Math.min(totalCards - 1, active + dir));
+    scrollToIdx(next);
+    pauseTemporarily();
+  };
+
+  // Autoplay — advance once every 5s; loop back to start; pause on hover / interaction
+  useEffect(() => {
+    if (paused) return undefined;
+    const id = setInterval(() => {
+      const next = (active + 1) % totalCards;
+      scrollToIdx(next);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [active, paused, totalCards]);
+
+  useEffect(
+    () => () => {
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    },
+    []
+  );
 
   // Coverflow transform: closer to active → flat & bigger; further → tilted trapezoid
   const getTransform = (idx) => {
@@ -411,7 +439,13 @@ function AgentsSwipe() {
   ];
 
   return (
-    <section className="relative py-6" data-testid="home-agents">
+    <section
+      className="relative py-6"
+      data-testid="home-agents"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onTouchStart={() => pauseTemporarily(10000)}
+    >
       <div className="flex items-end justify-end mb-4 gap-2">
         <div className="hidden sm:flex items-center gap-2 shrink-0">
           <button
@@ -462,7 +496,10 @@ function AgentsSwipe() {
           <button
             key={i}
             type="button"
-            onClick={() => scrollToIdx(i)}
+            onClick={() => {
+              scrollToIdx(i);
+              pauseTemporarily();
+            }}
             className={`h-1.5 rounded-full transition-all ${
               i === active
                 ? "w-6 bg-brand-turquoise shadow-[0_0_6px_var(--brand-turquoise)]"
