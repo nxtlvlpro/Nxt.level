@@ -9,12 +9,12 @@ export default function Header({ aiIndex = 8.1, streakDays = 14 }) {
         className="flex justify-between items-center py-1"
         data-testid="app-header"
       >
-        <div className="flex items-center">
+        <div className="flex items-center -ml-3">
           <img
             src="/nxt8-logo.png"
             alt="NXT8"
             data-testid="app-logo"
-            className="h-16 w-auto select-none pointer-events-none"
+            className="h-24 w-auto select-none pointer-events-none"
             draggable={false}
           />
         </div>
