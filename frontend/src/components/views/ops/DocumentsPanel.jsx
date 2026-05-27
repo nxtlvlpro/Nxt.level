@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import api from "../../../lib/api";
 import { BackBar, SectionHeader, EmptyHint } from "./widgets";
+import { useT } from "../../../i18n/LanguageContext";
 
 const SEVERITY_COLORS = {
   critical: "text-red-400 border-red-500/40 bg-red-500/10",
@@ -85,7 +86,7 @@ function UploadBox({ onUploaded }) {
     >
       <Upload className="w-5 h-5 text-brand-turquoise" />
       <div className="text-[11px] text-slate-300 text-center">
-        перетащите PDF / DOCX / TXT (≤ {MAX_MB} MB)
+        {t("ops.docs.upload.drop", { n: MAX_MB })}
       </div>
       <button
         type="button"
@@ -95,7 +96,7 @@ function UploadBox({ onUploaded }) {
         data-testid="documents-upload-btn"
       >
         <Upload className="w-3 h-3" />
-        {busy ? "анализ…" : "выбрать файл"}
+        {busy ? t("ops.docs.upload.analyzing") : t("ops.docs.upload.choose")}
       </button>
       <input
         ref={inputRef}
@@ -159,8 +160,10 @@ function FindingRow({ finding, idx }) {
 }
 
 function DocumentCard({ doc, expanded, onToggle }) {
+  const { t, lang } = useT();
   const findings = doc.findings || [];
   const actions = doc.recommended_actions || [];
+  const locale = lang === "ru" ? "ru-RU" : "en-US";
   return (
     <div
       className="border border-white/5 bg-brand-dark/40 rounded-xl p-3 space-y-2"
@@ -178,7 +181,7 @@ function DocumentCard({ doc, expanded, onToggle }) {
             </span>
           </div>
           <div className="text-[9px] uppercase tracking-widest text-slate-500">
-            {new Date(doc.created_at).toLocaleString("ru-RU")} ·{" "}
+            {new Date(doc.created_at).toLocaleString(locale)} ·{" "}
             {Math.round((doc.size_bytes || 0) / 1024)} kb · {doc.chunks || 0} chunks
           </div>
         </div>
@@ -203,11 +206,11 @@ function DocumentCard({ doc, expanded, onToggle }) {
         >
           {expanded ? (
             <>
-              свернуть <ChevronUp className="w-3 h-3" />
+              {t("ops.docs.collapse")} <ChevronUp className="w-3 h-3" />
             </>
           ) : (
             <>
-              детали <ChevronDown className="w-3 h-3" />
+              {t("ops.docs.expand")} <ChevronDown className="w-3 h-3" />
             </>
           )}
         </button>
@@ -217,7 +220,7 @@ function DocumentCard({ doc, expanded, onToggle }) {
         <div className="space-y-2 pt-1">
           {findings.length === 0 ? (
             <div className="text-[10px] text-slate-500 italic">
-              рисков не обнаружено
+              {t("ops.docs.no_risks")}
             </div>
           ) : (
             findings.map((f, i) => (
@@ -244,7 +247,7 @@ function DocumentCard({ doc, expanded, onToggle }) {
           )}
           {doc.mock && (
             <div className="text-[9px] uppercase tracking-widest text-yellow-400">
-              mock · provider недоступен
+              {t("ops.docs.mock_provider")}
             </div>
           )}
         </div>
@@ -254,6 +257,7 @@ function DocumentCard({ doc, expanded, onToggle }) {
 }
 
 export default function DocumentsPanel({ onBack }) {
+  const { t } = useT();
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [firstLoaded, setFirstLoaded] = useState(false);
@@ -301,7 +305,7 @@ export default function DocumentsPanel({ onBack }) {
       className="glass-card rounded-2xl window-border glow-turquoise-subtle p-4 space-y-3"
       data-testid="ops-documents"
     >
-      <BackBar title="documents · compliance" onBack={onBack} />
+      <BackBar title={t("ops.docs.title")} onBack={onBack} />
 
       <UploadBox onUploaded={onUploaded} />
 
@@ -344,7 +348,7 @@ export default function DocumentsPanel({ onBack }) {
       <div className="space-y-2">
         {firstLoaded && docs.length === 0 && (
           <EmptyHint testId="documents-empty">
-            пока нет загруженных документов
+            {t("ops.docs.empty")}
           </EmptyHint>
         )}
         {docs.map((d) => (
@@ -361,9 +365,7 @@ export default function DocumentsPanel({ onBack }) {
 
       <div className="text-[10px] text-slate-500 leading-relaxed border-t border-white/5 pt-2">
         <X className="w-3 h-3 inline mr-1" />
-        Документ парсится локально (pypdf / python-docx), отправляется в
-        DeepSeek для compliance-обзора и индексируется в MemPalace под
-        wing=documents.
+        {t("ops.docs.footer")}
       </div>
     </section>
   );

@@ -1,5 +1,6 @@
 import React from "react";
 import { ChevronRight } from "lucide-react";
+import { useT } from "../../../i18n/LanguageContext";
 
 export function WidgetCard({
   title,
@@ -60,6 +61,7 @@ export function SectionHeader({ title, right }) {
 }
 
 export function BackBar({ title, onBack }) {
+  const { t } = useT();
   return (
     <div className="flex items-center justify-between mb-3">
       <button
@@ -67,7 +69,7 @@ export function BackBar({ title, onBack }) {
         className="text-slate-400 hover:text-brand-turquoise text-[10px] uppercase tracking-widest flex items-center gap-1"
         data-testid="ops-back"
       >
-        ← back to ops
+        {t("ui.back_to_ops")}
       </button>
       <span className="text-brand-turquoise font-light text-xs">{title}</span>
     </div>

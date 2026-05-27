@@ -230,6 +230,86 @@ export const TRANSLATIONS = {
     "ops.hermes.jobs": "{n} active jobs",
     "ops.hermes.offline": "gateway not running (port 8642)",
     "ops.docs.upload_first": "upload your first document",
+
+    // Ops · Documents
+    "ops.docs.title": "documents · compliance",
+    "ops.docs.upload.too_large": "File larger than {n} MB",
+    "ops.docs.upload.uploading": "uploading · {name}",
+    "ops.docs.upload.done": "done · severity={sev}",
+    "ops.docs.upload.drop": "drop a PDF / DOCX / TXT (≤ {n} MB)",
+    "ops.docs.upload.analyzing": "analysing…",
+    "ops.docs.upload.choose": "choose file",
+    "ops.docs.uploaded": "uploaded documents",
+    "ops.docs.no_risks": "no risks detected",
+    "ops.docs.mock_provider": "mock · provider unavailable",
+    "ops.docs.empty": "no documents uploaded yet",
+    "ops.docs.footer":
+      "Documents are parsed locally (pypdf / python-docx), sent to DeepSeek for a compliance review and indexed in MemPalace under wing=documents.",
+    "ops.docs.expand": "details",
+    "ops.docs.collapse": "collapse",
+
+    // Ops · Cross-dept
+    "ops.crossdept.title": "cross-dept · coordinator",
+    "ops.crossdept.placeholder":
+      "Query touching several departments… (e.g. 'how are we doing on sales and support?'). Ctrl/⌘+Enter to send",
+    "ops.crossdept.coordinating": "coordinating…",
+    "ops.crossdept.coordinate": "coordinate",
+    "ops.crossdept.empty": "no coordinations yet — kick off the first one",
+    "ops.crossdept.recent": "recent tasks",
+    "ops.crossdept.items": "{n} items",
+
+    // Ops · Diagnostics
+    "ops.diag.title": "diagnostics · self-audit",
+    "ops.diag.empty": "no contradictions found",
+    "ops.diag.found": "{n} found",
+    "ops.diag.rescan": "rescan",
+    "ops.diag.scanning": "scanning…",
+
+    // Ops · Skills
+    "ops.skills.title": "skills · creator",
+    "ops.skills.empty.hint":
+      "no skills yet — run Discover to auto-detect recurring patterns",
+    "ops.skills.registered": "registered skills",
+    "ops.skills.discover": "discover",
+    "ops.skills.scanning": "scanning…",
+
+    // Ops · Market
+    "ops.market.title": "market · radar",
+    "ops.market.headline.placeholder":
+      "headline (e.g. 'Competitor X launched a free tier')",
+    "ops.market.empty": "no signals — add the first one or wait for the auto-feed",
+    "ops.market.signals": "signals",
+    "ops.market.ingested": "{n} ingested",
+    "ops.market.scanning": "scanning…",
+    "ops.market.scan_24h": "scan 24h",
+    "ops.market.latest_digest": "latest digest · {n} signals",
+    "ops.market.digest_history": "digest history",
+    "ops.market.add_signal": "add signal",
+
+    // Ops · Hermes
+    "ops.hermes.title": "hermes · agent",
+    "ops.hermes.empty": "no background jobs — create the first one",
+    "ops.hermes.create": "create job",
+    "ops.hermes.prompt.placeholder":
+      "prompt for the background job (Hermes runs it asynchronously)",
+    "ops.hermes.cron.placeholder": "cron (optional, e.g. 0 9 * * *)",
+    "ops.hermes.scheduled": "scheduled jobs",
+    "ops.hermes.jobs_count": "{n} jobs",
+    "ops.hermes.unreachable":
+      "Hermes API is unreachable. Start the hermes gateway with API_SERVER_ENABLED=true on port 8642.",
+    "ops.hermes.error.unavailable":
+      "Hermes unavailable ({code}): {msg}",
+    "ops.hermes.error.gateway_hint":
+      "check that the hermes gateway is running on :8642",
+    "ops.hermes.footer":
+      "Hermes Agent (NousResearch) is a self-learning CLI agent with tool calling. In NXT8 it serves as an extra background-job executor via the OpenAI-compatible API.",
+    "ops.hermes.submitting": "submitting…",
+    "ops.hermes.submit": "submit",
+
+    // Common UI verbs
+    "ui.refresh": "refresh",
+    "ui.cancel": "cancel",
+    "ui.back_to_ops": "← back to ops",
   },
 
   ru: {
@@ -461,6 +541,86 @@ export const TRANSLATIONS = {
     "ops.hermes.jobs": "{n} активных заданий",
     "ops.hermes.offline": "gateway не запущен (порт 8642)",
     "ops.docs.upload_first": "загрузите первый документ",
+
+    // Ops · Documents
+    "ops.docs.title": "documents · compliance",
+    "ops.docs.upload.too_large": "Файл больше {n} MB",
+    "ops.docs.upload.uploading": "загружаю · {name}",
+    "ops.docs.upload.done": "готово · severity={sev}",
+    "ops.docs.upload.drop": "перетащите PDF / DOCX / TXT (≤ {n} MB)",
+    "ops.docs.upload.analyzing": "анализ…",
+    "ops.docs.upload.choose": "выбрать файл",
+    "ops.docs.uploaded": "uploaded documents",
+    "ops.docs.no_risks": "рисков не обнаружено",
+    "ops.docs.mock_provider": "mock · provider недоступен",
+    "ops.docs.empty": "пока нет загруженных документов",
+    "ops.docs.footer":
+      "Документ парсится локально (pypdf / python-docx), отправляется в DeepSeek для compliance-обзора и индексируется в MemPalace под wing=documents.",
+    "ops.docs.expand": "детали",
+    "ops.docs.collapse": "свернуть",
+
+    // Ops · Cross-dept
+    "ops.crossdept.title": "cross-dept · coordinator",
+    "ops.crossdept.placeholder":
+      "Запрос, затрагивающий несколько отделов… (например: «что у нас по продажам и поддержке?»). Ctrl/⌘+Enter — отправить",
+    "ops.crossdept.coordinating": "координирую…",
+    "ops.crossdept.coordinate": "coordinate",
+    "ops.crossdept.empty": "ещё не было координаций — запустите первую",
+    "ops.crossdept.recent": "recent tasks",
+    "ops.crossdept.items": "{n} items",
+
+    // Ops · Diagnostics
+    "ops.diag.title": "diagnostics · self-audit",
+    "ops.diag.empty": "противоречий не обнаружено",
+    "ops.diag.found": "{n} found",
+    "ops.diag.rescan": "rescan",
+    "ops.diag.scanning": "scanning…",
+
+    // Ops · Skills
+    "ops.skills.title": "skills · creator",
+    "ops.skills.empty.hint":
+      "пока навыков нет — запустите discover для авто-обнаружения повторяющихся паттернов",
+    "ops.skills.registered": "registered skills",
+    "ops.skills.discover": "discover",
+    "ops.skills.scanning": "scanning…",
+
+    // Ops · Market
+    "ops.market.title": "market · radar",
+    "ops.market.headline.placeholder":
+      "headline (например: «Конкурент X запустил free-tier»)",
+    "ops.market.empty": "нет сигналов — добавьте первый или дождитесь авто-фида",
+    "ops.market.signals": "signals",
+    "ops.market.ingested": "{n} ingested",
+    "ops.market.scanning": "scanning…",
+    "ops.market.scan_24h": "scan 24h",
+    "ops.market.latest_digest": "latest digest · {n} signals",
+    "ops.market.digest_history": "digest history",
+    "ops.market.add_signal": "add signal",
+
+    // Ops · Hermes
+    "ops.hermes.title": "hermes · agent",
+    "ops.hermes.empty": "нет фоновых заданий — создайте первое",
+    "ops.hermes.create": "создать задание",
+    "ops.hermes.prompt.placeholder":
+      "prompt для фонового задания (Hermes выполнит асинхронно)",
+    "ops.hermes.cron.placeholder": "cron (опционально, например: 0 9 * * *)",
+    "ops.hermes.scheduled": "scheduled jobs",
+    "ops.hermes.jobs_count": "{n} jobs",
+    "ops.hermes.unreachable":
+      "Hermes API недоступен. Запустите hermes gateway с API_SERVER_ENABLED=true на порту 8642.",
+    "ops.hermes.error.unavailable":
+      "Hermes недоступен ({code}): {msg}",
+    "ops.hermes.error.gateway_hint":
+      "проверьте, что hermes gateway запущен на :8642",
+    "ops.hermes.footer":
+      "Hermes Agent (NousResearch) — самообучающийся CLI-агент с tool calling. В NXT8 используется как доп. исполнитель фоновых заданий через OpenAI-совместимое API.",
+    "ops.hermes.submitting": "submitting…",
+    "ops.hermes.submit": "submit",
+
+    // Common UI verbs
+    "ui.refresh": "refresh",
+    "ui.cancel": "cancel",
+    "ui.back_to_ops": "← назад в ops",
   },
 };
 

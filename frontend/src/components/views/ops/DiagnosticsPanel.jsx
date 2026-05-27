@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { RefreshCw, AlertTriangle } from "lucide-react";
 import api from "../../../lib/api";
 import { BackBar, SectionHeader, Metric, EmptyHint } from "./widgets";
+import { useT } from "../../../i18n/LanguageContext";
 
 function ContradictionCard({ c }) {
   const [expanded, setExpanded] = useState(false);
@@ -45,6 +46,7 @@ function ContradictionCard({ c }) {
 }
 
 export default function DiagnosticsPanel({ onBack }) {
+  const { t } = useT();
   const [summary, setSummary] = useState(null);
   const [contradictions, setContradictions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -80,7 +82,7 @@ export default function DiagnosticsPanel({ onBack }) {
       className="glass-card rounded-2xl window-border glow-turquoise-subtle p-4 space-y-3"
       data-testid="ops-diagnostics"
     >
-      <BackBar title="diagnostics · self-audit" onBack={onBack} />
+      <BackBar title={t("ops.diag.title")} onBack={onBack} />
 
       <div className="grid grid-cols-2 gap-2">
         <Metric
@@ -136,7 +138,7 @@ export default function DiagnosticsPanel({ onBack }) {
       <div className="flex justify-between items-center">
         <SectionHeader
           title="contradictions"
-          right={`${contradictions.length} found`}
+          right={t("ops.diag.found", { n: contradictions.length })}
         />
         <button
           onClick={runScan}
@@ -147,14 +149,14 @@ export default function DiagnosticsPanel({ onBack }) {
           <RefreshCw
             className={`w-3 h-3 ${loading ? "animate-spin" : ""}`}
           />
-          {loading ? "scanning…" : "rescan"}
+          {loading ? t("ops.diag.scanning") : t("ops.diag.rescan")}
         </button>
       </div>
 
       <div className="space-y-2">
         {contradictions.length === 0 && (
           <EmptyHint testId="diag-empty">
-            противоречий не обнаружено
+            {t("ops.diag.empty")}
           </EmptyHint>
         )}
         {contradictions.map((c, i) => (

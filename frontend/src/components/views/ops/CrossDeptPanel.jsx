@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Send } from "lucide-react";
 import api from "../../../lib/api";
 import { BackBar, SectionHeader, EmptyHint } from "./widgets";
+import { useT } from "../../../i18n/LanguageContext";
 
 function DeptTag({ name }) {
   return (
@@ -12,7 +13,9 @@ function DeptTag({ name }) {
 }
 
 function TaskCard({ task }) {
+  const { lang } = useT();
   const [expanded, setExpanded] = useState(false);
+  const locale = lang === "ru" ? "ru-RU" : "en-US";
   return (
     <button
       onClick={() => setExpanded((v) => !v)}
@@ -34,7 +37,7 @@ function TaskCard({ task }) {
           </div>
         </div>
         <div className="text-[9px] text-slate-600 whitespace-nowrap">
-          {new Date(task.created_at).toLocaleTimeString("ru-RU")}
+          {new Date(task.created_at).toLocaleTimeString(locale)}
         </div>
       </div>
       {expanded && task.synthesis && (
@@ -51,6 +54,7 @@ function TaskCard({ task }) {
 }
 
 export default function CrossDeptPanel({ onBack }) {
+  const { t } = useT();
   const [query, setQuery] = useState("");
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -90,7 +94,7 @@ export default function CrossDeptPanel({ onBack }) {
       className="glass-card rounded-2xl window-border glow-turquoise-subtle p-4 space-y-3"
       data-testid="ops-crossdept"
     >
-      <BackBar title="cross-dept · coordinator" onBack={onBack} />
+      <BackBar title={t("ops.crossdept.title")} onBack={onBack} />
 
       <div className="space-y-2">
         <textarea
@@ -102,7 +106,7 @@ export default function CrossDeptPanel({ onBack }) {
               run();
             }
           }}
-          placeholder="Запрос, затрагивающий несколько отделов… (например: «что у нас по продажам и поддержке?»). Ctrl/⌘+Enter — отправить"
+          placeholder={t("ops.crossdept.placeholder")}
           rows={2}
           className="w-full bg-brand-dark/60 border border-white/10 rounded-xl px-3 py-2 text-[12px] text-slate-200 placeholder:text-slate-600 outline-none focus:border-brand-turquoise/50 resize-none"
           data-testid="crossdept-input"
@@ -115,7 +119,7 @@ export default function CrossDeptPanel({ onBack }) {
             data-testid="crossdept-run"
           >
             <Send className="w-3 h-3" />
-            {loading ? "координирую…" : "coordinate"}
+            {loading ? t("ops.crossdept.coordinating") : t("ops.crossdept.coordinate")}
           </button>
         </div>
       </div>
@@ -141,13 +145,13 @@ export default function CrossDeptPanel({ onBack }) {
       )}
 
       <SectionHeader
-        title="recent tasks"
-        right={`${tasks.length} items`}
+        title={t("ops.crossdept.recent")}
+        right={t("ops.crossdept.items", { n: tasks.length })}
       />
       <div className="space-y-2">
         {tasks.length === 0 && (
           <EmptyHint testId="crossdept-empty">
-            ещё не было координаций — запустите первую
+            {t("ops.crossdept.empty")}
           </EmptyHint>
         )}
         {tasks.map((t) => (
