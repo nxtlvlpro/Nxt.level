@@ -11,11 +11,10 @@ export default function Header({ aiIndex = 8.1, streakDays = 14 }) {
       >
         <div className="flex items-center">
           <img
-            src="/nxt8-logo.jpg"
+            src="/nxt8-logo.png"
             alt="NXT8"
             data-testid="app-logo"
-            className="h-8 w-auto select-none pointer-events-none"
-            style={{ mixBlendMode: "lighten" }}
+            className="h-16 w-auto select-none pointer-events-none"
             draggable={false}
           />
         </div>
