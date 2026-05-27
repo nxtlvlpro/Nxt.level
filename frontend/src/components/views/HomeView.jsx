@@ -855,19 +855,21 @@ function CarouselTariffCard({ tariff, idx, t }) {
       data-testid={`home-tariff-card-${tariff.id}`}
       data-card-idx={idx}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div className={`${tariff.accent} font-light tracking-widest uppercase text-sm`}>
-          {tariff.name}
-        </div>
-        <span className="text-[9px] uppercase tracking-widest text-slate-500 border border-white/10 rounded-full px-2 py-1">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[9px] uppercase tracking-widest text-slate-500 border border-white/10 rounded-full px-2 py-0.5">
           plan
         </span>
+        {tariff.highlight && (
+          <span className="text-[9px] uppercase tracking-[0.3em] text-brand-turquoise flex items-center gap-1">
+            <Sparkles className="w-3 h-3" /> {t("home.tariffs.popular")}
+          </span>
+        )}
       </div>
-      {tariff.highlight && (
-        <div className="text-[9px] uppercase tracking-[0.3em] text-brand-turquoise mb-2 flex items-center gap-1">
-          <Sparkles className="w-3 h-3" /> {t("home.tariffs.popular")}
-        </div>
-      )}
+      <div
+        className={`${tariff.accent} font-light tracking-widest uppercase text-sm mb-3 break-words`}
+      >
+        {tariff.name}
+      </div>
       <div className="flex items-baseline gap-1">
         <span className="text-4xl font-extralight text-slate-100">
           {tariff.price}
