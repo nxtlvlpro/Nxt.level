@@ -9,16 +9,15 @@ export default function Header({ aiIndex = 8.1, streakDays = 14 }) {
         className="flex justify-between items-center py-1"
         data-testid="app-header"
       >
-        <div className="flex items-center space-x-3">
-          <div className="w-6 h-6 rounded-md bg-brand-turquoise/20 border border-brand-turquoise/40 flex items-center justify-center">
-            <div className="w-3 h-3 bg-brand-turquoise rounded-sm shadow-[0_0_8px_rgba(6,182,212,0.8)]"></div>
-          </div>
-          <h1
-            className="text-2xl tracking-[0.3em] text-white font-light leading-none"
-            data-testid="app-title"
-          >
-            NXT8
-          </h1>
+        <div className="flex items-center">
+          <img
+            src="/nxt8-logo.jpg"
+            alt="NXT8"
+            data-testid="app-logo"
+            className="h-8 w-auto select-none pointer-events-none"
+            style={{ mixBlendMode: "lighten" }}
+            draggable={false}
+          />
         </div>
         <div className="flex items-center space-x-2">
           <div className="w-6 h-6 rounded-full border border-brand-turquoise/60 flex items-center justify-center text-[10px] text-orange-400 font-medium">
