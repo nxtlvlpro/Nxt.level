@@ -608,6 +608,69 @@ async def _t_web_search(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------
+# fetch_url — read the main readable content of a web page
+# ---------------------------------------------------------------------
+# Lets Hermes open the URLs surfaced by web_search (or supplied by the user)
+# and read the actual article text — not just the snippet. Uses trafilatura
+# which strips navigation, ads, footer, and returns the article body.
+
+FETCH_URL_MAX_CHARS = 8000  # hard cap so we don't flood the LLM context
+FETCH_URL_DEFAULT_CHARS = 4000
+
+
+async def _t_fetch_url(args: Dict[str, Any]) -> Dict[str, Any]:
+    url = (args.get("url") or "").strip()
+    if not url:
+        return {"ok": False, "error": "url is required"}
+    if not url.lower().startswith(("http://", "https://")):
+        return {"ok": False, "error": "url must start with http:// or https://"}
+
+    max_chars = int(args.get("max_chars") or FETCH_URL_DEFAULT_CHARS)
+    max_chars = max(500, min(FETCH_URL_MAX_CHARS, max_chars))
+
+    import asyncio
+
+    def _do_fetch() -> Dict[str, Any]:
+        import trafilatura
+
+        html = trafilatura.fetch_url(url)
+        if not html:
+            return {"ok": False, "error": "fetch_failed_or_empty"}
+        meta = trafilatura.extract_metadata(html)
+        text = trafilatura.extract(
+            html,
+            include_comments=False,
+            include_tables=False,
+            no_fallback=False,
+        ) or ""
+        original_len = len(text)
+        truncated = False
+        if original_len > max_chars:
+            text = text[:max_chars].rsplit(" ", 1)[0] + "…"
+            truncated = True
+        out = {
+            "ok": True,
+            "url": url,
+            "title": (getattr(meta, "title", None) if meta else None) or "",
+            "author": (getattr(meta, "author", None) if meta else None) or "",
+            "date": (getattr(meta, "date", None) if meta else None) or "",
+            "sitename": (getattr(meta, "sitename", None) if meta else None) or "",
+            "chars": len(text),
+            "original_chars": original_len,
+            "truncated": truncated,
+            "content": text,
+        }
+        return out
+
+    try:
+        result = await asyncio.to_thread(_do_fetch)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"fetch_url_failed: {e}"}
+
+    return result
+
+
 # =====================================================================
 # Unified tool registry
 # =====================================================================
@@ -633,6 +696,7 @@ HERMES_TOOLS: Dict[str, Any] = {
     "evaluate_action_roi": _t_evaluate_action_roi,
     # External world — free DuckDuckGo web search
     "web_search": _t_web_search,
+    "fetch_url": _t_fetch_url,
 }
 
 
@@ -654,7 +718,9 @@ _TOOLS_DOC = (
     "- `evaluate_action_roi(action, expected_cost_usd?, expected_revenue_usd?, horizon_days?)` — оценка ROI\n"
     "- `generate_communication_summary(text|messages)` — резюме переписки\n"
     "- `web_search(query, max_results?, region?)` — поиск в интернете (DuckDuckGo) — используй когда нужны свежие новости, "
-    "определения, цены, имена компаний, факты которых нет во внутренней памяти. region по умолчанию `wt-wt` (мир), для рунета используй `ru-ru`."
+    "определения, цены, имена компаний, факты которых нет во внутренней памяти. region по умолчанию `wt-wt` (мир), для рунета используй `ru-ru`.\n"
+    "- `fetch_url(url, max_chars?)` — открыть страницу по URL и прочитать её основной текст (без меню/рекламы). "
+    "Используй ПОСЛЕ web_search, когда нужны подробности из конкретной статьи. max_chars по умолчанию 4000, максимум 8000."
 )
 
 
