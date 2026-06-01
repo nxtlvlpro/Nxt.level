@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -780,6 +781,176 @@ async def voice_converse(
         "tts_error": tts_error,
         "latency_ms": latency_ms,
     }
+
+
+# ---------------------------------------------------------------------
+# Streaming voice converse — sentence-chunk TTS over NDJSON
+# ---------------------------------------------------------------------
+# Lets the frontend start playing the first sentence as soon as it's
+# synthesised, instead of waiting for the full reply to be TTS'd.
+# Frames:
+#   {"type":"meta","session_id":"..."}                         — once at start
+#   {"type":"transcript","text":"..."}                         — STT result
+#   {"type":"reply_text","text":"<full Hermes reply trimmed>"} — text-only reply
+#   {"type":"audio_chunk","idx":0,"text":"<sentence>","audio_b64":"..."}
+#   ...                                                        — one per sentence, IN ORDER
+#   {"type":"done","latency_ms":1234}                          — final close
+#   {"type":"error","message":"..."}                           — on failure
+
+
+_SENTENCE_RE = re.compile(r"(?<=[.!?…])\s+|\n+")
+
+
+def _split_sentences_for_tts(text: str, max_chunks: int = 4) -> List[str]:
+    """Split a Hermes voice reply into independently-TTS-able chunks."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in _SENTENCE_RE.split(text) if p.strip()]
+    if not parts:
+        return [text]
+    return parts[:max_chunks]
+
+
+@api.post("/voice/converse_stream")
+async def voice_converse_stream(
+    file: UploadFile = File(...),
+    user_id: str = Form("anonymous"),
+    session_id: Optional[str] = Form(None),
+    language: Optional[str] = Form(None),
+    voice: str = Form("onyx"),
+    company_id: Optional[str] = Form(None),
+) -> StreamingResponse:
+    """Same as /voice/converse but streams sentence-by-sentence audio chunks."""
+    import asyncio
+    import base64
+    import json
+    import time as _time
+
+    t0 = _time.time()
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty audio file")
+    filename = file.filename or "audio.webm"
+
+    async def event_stream():
+        try:
+            stt = await voice_agent.transcribe(
+                file_bytes=raw, filename=filename, language=language
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("converse_stream STT failed: %s", e)
+            yield json.dumps({"type": "error", "message": f"stt_failed: {e}"}) + "\n"
+            return
+
+        user_text = stt.get("text") or ""
+        if not user_text:
+            yield json.dumps({"type": "error", "message": "no speech detected"}) + "\n"
+            return
+
+        sid = session_id or f"sess_{uuid.uuid4().hex[:12]}"
+        yield json.dumps({"type": "meta", "session_id": sid}) + "\n"
+        yield json.dumps({"type": "transcript", "text": user_text}) + "\n"
+
+        # Pull a few prior turns from memory for session context.
+        history: List[Dict[str, Any]] = []
+        try:
+            mem = memory_agent.get_memory()
+            prev = await mem.get_session(sid, limit=6)
+            for m in prev or []:
+                role = m.get("role")
+                content = m.get("content")
+                if role in ("user", "assistant") and content:
+                    history.append({"role": role, "content": content})
+        except Exception as mem_err:  # noqa: BLE001
+            logger.warning("voice_stream memory read failed: %s", mem_err)
+
+        messages = (
+            [{"role": "system", "content": VOICE_SYSTEM_HINT}]
+            + history
+            + [{"role": "user", "content": user_text}]
+        )
+
+        try:
+            chat_resp = await hermes_coo_agent.enhanced_chat(
+                messages=messages,
+                company_id=company_id,
+                user_id=user_id,
+                mode="operational",
+                temperature=0.3,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("voice_stream hermes failed: %s", e)
+            yield json.dumps({"type": "error", "message": f"hermes_failed: {e}"}) + "\n"
+            return
+
+        raw_reply = (chat_resp.get("content") or "").strip()
+        reply_text = _trim_for_voice(raw_reply)
+        yield json.dumps({"type": "reply_text", "text": reply_text}) + "\n"
+
+        # Persist memory.
+        try:
+            mem = memory_agent.get_memory()
+            await mem.append_message(sid, "user", user_text)
+            if reply_text:
+                await mem.append_message(sid, "assistant", reply_text)
+        except Exception as mem_err:  # noqa: BLE001
+            logger.warning("voice_stream memory append failed: %s", mem_err)
+
+        # Synthesize each sentence in parallel, stream chunks IN ORDER.
+        sentences = _split_sentences_for_tts(reply_text)
+        if not sentences:
+            yield json.dumps({"type": "error", "message": "empty_reply_from_hermes"}) + "\n"
+            return
+
+        async def tts_one(idx: int, text: str):
+            try:
+                audio_bytes = await voice_agent.synthesize(text=text, voice=voice)
+                return idx, text, base64.b64encode(audio_bytes).decode("ascii"), None
+            except Exception as e:  # noqa: BLE001
+                logger.exception("voice_stream tts chunk %d failed: %s", idx, e)
+                return idx, text, None, str(e)
+
+        tasks = [asyncio.create_task(tts_one(i, s)) for i, s in enumerate(sentences)]
+        # Strict in-order emission: await tasks sequentially. Because they all
+        # started in parallel above, later sentences are often ready by the
+        # time we await them — the user perceives near-zero gap.
+        for tsk in tasks:
+            idx, text, b64, err = await tsk
+            frame = {"type": "audio_chunk", "idx": idx, "text": text}
+            if b64:
+                frame["audio_b64"] = b64
+            if err:
+                frame["error"] = err
+            yield json.dumps(frame) + "\n"
+
+        latency_ms = int((_time.time() - t0) * 1000)
+        # Fire-and-forget pipeline hook for cost / audit (don't block stream).
+        try:
+            await finalize_llm_turn(
+                channel="voice",
+                agent="hermes_coo",
+                user_id=user_id,
+                session_id=sid,
+                message=user_text,
+                response_text=reply_text or raw_reply,
+                tokens_total=int(chat_resp.get("tokens_total", 0) or 0),
+                deepseek_confidence=float(chat_resp.get("confidence", 0.7) or 0.7),
+                evidence_count=0,
+                past_responses=[m.get("content", "") for m in history if m.get("role") == "assistant"],
+                memory_context=[],
+                intent="voice",
+                agent_chain=["voice_stt", "hermes_coo", "voice_tts_stream"],
+                mock=bool(chat_resp.get("mock")),
+                latency_ms=latency_ms,
+                extra={"language": stt.get("language"), "voice": voice, "chunks": len(sentences)},
+            )
+        except Exception as hook_err:  # noqa: BLE001
+            logger.warning("voice_stream pipeline hook failed: %s", hook_err)
+
+        yield json.dumps({"type": "done", "latency_ms": latency_ms}) + "\n"
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 # =====================================================================

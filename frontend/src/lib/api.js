@@ -146,6 +146,59 @@ export const api = {
       .then((r) => r.data);
   },
 
+  // Streaming voice converse — NDJSON. Calls onFrame(frame) for each chunk.
+  // Frame types: meta, transcript, reply_text, audio_chunk, done, error.
+  voiceConverseStream: async (blob, opts = {}, onFrame) => {
+    const fd = new FormData();
+    const filename = opts.filename || "speech.webm";
+    fd.append("file", blob, filename);
+    if (opts.session_id) fd.append("session_id", opts.session_id);
+    if (opts.user_id) fd.append("user_id", opts.user_id);
+    if (opts.language) fd.append("language", opts.language);
+    if (opts.voice) fd.append("voice", opts.voice);
+
+    const ctrl = opts.signal ? undefined : new AbortController();
+    const signal = opts.signal || ctrl?.signal;
+
+    const resp = await fetch(`${API}/voice/converse_stream`, {
+      method: "POST",
+      body: fd,
+      signal,
+    });
+    if (!resp.ok || !resp.body) {
+      throw new Error(`voice_stream_failed_${resp.status}`);
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      // eslint-disable-next-line no-cond-assign
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        try {
+          const frame = JSON.parse(line);
+          onFrame?.(frame);
+        } catch {
+          /* ignore malformed line */
+        }
+      }
+    }
+    if (buf.trim()) {
+      try {
+        onFrame?.(JSON.parse(buf.trim()));
+      } catch {
+        /* ignore */
+      }
+    }
+  },
+
   voiceStt: (blob, opts = {}) => {
     const fd = new FormData();
     fd.append("file", blob, opts.filename || "speech.webm");

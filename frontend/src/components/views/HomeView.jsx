@@ -558,28 +558,73 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sess
       rec.onstop = async () => {
         stream.getTracks().forEach((tr) => tr.stop());
         setState("processing");
+        // Audio playback queue — sequential, in-order.
+        const audioQueue = [];
+        let isPlaying = false;
+        let assistantText = "";
+        let assistantAppended = false;
+
+        const playNext = () => {
+          if (isPlaying || audioQueue.length === 0) return;
+          const item = audioQueue.shift();
+          isPlaying = true;
+          setState("speaking");
+          const a = new Audio(`data:audio/mp3;base64,${item}`);
+          audioRef.current = a;
+          a.onended = () => {
+            isPlaying = false;
+            if (audioQueue.length > 0) {
+              playNext();
+            } else {
+              setState("idle");
+            }
+          };
+          a.onerror = () => {
+            isPlaying = false;
+            setState("idle");
+          };
+          a.play().catch(() => {
+            isPlaying = false;
+            setState("idle");
+          });
+        };
+
         try {
           const blob = new Blob(chunksRef.current, {
             type: mime || "audio/webm",
           });
-          const res = await api.voiceConverse(blob, {
-            session_id: sessionId,
-            user_id: "home_visitor",
-            language: lang,
-          });
-          // Drop user bubble first (whisper-detected transcript)
-          if (res?.transcript) onUserTranscript?.(res.transcript);
-          // Then the assistant bubble (text reply)
-          if (res?.reply) onAssistantReply?.(res.reply, res.session_id);
-          // Play the spoken reply
-          if (res?.audio_b64) {
-            const audio = new Audio(`data:audio/mp3;base64,${res.audio_b64}`);
-            audioRef.current = audio;
-            setState("speaking");
-            audio.onended = () => setState("idle");
-            audio.onerror = () => setState("idle");
-            await audio.play().catch(() => setState("idle"));
-          } else {
+          await api.voiceConverseStream(
+            blob,
+            {
+              session_id: sessionId,
+              user_id: "home_visitor",
+              language: lang,
+            },
+            (frame) => {
+              if (!frame || !frame.type) return;
+              if (frame.type === "meta" && frame.session_id) {
+                onSessionId?.(frame.session_id);
+              } else if (frame.type === "transcript" && frame.text) {
+                onUserTranscript?.(frame.text);
+              } else if (frame.type === "reply_text" && frame.text) {
+                assistantText = frame.text;
+                onAssistantReply?.(assistantText);
+                assistantAppended = true;
+              } else if (frame.type === "audio_chunk" && frame.audio_b64) {
+                audioQueue.push(frame.audio_b64);
+                playNext();
+              } else if (frame.type === "error") {
+                const msg = frame.message || t("voice.error.process");
+                onError?.(msg);
+                setErrorMsg(msg);
+                setState("error");
+              }
+            }
+          );
+          if (!assistantAppended && assistantText) {
+            onAssistantReply?.(assistantText);
+          }
+          if (audioQueue.length === 0 && !isPlaying) {
             setState("idle");
           }
         } catch (e) {
@@ -863,8 +908,8 @@ function HermesChat({ t, lang }) {
             sessionId={sessionId}
             t={t}
             onUserTranscript={(txt) => appendMessage("user", txt)}
-            onAssistantReply={(reply, sid) => {
-              appendMessage("assistant", reply);
+            onAssistantReply={(reply) => appendMessage("assistant", reply)}
+            onSessionId={(sid) => {
               if (sid && sid !== sessionId) setSessionId(sid);
             }}
             onError={(msg) => setError(msg)}
