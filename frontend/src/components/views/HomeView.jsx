@@ -484,15 +484,61 @@ function AgentsSwipe({ t }) {
 }
 
 // ============================================================
-// Hermes chat + voice
+// Hermes chat + voice — unified bubble dialog
 // ============================================================
 
-function VoiceModeStub({ onTranscript, t, lang }) {
+const HERMES_STORAGE_KEY = "nxt8.home.hermes";
+
+function loadHermesState() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(HERMES_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.messages)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveHermesState(messages, sessionId) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      HERMES_STORAGE_KEY,
+      JSON.stringify({ messages, session_id: sessionId })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function genSessionId() {
+  return `home_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Inline voice recorder — drops user transcript + assistant reply as bubbles
+// into the SAME shared conversation managed by the parent HermesChat.
+function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sessionId, t }) {
   const [state, setState] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const audioRef = useRef(null);
+
+  // Stop any playback when unmounting (e.g. user switches mode)
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        try { audioRef.current.pause(); } catch { /* ignore */ }
+      }
+      const rec = recorderRef.current;
+      if (rec && rec.state === "recording") {
+        try { rec.stop(); } catch { /* ignore */ }
+      }
+    };
+  }, []);
 
   const start = async () => {
     if (state === "recording") return;
@@ -517,11 +563,15 @@ function VoiceModeStub({ onTranscript, t, lang }) {
             type: mime || "audio/webm",
           });
           const res = await api.voiceConverse(blob, {
-            session_id: "home_voice",
+            session_id: sessionId,
             user_id: "home_visitor",
             language: lang,
           });
-          if (res?.transcript) onTranscript?.(res.transcript);
+          // Drop user bubble first (whisper-detected transcript)
+          if (res?.transcript) onUserTranscript?.(res.transcript);
+          // Then the assistant bubble (text reply)
+          if (res?.reply) onAssistantReply?.(res.reply, res.session_id);
+          // Play the spoken reply
           if (res?.audio_b64) {
             const audio = new Audio(`data:audio/mp3;base64,${res.audio_b64}`);
             audioRef.current = audio;
@@ -533,7 +583,9 @@ function VoiceModeStub({ onTranscript, t, lang }) {
             setState("idle");
           }
         } catch (e) {
-          setErrorMsg(t("voice.error.process"));
+          const msg = t("voice.error.process");
+          setErrorMsg(msg);
+          onError?.(msg);
           setState("error");
         }
       };
@@ -541,7 +593,9 @@ function VoiceModeStub({ onTranscript, t, lang }) {
       rec.start();
       setState("recording");
     } catch (e) {
-      setErrorMsg(t("voice.error.mic"));
+      const msg = t("voice.error.mic");
+      setErrorMsg(msg);
+      onError?.(msg);
       setState("error");
     }
   };
@@ -557,7 +611,7 @@ function VoiceModeStub({ onTranscript, t, lang }) {
 
   return (
     <div
-      className="flex flex-col items-center justify-center py-4"
+      className="flex flex-col items-center justify-center py-3"
       data-testid="home-voice"
     >
       <button
@@ -572,6 +626,7 @@ function VoiceModeStub({ onTranscript, t, lang }) {
               : "bg-brand-dark/60 border-2 border-brand-turquoise/40 hover:border-brand-turquoise"
         } disabled:opacity-50`}
         data-testid="home-voice-btn"
+        aria-label={recording ? t("voice.mic.aria.stop") : t("voice.mic.aria.start")}
       >
         {busy ? (
           <Loader2 className="w-8 h-8 text-brand-turquoise animate-spin" />
@@ -602,15 +657,23 @@ function VoiceModeStub({ onTranscript, t, lang }) {
 function HermesChat({ t, lang }) {
   const [mode, setMode] = useState("text");
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: t("home.hermes.welcome") },
-  ]);
+  // Boot: hydrate from localStorage if present, else default welcome.
+  const [messages, setMessages] = useState(() => {
+    const stored = loadHermesState();
+    if (stored?.messages?.length) return stored.messages;
+    return [{ role: "assistant", content: t("home.hermes.welcome") }];
+  });
+  const [sessionId, setSessionId] = useState(() => {
+    const stored = loadHermesState();
+    return stored?.session_id || genSessionId();
+  });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const scrollRef = useRef(null);
   const cancelledRef = useRef(false);
 
-  // Reset welcome message language when lang changes (only if user hasn't chatted yet)
+  // Re-translate the welcome message when language flips — ONLY if the user
+  // hasn't started a conversation yet.
   useEffect(() => {
     setMessages((prev) =>
       prev.length === 1 && prev[0].role === "assistant"
@@ -620,6 +683,11 @@ function HermesChat({ t, lang }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
 
+  // Persist every change.
+  useEffect(() => {
+    saveHermesState(messages, sessionId);
+  }, [messages, sessionId]);
+
   useEffect(() => {
     cancelledRef.current = false;
     return () => {
@@ -627,11 +695,16 @@ function HermesChat({ t, lang }) {
     };
   }, []);
 
+  // New bubble → auto scroll to bottom (newest at the bottom, older slides up).
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, sending]);
+
+  const appendMessage = (role, content) => {
+    setMessages((prev) => [...prev, { role, content }]);
+  };
 
   const send = async () => {
     const text = input.trim();
@@ -641,7 +714,6 @@ function HermesChat({ t, lang }) {
     setInput("");
     setSending(true);
     setError("");
-    // Prepend a language directive as a system instruction (won't display in UI)
     const sysHint =
       lang === "en"
         ? "Reply in English regardless of the user's language."
@@ -655,6 +727,7 @@ function HermesChat({ t, lang }) {
         messages: payloadMessages,
         company_id: "default",
         user_id: "home_visitor",
+        session_id: sessionId,
         mode: "operational",
         temperature: 0.3,
         language: lang,
@@ -716,9 +789,11 @@ function HermesChat({ t, lang }) {
       </div>
 
       <div className="glass-card window-border glow-turquoise-subtle rounded-2xl p-4">
+        {/* Shared bubble feed — visible in both text & voice modes. New
+            messages appear at the bottom; older ones scroll upward. */}
         <div
           ref={scrollRef}
-          className="h-[240px] overflow-y-auto pr-1 space-y-3 mb-3"
+          className="h-[260px] overflow-y-auto pr-1 space-y-3 mb-3"
           data-testid="home-chat-thread"
         >
           {messages.map((m, i) => (
@@ -753,6 +828,7 @@ function HermesChat({ t, lang }) {
           )}
         </div>
 
+        {/* Input footer — swaps between text composer and voice recorder. */}
         {mode === "text" ? (
           <div className="flex items-end gap-2">
             <textarea
@@ -782,19 +858,23 @@ function HermesChat({ t, lang }) {
             </button>
           </div>
         ) : (
-          <VoiceModeStub
-            onTranscript={(txt) => {
-              setInput(txt);
-              setMode("text");
-            }}
-            t={t}
+          <VoiceRecorder
             lang={lang}
+            sessionId={sessionId}
+            t={t}
+            onUserTranscript={(txt) => appendMessage("user", txt)}
+            onAssistantReply={(reply, sid) => {
+              appendMessage("assistant", reply);
+              if (sid && sid !== sessionId) setSessionId(sid);
+            }}
+            onError={(msg) => setError(msg)}
           />
         )}
       </div>
     </section>
   );
 }
+
 
 // ============================================================
 // Tariffs
