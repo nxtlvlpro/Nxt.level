@@ -31,7 +31,7 @@ logger = logging.getLogger("nxt8.voice")
 # Whisper accepts these audio container extensions.
 ALLOWED_AUDIO_EXT = {"mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm", "ogg"}
 ALLOWED_VOICES = {"alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"}
-DEFAULT_VOICE = "nova"
+DEFAULT_VOICE = "onyx"
 DEFAULT_TTS_MODEL = "tts-1"
 MAX_TTS_CHARS = 4000
 

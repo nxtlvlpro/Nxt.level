@@ -566,7 +566,7 @@ async def list_alerts(limit: int = 20) -> Dict[str, Any]:
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = "nova"
+    voice: str = "onyx"
     speed: float = 1.0
     model: str = "tts-1"
 
@@ -613,8 +613,8 @@ async def voice_tts(req: TTSRequest) -> Response:
         raise HTTPException(status_code=502, detail=f"tts_failed: {e}")
 
 
-VOICE_REPLY_MAX_CHARS = 350
-VOICE_REPLY_MAX_SENTENCES = 3
+VOICE_REPLY_MAX_CHARS = 220
+VOICE_REPLY_MAX_SENTENCES = 2
 VOICE_SYSTEM_HINT = (
     "ВАЖНО: это голосовой канал. Ответ должен быть КОРОТКИМ — максимум 2-3 предложения, "
     "разговорным тоном, без markdown, без нумерованных списков, без JSON и без кода. "
@@ -656,7 +656,7 @@ async def voice_converse(
     user_id: str = Form("anonymous"),
     session_id: Optional[str] = Form(None),
     language: Optional[str] = Form(None),
-    voice: str = Form("nova"),
+    voice: str = Form("onyx"),
     company_id: Optional[str] = Form(None),
 ) -> Dict[str, Any]:
     """One-shot voice loop: STT → Hermes COO (tools) → trim → TTS (base64 mp3)."""

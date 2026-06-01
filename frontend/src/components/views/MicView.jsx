@@ -219,7 +219,7 @@ export default function MicView() {
         filename: filenameFromMime(mime),
         session_id: sessionRef.current || undefined,
         language: lang,
-        voice: "nova",
+        voice: "onyx",
       });
       sessionRef.current = data.session_id || sessionRef.current;
       setTranscript(data.transcript || "");
