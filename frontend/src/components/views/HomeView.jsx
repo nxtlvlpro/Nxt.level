@@ -295,7 +295,7 @@ function AgentsSwipe({ t }) {
   const [paused, setPaused] = useState(false);
   const pauseTimerRef = useRef(null);
 
-  const totalCards = AGENTS.length + 1 + TARIFFS.length;
+  const totalCards = AGENTS.length + 1 + TARIFFS.length + 1;
 
   useEffect(() => {
     const el = trackRef.current;
@@ -402,6 +402,11 @@ function AgentsSwipe({ t }) {
         t={t}
       />
     )),
+    <CarouselPilotCard
+      key="pilot"
+      idx={AGENTS.length + 1 + TARIFFS.length}
+      t={t}
+    />,
   ];
 
   return (
@@ -901,6 +906,45 @@ function CarouselTariffCard({ tariff, idx, t }) {
   );
 }
 
+// Pilot card sized for the carousel — the final slide of the deck.
+function CarouselPilotCard({ idx, t }) {
+  return (
+    <article
+      className="snap-center shrink-0 w-[78vw] sm:w-[360px] glass-card window-border glow-turquoise-subtle rounded-2xl p-5 flex flex-col font-mono tracking-tight ring-1 ring-brand-turquoise/30 bg-gradient-to-br from-brand-turquoise/[0.06] to-transparent"
+      data-testid="home-pilot-card"
+      data-card-idx={idx}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-[9px] uppercase tracking-[0.3em] text-brand-turquoise flex items-center gap-1">
+          <Sparkles className="w-3 h-3" /> {t("home.pilot.eyebrow")}
+        </span>
+      </div>
+      <h3 className="text-2xl font-extralight text-slate-100 leading-tight mb-2">
+        <span className="text-brand-turquoise">{t("home.pilot.title.10")}</span>{" "}
+        <span className="text-slate-600">·</span>{" "}
+        <span className="text-purple-400">{t("home.pilot.title.14")}</span>
+      </h3>
+      <div className="text-[11px] uppercase tracking-widest text-orange-400 mb-4">
+        {t("home.pilot.title.free")}
+      </div>
+      <p className="text-[12px] text-slate-300 leading-relaxed tracking-tight mb-2">
+        {t("home.pilot.body1")}
+      </p>
+      <p className="text-[11px] text-slate-500 leading-relaxed tracking-tight mb-4">
+        {t("home.pilot.body2")}
+      </p>
+      <button
+        type="button"
+        onClick={() => goToCheckout("pilot")}
+        className="neo-btn rounded-full px-4 py-2.5 text-brand-turquoise text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-brand-turquoise/10 transition-colors mt-auto"
+        data-testid="home-pilot-cta"
+      >
+        {t("home.pilot.cta")} <ArrowRight className="w-3.5 h-3.5" />
+      </button>
+    </article>
+  );
+}
+
 // ============================================================
 // How it works
 // ============================================================
@@ -938,40 +982,6 @@ function HowItWorks({ t }) {
     </section>
   );
 }
-
-// ============================================================
-// Pilot
-// ============================================================
-
-function Pilot({ t }) {
-  return (
-    <section className="relative py-8 lg:py-10" data-testid="home-pilot">
-      <div className="glass-card window-border glow-turquoise-subtle rounded-3xl p-6 lg:p-10 text-center">
-        <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-3">
-          {t("home.pilot.eyebrow")}
-        </div>
-        <h2 className="text-2xl lg:text-4xl font-extralight text-slate-100 leading-tight mb-3">
-          {t("home.pilot.title.10")} <span className="text-slate-600">·</span>{" "}
-          {t("home.pilot.title.14")} <span className="text-slate-600">·</span>{" "}
-          <span className="text-brand-turquoise">{t("home.pilot.title.free")}</span>
-        </h2>
-        <p className="text-[13px] lg:text-sm text-slate-400 max-w-2xl mx-auto leading-relaxed mb-2">
-          {t("home.pilot.body1")}
-        </p>
-        <p className="text-[11px] text-slate-500 mb-6">{t("home.pilot.body2")}</p>
-        <button
-          type="button"
-          onClick={() => goToCheckout("pilot")}
-          className="neo-btn rounded-full px-6 py-3 text-brand-turquoise text-[11px] uppercase tracking-widest inline-flex items-center gap-2 hover:bg-brand-turquoise/10 transition-colors"
-          data-testid="home-pilot-cta"
-        >
-          {t("home.pilot.cta")} <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
-    </section>
-  );
-}
-
 // ============================================================
 // Root
 // ============================================================
@@ -989,7 +999,6 @@ export default function HomeView() {
 
       <InlineTicker items={pilotItems} testId="home-ticker-pilot" />
       <HowItWorks t={t} />
-      <Pilot t={t} />
     </div>
   );
 }
