@@ -552,6 +552,62 @@ async def _t_evaluate_action_roi(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------
+# web_search — free DuckDuckGo lookup (no API key needed)
+# ---------------------------------------------------------------------
+# Lets Hermes pull live external context (news, market info, definitions,
+# anything not in MemPalace). Uses `ddgs` lib which scrapes DDG HTML.
+# Always rate-limited inside the lib; we cap max_results to keep replies tight.
+
+WEB_SEARCH_MAX_RESULTS = 8
+
+
+async def _t_web_search(args: Dict[str, Any]) -> Dict[str, Any]:
+    query = (args.get("query") or "").strip()
+    max_results = int(args.get("max_results") or 5)
+    max_results = max(1, min(WEB_SEARCH_MAX_RESULTS, max_results))
+    region = (args.get("region") or "wt-wt").strip() or "wt-wt"
+    if not query:
+        return {"ok": False, "error": "query is required"}
+
+    import asyncio
+
+    def _do_search() -> List[Dict[str, Any]]:
+        from ddgs import DDGS
+
+        with DDGS() as ddgs:
+            hits = list(
+                ddgs.text(
+                    query,
+                    region=region,
+                    safesearch="moderate",
+                    max_results=max_results,
+                )
+            )
+        # Normalize keys so the LLM sees a consistent shape.
+        out: List[Dict[str, Any]] = []
+        for h in hits:
+            out.append({
+                "title": (h.get("title") or "").strip(),
+                "url": h.get("href") or h.get("url") or "",
+                "snippet": (h.get("body") or "").strip(),
+            })
+        return out
+
+    try:
+        results = await asyncio.to_thread(_do_search)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"web_search_failed: {e}"}
+
+    return {
+        "ok": True,
+        "query": query,
+        "region": region,
+        "count": len(results),
+        "results": results,
+    }
+
+
 # =====================================================================
 # Unified tool registry
 # =====================================================================
@@ -575,6 +631,8 @@ HERMES_TOOLS: Dict[str, Any] = {
     "find_opportunities_in_contact": _t_find_opportunities_in_contact,
     "suggest_reply_template": _t_suggest_reply_template,
     "evaluate_action_roi": _t_evaluate_action_roi,
+    # External world — free DuckDuckGo web search
+    "web_search": _t_web_search,
 }
 
 
@@ -594,7 +652,9 @@ _TOOLS_DOC = (
     "- `suggest_next_best_action(context, goal?)` — NBA с обоснованием\n"
     "- `find_opportunities_in_contact(contact_id?, context?)` — upsell/cross-sell\n"
     "- `evaluate_action_roi(action, expected_cost_usd?, expected_revenue_usd?, horizon_days?)` — оценка ROI\n"
-    "- `generate_communication_summary(text|messages)` — резюме переписки"
+    "- `generate_communication_summary(text|messages)` — резюме переписки\n"
+    "- `web_search(query, max_results?, region?)` — поиск в интернете (DuckDuckGo) — используй когда нужны свежие новости, "
+    "определения, цены, имена компаний, факты которых нет во внутренней памяти. region по умолчанию `wt-wt` (мир), для рунета используй `ru-ru`."
 )
 
 
@@ -649,6 +709,10 @@ def _system_prompt(mode: str = "operational", autonomy: str = "assistant") -> st
         "и ты сделаешь финальный структурированный ответ.\n"
         "Не выполняй критические действия (create_*, update_*, *_bridge) без "
         "подтверждения, если autonomy != controlled_automation.\n\n"
+        "ВНЕШНИЙ МИР: если пользователь спросил про что-то, чего нет во внутренних "
+        "данных (свежие новости, цены, факты о компаниях, определения, события, погоду, "
+        "людей, спорт, политику и т.п.) — обязательно вызови `web_search` перед ответом. "
+        "Не выдумывай факты — найди или скажи что не нашёл.\n\n"
         f"{_TOOLS_DOC}"
     )
 
