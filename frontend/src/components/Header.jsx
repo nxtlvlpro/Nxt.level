@@ -6,10 +6,10 @@ export default function Header({ aiIndex = 8.1, streakDays = 14 }) {
   return (
     <>
       <header
-        className="flex justify-between items-center py-1"
+        className="flex justify-between items-center py-0"
         data-testid="app-header"
       >
-        <div className="flex items-center -ml-3">
+        <div className="flex items-center -ml-6">
           <img
             src="/nxt8-logo.png"
             alt="NXT8"
