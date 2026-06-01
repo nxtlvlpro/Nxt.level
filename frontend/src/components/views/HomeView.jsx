@@ -988,16 +988,10 @@ function HowItWorks({ t }) {
 
 export default function HomeView() {
   const { t, lang } = useT();
-  const featuresItems = FEATURES_TICKER_KEYS.map((it) => (it.raw ? it.raw : t(it.key)));
-  const pilotItems = PILOT_TICKER_KEYS.map((k) => t(k));
   return (
     <div data-testid="home-view">
       <AgentsSwipe t={t} />
       <HermesChat t={t} lang={lang} />
-
-      <InlineTicker items={featuresItems} testId="home-ticker-features" />
-
-      <InlineTicker items={pilotItems} testId="home-ticker-pilot" />
       <HowItWorks t={t} />
     </div>
   );
