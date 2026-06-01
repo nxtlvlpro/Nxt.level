@@ -90,7 +90,7 @@ function App() {
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div
-            className="shrink-0 z-20 w-full max-w-md lg:max-w-screen-2xl mx-auto px-4 lg:px-8 pt-1"
+            className="shrink-0 z-20 w-full max-w-md lg:max-w-screen-2xl mx-auto px-4 lg:px-8 pt-0"
             data-testid="app-shell-header"
           >
             <Header aiIndex={8.1} streakDays={14} />

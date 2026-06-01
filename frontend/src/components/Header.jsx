@@ -14,7 +14,7 @@ export default function Header({ aiIndex = 8.1, streakDays = 14 }) {
             src="/nxt8-logo.png"
             alt="NXT8"
             data-testid="app-logo"
-            className="h-24 w-auto select-none pointer-events-none"
+            className="h-16 w-auto select-none pointer-events-none"
             draggable={false}
           />
         </div>
