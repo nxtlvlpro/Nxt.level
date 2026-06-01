@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Send, RefreshCw, Plus, Bot } from "lucide-react";
 import api from "../../../lib/api";
 import { BackBar, SectionHeader, EmptyHint } from "./widgets";
+import { useT } from "../../../i18n/LanguageContext";
 
 function statusDotColor(status) {
   if (status === "online") return "bg-emerald-400";
@@ -46,6 +47,7 @@ function JobRow({ job }) {
 }
 
 function CreateJobForm({ onCreated }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [schedule, setSchedule] = useState("");
@@ -64,9 +66,10 @@ function CreateJobForm({ onCreated }) {
       });
       if (!res.ok) {
         setError(
-          `Hermes недоступен (${res.status_code || "—"}): ${
-            res.error || "проверьте, что hermes gateway запущен на :8642"
-          }`
+          t("ops.hermes.error.unavailable", {
+            code: res.status_code || "—",
+            msg: res.error || t("ops.hermes.error.gateway_hint"),
+          })
         );
       } else {
         setPrompt("");
@@ -195,28 +198,20 @@ export default function HermesPanel({ onBack }) {
           data-testid="hermes-refresh"
         >
           <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
-          refresh
+          {t("ui.refresh")}
         </button>
       </div>
 
       {status === "offline" && firstLoaded && (
         <div className="text-[11px] text-yellow-300 border border-yellow-500/30 bg-yellow-500/5 rounded-xl p-3">
-          Hermes API недоступен. Запустите{" "}
-          <code className="bg-brand-dark/60 px-1.5 py-0.5 rounded text-[10px]">
-            hermes gateway
-          </code>{" "}
-          с{" "}
-          <code className="bg-brand-dark/60 px-1.5 py-0.5 rounded text-[10px]">
-            API_SERVER_ENABLED=true
-          </code>{" "}
-          на порту 8642.
+          {t("ops.hermes.unreachable")}
         </div>
       )}
 
       <div className="flex justify-between items-center">
         <SectionHeader
-          title="scheduled jobs"
-          right={`${jobs.length} jobs`}
+          title={t("ops.hermes.scheduled")}
+          right={t("ops.hermes.jobs_count", { n: jobs.length })}
         />
         <CreateJobForm onCreated={refresh} />
       </div>
@@ -224,7 +219,7 @@ export default function HermesPanel({ onBack }) {
       <div className="space-y-2">
         {jobs.length === 0 && (
           <EmptyHint testId="hermes-empty">
-            нет фоновых заданий — создайте первое
+            {t("ops.hermes.empty")}
           </EmptyHint>
         )}
         {jobs.map((j, i) => (
@@ -234,9 +229,7 @@ export default function HermesPanel({ onBack }) {
 
       <div className="text-[10px] text-slate-500 leading-relaxed border-t border-white/5 pt-2">
         <Bot className="w-3 h-3 inline mr-1" />
-        Hermes Agent (NousResearch) — самообучающийся CLI-агент с tool calling.
-        В NXT8 используется как доп. исполнитель фоновых заданий через
-        OpenAI-совместимое API.
+        {t("ops.hermes.footer")}
       </div>
     </section>
   );

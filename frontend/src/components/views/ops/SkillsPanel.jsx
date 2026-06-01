@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Power } from "lucide-react";
 import api from "../../../lib/api";
 import { BackBar, SectionHeader, EmptyHint } from "./widgets";
+import { useT } from "../../../i18n/LanguageContext";
 
 function SkillRow({ skill, onToggle }) {
   const [expanded, setExpanded] = useState(false);
@@ -74,6 +75,7 @@ function SkillRow({ skill, onToggle }) {
 }
 
 export default function SkillsPanel({ onBack }) {
+  const { t } = useT();
   const [skills, setSkills] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -125,7 +127,7 @@ export default function SkillsPanel({ onBack }) {
       className="glass-card rounded-2xl window-border glow-turquoise-subtle p-4 space-y-3"
       data-testid="ops-skills"
     >
-      <BackBar title="skills · creator" onBack={onBack} />
+      <BackBar title={t("ops.skills.title")} onBack={onBack} />
 
       <div className="flex justify-between items-center">
         <div className="flex gap-3 text-[10px] uppercase tracking-widest">
@@ -144,16 +146,15 @@ export default function SkillsPanel({ onBack }) {
           <RefreshCw
             className={`w-3 h-3 ${loading ? "animate-spin" : ""}`}
           />
-          {loading ? "scanning…" : "discover"}
+          {loading ? t("ops.skills.scanning") : t("ops.skills.discover")}
         </button>
       </div>
 
-      <SectionHeader title="registered skills" />
+      <SectionHeader title={t("ops.skills.registered")} />
       <div className="space-y-2">
         {skills.length === 0 && (
           <EmptyHint testId="skills-empty">
-            пока навыков нет — запустите discover для авто-обнаружения
-            повторяющихся паттернов
+            {t("ops.skills.empty.hint")}
           </EmptyHint>
         )}
         {skills.map((s) => (

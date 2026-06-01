@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Send, Radar, Plus } from "lucide-react";
 import api from "../../../lib/api";
 import { BackBar, SectionHeader, EmptyHint } from "./widgets";
+import { useT } from "../../../i18n/LanguageContext";
 
 const CATEGORIES = [
   "competitor",
@@ -25,6 +26,8 @@ const CAT_STYLE = {
 };
 
 function SignalRow({ s }) {
+  const { lang } = useT();
+  const locale = lang === "ru" ? "ru-RU" : "en-US";
   const style = CAT_STYLE[s.category] || CAT_STYLE.tech;
   return (
     <div
@@ -38,7 +41,7 @@ function SignalRow({ s }) {
           {s.category} · {s.source}
         </span>
         <span className="text-[9px] text-slate-600">
-          {new Date(s.ingested_at).toLocaleString("ru-RU", {
+          {new Date(s.ingested_at).toLocaleString(locale, {
             month: "2-digit",
             day: "2-digit",
             hour: "2-digit",
@@ -63,6 +66,7 @@ function SignalRow({ s }) {
 }
 
 function IngestForm({ onIngested }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [headline, setHeadline] = useState("");
   const [category, setCategory] = useState("tech");
@@ -96,7 +100,7 @@ function IngestForm({ onIngested }) {
         className="neo-btn rounded-full px-3 py-1.5 text-brand-turquoise text-[10px] uppercase tracking-widest flex items-center gap-1.5"
         data-testid="market-ingest-open"
       >
-        <Plus className="w-3 h-3" /> add signal
+        <Plus className="w-3 h-3" /> {t("ops.market.add_signal")}
       </button>
     );
   }
@@ -109,7 +113,7 @@ function IngestForm({ onIngested }) {
       <input
         value={headline}
         onChange={(e) => setHeadline(e.target.value)}
-        placeholder="headline (например: «Конкурент X запустил free-tier»)"
+        placeholder={t("ops.market.headline.placeholder")}
         className="w-full bg-brand-dark/60 border border-white/10 rounded-lg px-3 py-2 text-[12px] outline-none focus:border-brand-turquoise/50"
         data-testid="market-headline"
       />
@@ -152,7 +156,7 @@ function IngestForm({ onIngested }) {
           onClick={() => setOpen(false)}
           className="text-slate-500 text-[10px] uppercase tracking-widest px-2"
         >
-          cancel
+          {t("ui.cancel")}
         </button>
         <button
           onClick={submit}
@@ -168,6 +172,8 @@ function IngestForm({ onIngested }) {
 }
 
 export default function MarketPanel({ onBack }) {
+  const { t, lang } = useT();
+  const locale = lang === "ru" ? "ru-RU" : "en-US";
   const [signals, setSignals] = useState([]);
   const [digests, setDigests] = useState([]);
   const [scanning, setScanning] = useState(false);
@@ -204,7 +210,7 @@ export default function MarketPanel({ onBack }) {
       className="glass-card rounded-2xl window-border glow-turquoise-subtle p-4 space-y-3"
       data-testid="ops-market"
     >
-      <BackBar title="market · radar" onBack={onBack} />
+      <BackBar title={t("ops.market.title")} onBack={onBack} />
 
       <div className="flex justify-between items-center gap-2">
         <IngestForm onIngested={refresh} />
@@ -215,33 +221,33 @@ export default function MarketPanel({ onBack }) {
           data-testid="market-scan"
         >
           <Radar className={`w-3 h-3 ${scanning ? "animate-spin" : ""}`} />
-          {scanning ? "scanning…" : "scan 24h"}
+          {scanning ? t("ops.market.scanning") : t("ops.market.scan_24h")}
         </button>
       </div>
 
       {latestDigest && latestDigest.digest && (
         <div className="border border-brand-turquoise/30 bg-brand-turquoise/5 rounded-xl p-3 space-y-1">
           <div className="text-[10px] uppercase tracking-widest text-brand-turquoise">
-            latest digest · {latestDigest.signals_count} signals
+            {t("ops.market.latest_digest", { n: latestDigest.signals_count })}
           </div>
           <div className="text-[12px] text-slate-200 whitespace-pre-wrap">
             {latestDigest.digest}
           </div>
           <div className="text-[9px] text-slate-500">
-            {new Date(latestDigest.created_at).toLocaleString("ru-RU")} ·{" "}
+            {new Date(latestDigest.created_at).toLocaleString(locale)} ·{" "}
             {latestDigest.provider || "—"}
           </div>
         </div>
       )}
 
       <SectionHeader
-        title="signals"
-        right={`${signals.length} ingested`}
+        title={t("ops.market.signals")}
+        right={t("ops.market.ingested", { n: signals.length })}
       />
       <div className="space-y-2">
         {signals.length === 0 && (
           <EmptyHint testId="market-empty">
-            нет сигналов — добавьте первый или дождитесь авто-фида
+            {t("ops.market.empty")}
           </EmptyHint>
         )}
         {signals.map((s) => (
@@ -251,7 +257,7 @@ export default function MarketPanel({ onBack }) {
 
       {digests.length > 1 && (
         <>
-          <SectionHeader title="digest history" />
+          <SectionHeader title={t("ops.market.digest_history")} />
           <div className="space-y-2">
             {digests.slice(1).map((d) => (
               <div
@@ -259,7 +265,7 @@ export default function MarketPanel({ onBack }) {
                 className="border border-white/5 bg-brand-dark/40 rounded-xl p-2.5 text-[11px]"
               >
                 <div className="text-[9px] uppercase text-slate-500">
-                  {new Date(d.created_at).toLocaleString("ru-RU")} ·{" "}
+                  {new Date(d.created_at).toLocaleString(locale)} ·{" "}
                   {d.signals_count} signals
                 </div>
                 <div className="text-slate-300 mt-1 line-clamp-3">
