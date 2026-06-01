@@ -13,6 +13,7 @@ import MicView from "./components/views/MicView";
 import OpsView from "./components/views/OpsView";
 import api from "./lib/api";
 import { useT } from "./i18n/LanguageContext";
+import { HEADER_LOCKED } from "./config/header.locked";
 
 function App() {
   const { t } = useT();
@@ -90,7 +91,7 @@ function App() {
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div
-            className="shrink-0 z-20 w-full max-w-md lg:max-w-screen-2xl mx-auto px-4 lg:px-8 pt-0"
+            className={`shrink-0 z-20 w-full max-w-md lg:max-w-screen-2xl mx-auto px-4 lg:px-8 ${HEADER_LOCKED.shellTopPaddingClass}`}
             data-testid="app-shell-header"
           >
             <Header aiIndex={8.1} streakDays={14} />
@@ -108,7 +109,10 @@ function App() {
             className="relative z-10 flex-1 overflow-y-auto overscroll-contain w-full max-w-md lg:max-w-screen-2xl mx-auto px-4 lg:px-8"
             data-testid="main-scroll"
           >
-            <div className={view === "home" ? "pt-0 pb-4" : "py-4"} data-testid={`view-${view}`}>
+            <div
+              className={view === "home" ? HEADER_LOCKED.homeViewPaddingClass : "py-4"}
+              data-testid={`view-${view}`}
+            >
               {renderView()}
             </div>
           </main>

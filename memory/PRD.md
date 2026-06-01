@@ -1,7 +1,13 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.9.0-i18n (additive over v1.8.1-landing)
-**Last updated:** 2026-05-26 by Главный Системный Архитектор (E1)
+**Current version:** v1.9.1-locked-header (additive over v1.9.0-i18n)
+**Last updated:** 2026-06-01 by Главный Системный Архитектор (E1)
+
+## 🔒 LOCKED COMPONENTS
+
+The following parts of the codebase are **explicitly frozen by the product owner**. Future agents MUST ask the user before changing any value listed here:
+
+- **Header layout** — see `/app/frontend/src/config/header.locked.js` (logo height = `h-4`, left bleed = `-ml-6`, header `py-0`, shell top padding `pt-0`, home view padding `pt-0 pb-4`). The cropped PNG at `/app/frontend/public/nxt8-logo.png` is also part of the contract — it must remain tight-cropped (no transparent padding).
 
 ## What was built (in chronological order)
 
