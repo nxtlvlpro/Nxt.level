@@ -520,7 +520,7 @@ function genSessionId() {
 
 // Inline voice recorder — drops user transcript + assistant reply as bubbles
 // into the SAME shared conversation managed by the parent HermesChat.
-function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sessionId, t }) {
+function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionId, onPhase, lang, sessionId, t }) {
   const [state, setState] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const recorderRef = useRef(null);
@@ -569,6 +569,7 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sess
           const item = audioQueue.shift();
           isPlaying = true;
           setState("speaking");
+          onPhase?.("speaking");
           const a = new Audio(`data:audio/mp3;base64,${item}`);
           audioRef.current = a;
           a.onended = () => {
@@ -577,15 +578,18 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sess
               playNext();
             } else {
               setState("idle");
+              onPhase?.("idle");
             }
           };
           a.onerror = () => {
             isPlaying = false;
             setState("idle");
+            onPhase?.("idle");
           };
           a.play().catch(() => {
             isPlaying = false;
             setState("idle");
+            onPhase?.("idle");
           });
         };
 
@@ -610,6 +614,10 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sess
                 assistantText = frame.text;
                 onAssistantReply?.(assistantText);
                 assistantAppended = true;
+                // Bubble is on screen — show "preparing voice" until the
+                // first audio chunk actually starts playing.
+                setState("synthesizing");
+                onPhase?.("synthesizing");
               } else if (frame.type === "audio_chunk" && frame.audio_b64) {
                 audioQueue.push(frame.audio_b64);
                 playNext();
@@ -652,6 +660,7 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sess
 
   const recording = state === "recording";
   const busy = state === "requesting" || state === "processing";
+  const synthesizing = state === "synthesizing";
   const speaking = state === "speaking";
 
   return (
@@ -662,19 +671,23 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sess
       <button
         type="button"
         onClick={recording ? stop : start}
-        disabled={busy}
+        disabled={busy || synthesizing}
         className={`relative w-20 h-20 rounded-full flex items-center justify-center transition-all ${
           recording
             ? "bg-red-500/20 border-2 border-red-400 shadow-[0_0_24px_rgba(248,113,113,0.4)]"
             : speaking
               ? "bg-brand-turquoise/20 border-2 border-brand-turquoise shadow-[0_0_24px_var(--brand-turquoise)]"
-              : "bg-brand-dark/60 border-2 border-brand-turquoise/40 hover:border-brand-turquoise"
-        } disabled:opacity-50`}
+              : synthesizing
+                ? "bg-purple-500/15 border-2 border-purple-400/60 shadow-[0_0_20px_rgba(192,132,252,0.35)]"
+                : "bg-brand-dark/60 border-2 border-brand-turquoise/40 hover:border-brand-turquoise"
+        } disabled:opacity-60`}
         data-testid="home-voice-btn"
         aria-label={recording ? t("voice.mic.aria.stop") : t("voice.mic.aria.start")}
       >
         {busy ? (
           <Loader2 className="w-8 h-8 text-brand-turquoise animate-spin" />
+        ) : synthesizing ? (
+          <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
         ) : recording ? (
           <Square className="w-7 h-7 text-red-400" />
         ) : speaking ? (
@@ -688,9 +701,11 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, lang, sess
           ? t("voice.recording")
           : busy
             ? t("voice.processing")
-            : speaking
-              ? t("voice.speaking")
-              : t("voice.idle")}
+            : synthesizing
+              ? t("voice.synthesizing")
+              : speaking
+                ? t("voice.speaking")
+                : t("voice.idle")}
       </div>
       {errorMsg && (
         <div className="text-[10px] text-red-400 mt-2">{errorMsg}</div>
@@ -714,6 +729,9 @@ function HermesChat({ t, lang }) {
   });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  // Voice synthesis phase — "synthesizing" between assistant text arrival and
+  // the first TTS audio chunk; cleared when audio starts/ends.
+  const [voicePhase, setVoicePhase] = useState("idle");
   const scrollRef = useRef(null);
   const cancelledRef = useRef(false);
 
@@ -740,12 +758,12 @@ function HermesChat({ t, lang }) {
     };
   }, []);
 
-  // New bubble → auto scroll to bottom (newest at the bottom, older slides up).
+  // Auto-scroll when bubbles or transient indicators change.
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, sending]);
+  }, [messages, sending, voicePhase]);
 
   const appendMessage = (role, content) => {
     setMessages((prev) => [...prev, { role, content }]);
@@ -866,6 +884,14 @@ function HermesChat({ t, lang }) {
               </div>
             </div>
           )}
+          {voicePhase === "synthesizing" && (
+            <div className="flex justify-start" data-testid="home-voice-synth-hint">
+              <div className="bubble-ai max-w-[85%] rounded-2xl px-4 py-2 text-[11px] text-purple-300/80 flex items-center gap-2">
+                <Volume2 className="w-3 h-3 animate-pulse" />
+                {t("voice.synthesizing")}
+              </div>
+            </div>
+          )}
           {error && (
             <div className="text-[10px] text-red-400 border border-red-500/30 bg-red-500/5 rounded-lg px-2 py-1">
               {error}
@@ -912,6 +938,7 @@ function HermesChat({ t, lang }) {
             onSessionId={(sid) => {
               if (sid && sid !== sessionId) setSessionId(sid);
             }}
+            onPhase={(p) => setVoicePhase(p)}
             onError={(msg) => setError(msg)}
           />
         )}
