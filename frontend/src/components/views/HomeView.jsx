@@ -213,6 +213,17 @@ async function continueToCheckout(planId) {
   // can poll status without losing context.
   if (typeof window === "undefined") return;
   const stripePlanId = PLAN_ID_MAP[planId] || PLAN_ID_MAP.pilot;
+
+  // Viral attribution — if this visitor came via ?ref=<share_id>, record
+  // a conversion event for that share. This is fire-and-forget; it must
+  // never block the checkout call.
+  try {
+    const ref = localStorage.getItem("nxt8.share.ref");
+    if (ref) {
+      api.shareConversion(ref, "checkout").catch(() => { /* ignore */ });
+    }
+  } catch { /* ignore */ }
+
   try {
     const res = await api.checkoutSessionCreate({
       plan_id: stripePlanId,

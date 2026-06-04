@@ -93,6 +93,12 @@ async def lifespan(_app: FastAPI):
         await _tour.ensure_indexes()
     except Exception as e:  # noqa: BLE001
         logger.warning("tour ensure_indexes failed: %s", e)
+    # Share-My-Journey indexes (viral marketing channel).
+    try:
+        from core import share as _share
+        await _share.ensure_indexes()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("share ensure_indexes failed: %s", e)
     # Seed default onboarding access code(s) — currently a single pilot code.
     try:
         from agents import onboarding as _onb
@@ -2701,6 +2707,99 @@ async def tour_event_create(req: TourEventRequest) -> Dict[str, Any]:
 async def tour_funnel(window_hours: int = 168) -> Dict[str, Any]:
     from core import tour as _t
     return await _t.funnel(window_hours=max(1, min(window_hours, 24 * 90)))
+
+
+# =====================================================================
+# Share-My-Journey — viral marketing channel after the Test Drive
+# =====================================================================
+
+
+class ShareMintRequest(BaseModel):
+    client_id: str
+    completed_steps: Optional[List[str]] = None
+    headline: Optional[str] = None
+    locale: str = "ru"
+
+
+class ShareConversionRequest(BaseModel):
+    share_id: str
+    kind: str = "checkout"
+
+
+@api.post("/share/journey")
+async def share_mint(req: ShareMintRequest) -> Dict[str, Any]:
+    from core import share as _sh
+    res = await _sh.mint_share(
+        client_id=req.client_id,
+        completed_steps=req.completed_steps,
+        headline=req.headline,
+        locale=req.locale,
+    )
+    if not res.get("ok"):
+        raise HTTPException(status_code=502, detail=res.get("error") or "mint_failed")
+    return res
+
+
+@api.get("/share/stats")
+async def share_stats(window_hours: int = 24 * 30) -> Dict[str, Any]:
+    from core import share as _sh
+    return await _sh.stats(window_hours=max(1, min(window_hours, 24 * 365)))
+
+
+@api.get("/share/{share_id}")
+async def share_get(
+    share_id: str,
+    request: Request,
+    ref: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Public read for the share record — also records an open event."""
+    from core import share as _sh
+    rec = await _sh.get_share(share_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="share_not_found")
+    # Record open in the background — never block the read.
+    try:
+        ua = request.headers.get("user-agent", "")
+        await _sh.record_open(share_id, ref=ref, user_agent=ua)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("share open record failed: %s", e)
+    return {
+        "ok":              True,
+        "share_id":        rec["share_id"],
+        "headline":        rec.get("headline"),
+        "completed_steps": rec.get("completed_steps") or [],
+        "locale":          rec.get("locale", "ru"),
+        "created_at":      rec.get("created_at"),
+        "opens":           int(rec.get("opens", 0)),
+        "og_image_path":   f"/api/share/{share_id}/og.png",
+    }
+
+
+@api.get("/share/{share_id}/og.png")
+async def share_og(share_id: str) -> Response:
+    """1200×630 PNG card for Open Graph / Twitter / WhatsApp previews."""
+    from core import share as _sh
+    rec = await _sh.get_share(share_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="share_not_found")
+    png = _sh.render_og_card_png(rec.get("headline") or "", share_id=share_id)
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={
+            # Cache aggressively — the headline is immutable for a share id.
+            "Cache-Control": "public, max-age=86400, immutable",
+        },
+    )
+
+
+@api.post("/share/conversion")
+async def share_conversion(req: ShareConversionRequest) -> Dict[str, Any]:
+    from core import share as _sh
+    res = await _sh.track_conversion(req.share_id, kind=req.kind)
+    if not res.get("ok"):
+        raise HTTPException(status_code=404, detail=res.get("error") or "share_not_found")
+    return res
 
 
 # =====================================================================

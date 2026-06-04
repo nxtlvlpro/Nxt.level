@@ -14,6 +14,9 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
+  Share2,
+  Copy,
+  Check,
 } from "lucide-react";
 import api from "../lib/api";
 
@@ -305,13 +308,166 @@ export default function DemoTour() {
           {allDone && (
             <div
               data-testid="demo-tour-done"
-              className="px-4 py-3 border-t border-emerald-400/20 bg-emerald-500/5 text-[12px] text-emerald-200 font-mono"
+              className="px-4 py-3 border-t border-emerald-400/20 bg-emerald-500/5"
             >
-              ✓ Готово. Ты прошёл весь tour. Дальше — задай Hermes реальную бизнес-задачу.
+              <div className="text-[12px] text-emerald-200 font-mono mb-3">
+                ✓ Готово. Расскажи команде — выложи свой Test Drive.
+              </div>
+              <ShareJourneyButton
+                clientId={clientIdRef.current}
+                completedSteps={Array.from(completed)}
+              />
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ============================================================
+// Share My Journey — viral channel after the Test Drive
+// ============================================================
+
+function buildShareUrl(shareId) {
+  if (typeof window === "undefined") return "";
+  // Use the production-friendly origin verbatim. Anyone opening the link
+  // hits the same page — the marketing landing — with a ?ref=<id> so we
+  // can attribute opens & conversions to this share.
+  const origin = window.location.origin.replace(/\/$/, "");
+  return `${origin}/?ref=${encodeURIComponent(shareId)}`;
+}
+
+function buildShareText() {
+  return (
+    "Я попробовал NXT8 — AI-команда из 8 агентов, " +
+    "которые реально берут на себя операционку компании. " +
+    "Глянь сам:"
+  );
+}
+
+function ShareJourneyButton({ clientId, completedSteps }) {
+  const [phase, setPhase] = useState("idle");   // idle | minting | ready | error
+  const [shareId, setShareId] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const shareUrl = useMemo(
+    () => (shareId ? buildShareUrl(shareId) : ""),
+    [shareId]
+  );
+
+  const handleMint = async () => {
+    if (phase === "minting" || phase === "ready") return;
+    setPhase("minting");
+    try {
+      const res = await api.shareMint(
+        clientId || "anon",
+        completedSteps,
+        "Я попробовал NXT8 — это AI-команда для бизнеса",
+        "ru"
+      );
+      if (res?.share_id) {
+        setShareId(res.share_id);
+        setPhase("ready");
+      } else {
+        setPhase("error");
+      }
+    } catch {
+      setPhase("error");
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch { /* clipboard denied — fall back to manual selection */ }
+  };
+
+  const handleNativeShare = async () => {
+    if (!shareUrl) return;
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "NXT8",
+          text: buildShareText(),
+          url: shareUrl,
+        });
+      } catch { /* user cancelled */ }
+    } else {
+      handleCopy();
+    }
+  };
+
+  if (phase !== "ready") {
+    return (
+      <button
+        type="button"
+        onClick={handleMint}
+        disabled={phase === "minting"}
+        data-testid="share-journey-mint"
+        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-brand-turquoise/15 ring-1 ring-brand-turquoise/40 hover:bg-brand-turquoise/25 text-brand-turquoise text-[12px] font-mono tracking-tight transition disabled:opacity-50"
+      >
+        <Share2 className="w-3.5 h-3.5" />
+        {phase === "minting"
+          ? "Готовим ссылку…"
+          : phase === "error"
+            ? "Попробовать ещё раз"
+            : "Поделиться Test Drive"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2" data-testid="share-journey-ready">
+      <div className="flex items-center gap-1.5">
+        <input
+          readOnly
+          value={shareUrl}
+          data-testid="share-journey-url"
+          onFocus={(e) => e.target.select()}
+          className="flex-1 min-w-0 text-[11px] font-mono bg-black/40 ring-1 ring-white/10 rounded-md px-2 py-1.5 text-white/80 outline-none focus:ring-brand-turquoise/40"
+        />
+        <button
+          type="button"
+          onClick={handleCopy}
+          data-testid="share-journey-copy"
+          className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/[0.04] ring-1 ring-white/10 hover:bg-white/[0.08] text-white/70 transition"
+          title="Скопировать"
+        >
+          {copied ? (
+            <Check className="w-3.5 h-3.5 text-emerald-300" />
+          ) : (
+            <Copy className="w-3.5 h-3.5" />
+          )}
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          type="button"
+          onClick={handleNativeShare}
+          data-testid="share-journey-native"
+          className="inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-brand-turquoise/15 ring-1 ring-brand-turquoise/40 hover:bg-brand-turquoise/25 text-brand-turquoise text-[11px] font-mono transition"
+        >
+          <Share2 className="w-3 h-3" />
+          Поделиться
+        </button>
+        <a
+          href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(buildShareText())}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="share-journey-telegram"
+          className="inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-white/[0.04] ring-1 ring-white/10 hover:bg-white/[0.08] text-white/70 text-[11px] font-mono transition"
+        >
+          Telegram
+        </a>
+      </div>
+      <div className="text-[10px] font-mono text-white/40">
+        Превью с твоим Test Drive сгенерируется автоматически при отправке.
+      </div>
     </div>
   );
 }

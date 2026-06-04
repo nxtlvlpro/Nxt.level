@@ -2,6 +2,16 @@
 
 **Текущая версия:** v1.7.0-approval-gate (2026-06-04)
 
+## ✅ Done — Share My Journey / Viral Channel (2026-06-04)
+- `core/share.py` — mint share_id, persist headline+steps, open/conversion counters
+- PNG OG-card 1200×630 (PIL/Vera) → `/api/share/{id}/og.png` для превью в WhatsApp/Telegram/Twitter
+- Endpoints: `POST /share/journey`, `GET /share/{id}`, `GET /share/{id}/og.png`,
+  `POST /share/conversion`, `GET /share/stats`
+- Frontend: ShareJourneyButton в DemoTour (после 5/5) — copy / native share / Telegram deep-link
+- Viral attribution: `?ref=<share_id>` на загрузке → шторм localStorage → fired на checkout
+- 7 регрессионных тестов: mint, headline truncate, counters, stats shape, PNG bytes, bad-id guard
+- **95/95 tests passing**
+
 ## ✅ Done — Demo Tour (2026-06-04)
 - `core/tour.py` + endpoints `/api/tour/{catalogue,events,funnel}`
 - `DemoTour.jsx` плавающий чек-лист с 5 сценариями

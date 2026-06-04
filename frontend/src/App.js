@@ -36,6 +36,22 @@ function App() {
   const [alertCount, setAlertCount] = useState(0);
   const [seedStatus, setSeedStatus] = useState("idle");
 
+  // Viral referral tracking — if the visitor arrived via `?ref=<share_id>`,
+  // remember it for later checkout-conversion attribution and ping the
+  // backend (which both records an open event and validates the id).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get("ref");
+      if (!ref) return;
+      localStorage.setItem("nxt8.share.ref", ref);
+      api.shareGet(ref, document.referrer || undefined).catch(() => {
+        /* a 404 means the share id is invalid — silently ignore */
+      });
+    } catch { /* ignore */ }
+  }, []);
+
   // Demo Tour — auto-complete the "open_agents" step as soon as the
   // visitor lands on the Agents view (no matter how they got there).
   useEffect(() => {

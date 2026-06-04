@@ -156,6 +156,23 @@ export const api = {
   tourFunnel: (window_hours = 168) =>
     http.get(`/tour/funnel?window_hours=${window_hours}`).then((r) => r.data),
 
+  // Share-My-Journey — viral channel after the Test Drive
+  shareMint: (client_id, completed_steps, headline, locale = "ru") =>
+    http
+      .post("/share/journey", { client_id, completed_steps, headline, locale })
+      .then((r) => r.data),
+  shareGet: (share_id, ref) =>
+    http
+      .get(`/share/${encodeURIComponent(share_id)}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`)
+      .then((r) => r.data),
+  shareConversion: (share_id, kind = "checkout") =>
+    http
+      .post("/share/conversion", { share_id, kind })
+      .then((r) => r.data)
+      .catch(() => ({ ok: false })),
+  shareStats: (window_hours = 24 * 30) =>
+    http.get(`/share/stats?window_hours=${window_hours}`).then((r) => r.data),
+
   // Documents (Compliance persona)
   documentsList: (company_id, limit = 50) =>
     http
