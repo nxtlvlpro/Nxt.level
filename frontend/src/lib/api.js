@@ -116,6 +116,16 @@ export const api = {
       })
       .then((r) => ({ status: r.status, data: r.data })),
 
+  // Inter-agent dialogues & escalations (CEO ↔ team)
+  agentDialogues: (limit = 50, agent_id) =>
+    http
+      .get(`/agents/dialogues?limit=${limit}${agent_id ? `&agent_id=${agent_id}` : ""}`)
+      .then((r) => r.data),
+  agentEscalations: (limit = 50, status) =>
+    http
+      .get(`/agents/escalations?limit=${limit}${status ? `&status=${status}` : ""}`)
+      .then((r) => r.data),
+
   // Documents (Compliance persona)
   documentsList: (company_id, limit = 50) =>
     http

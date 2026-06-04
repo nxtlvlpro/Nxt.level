@@ -2558,6 +2558,27 @@ async def stripe_webhook(http_request: Request) -> Dict[str, Any]:
 
 
 # =====================================================================
+# Inter-agent dialogues & escalations (read-side)
+# =====================================================================
+
+
+@api.get("/agents/dialogues")
+async def list_agent_dialogues(limit: int = 50, agent_id: Optional[str] = None):
+    """List recent inter-agent dialogues (delegate / escalate / ask)."""
+    from agents.inter_agent import list_dialogues
+    items = await list_dialogues(limit=limit, agent_id=agent_id)
+    return {"ok": True, "count": len(items), "items": items}
+
+
+@api.get("/agents/escalations")
+async def list_agent_escalations(limit: int = 50, status: Optional[str] = None):
+    """List recent escalations from subordinates to Hermes."""
+    from agents.inter_agent import list_escalations
+    items = await list_escalations(limit=limit, status=status)
+    return {"ok": True, "count": len(items), "items": items}
+
+
+# =====================================================================
 # Mount + CORS
 # =====================================================================
 

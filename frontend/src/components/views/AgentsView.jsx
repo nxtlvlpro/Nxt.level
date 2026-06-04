@@ -12,6 +12,9 @@ import {
   Loader2,
   Send,
   X,
+  ArrowRight,
+  AlertTriangle,
+  MessageCircle,
 } from "lucide-react";
 import CollapsibleCard from "../CollapsibleCard";
 import api from "../../lib/api";
@@ -351,6 +354,169 @@ export default function AgentsView() {
           onClose={() => setActive(null)}
         />
       )}
+
+      <InterAgentDialoguesCard />
     </div>
+  );
+}
+
+// ============================================================
+// Inter-Agent Dialogues — visualise CEO ↔ team conversations
+// ============================================================
+
+const KIND_BADGE = {
+  delegate: { icon: ArrowRight, label: "DELEGATE", cls: "bg-cyan-500/15 ring-cyan-400/30 text-cyan-200" },
+  escalate: { icon: AlertTriangle, label: "ESCALATE", cls: "bg-amber-500/15 ring-amber-400/30 text-amber-200" },
+  ask:      { icon: MessageCircle, label: "ASK",      cls: "bg-violet-500/15 ring-violet-400/30 text-violet-200" },
+};
+
+function DialogueRow({ d, onOpen }) {
+  const meta = KIND_BADGE[d.kind] || KIND_BADGE.ask;
+  const Icon = meta.icon;
+  return (
+    <button
+      type="button"
+      data-testid={`dialogue-row-${d.id}`}
+      onClick={() => onOpen(d)}
+      className="w-full text-left grid grid-cols-[auto,auto,1fr,auto] items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.02] ring-1 ring-white/5 hover:bg-white/[0.05] transition"
+    >
+      <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full ring-1 ${meta.cls}`}>
+        <Icon className="w-3 h-3" /> {meta.label}
+      </span>
+      <span className="text-[11px] font-mono text-white/70 whitespace-nowrap">
+        {d.from_agent} → {d.to_agent}
+      </span>
+      <span className="text-xs text-white/80 truncate">{d.topic}</span>
+      <span className="text-[10px] font-mono text-white/30 whitespace-nowrap">
+        {d.created_at ? new Date(d.created_at).toLocaleTimeString() : ""}
+      </span>
+    </button>
+  );
+}
+
+function DialogueModal({ d, onClose }) {
+  if (!d) return null;
+  const meta = KIND_BADGE[d.kind] || KIND_BADGE.ask;
+  const Icon = meta.icon;
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      data-testid="dialogue-modal"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl bg-zinc-950 ring-1 ring-white/10 rounded-2xl flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="shrink-0 p-4 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className={`inline-flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-full ring-1 ${meta.cls}`}>
+              <Icon className="w-3 h-3" /> {meta.label}
+            </span>
+            <div className="font-mono text-sm text-white/80">
+              {d.from_agent} <span className="text-white/30">→</span> {d.to_agent}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            data-testid="dialogue-modal-close"
+            className="text-white/50 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-wider text-white/40 mb-1">Тема</div>
+            <div className="text-sm text-white/85">{d.topic}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-wider text-white/40 mb-1">Запрос</div>
+            <pre className="text-xs text-white/70 whitespace-pre-wrap font-sans bg-white/[0.03] ring-1 ring-white/5 rounded-lg p-3">{d.request}</pre>
+          </div>
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-wider text-white/40 mb-1">Ответ</div>
+            <pre className="text-xs text-white/80 whitespace-pre-wrap font-sans bg-white/[0.03] ring-1 ring-white/5 rounded-lg p-3">{d.response}</pre>
+          </div>
+          {(d.urgency || d.confidence) && (
+            <div className="flex gap-4 text-[10px] font-mono text-white/40">
+              {d.urgency && <span>URGENCY: {d.urgency}</span>}
+              {d.confidence != null && <span>CONFIDENCE: {Number(d.confidence).toFixed(2)}</span>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InterAgentDialoguesCard() {
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+
+  const refresh = () => {
+    setLoading(true);
+    api
+      .agentDialogues(30)
+      .then((d) => setItems(d.items || []))
+      .catch((e) => setErr(e?.message || String(e)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <>
+      <CollapsibleCard
+        storageKey="agents-dialogues"
+        testId="agents-dialogues-card"
+        title="Связь команды (CEO ↔ агенты)"
+        titleRight={
+          <span className="text-[10px] font-mono text-white/40">
+            {items.length} событий
+          </span>
+        }
+      >
+        <div className="text-[11px] font-mono text-white/40 mb-3 leading-relaxed">
+          Реальные межагентные вызовы: Hermes как CEO делегирует
+          подчинённым (DELEGATE), агенты эскалируют ему критичное
+          (ESCALATE), коллеги советуются между собой (ASK).
+        </div>
+
+        {err && (
+          <div className="text-xs text-rose-300 bg-rose-500/10 ring-1 ring-rose-400/30 rounded-lg p-3 font-mono mb-3" data-testid="dialogues-error">
+            {err}
+          </div>
+        )}
+
+        {loading && !items.length && (
+          <div className="flex items-center gap-2 text-xs text-white/40 font-mono">
+            <Loader2 className="w-3 h-3 animate-spin" /> загрузка…
+          </div>
+        )}
+
+        {!loading && !items.length && (
+          <div className="text-xs text-white/40 font-mono italic" data-testid="dialogues-empty">
+            Пока пусто — задайте Hermes-у вопрос вне его прямой зоны
+            (финансы, HR, право), и он делегирует профильному агенту.
+          </div>
+        )}
+
+        <div className="space-y-1.5" data-testid="dialogues-list">
+          {items.map((d) => (
+            <DialogueRow key={d.id} d={d} onOpen={setOpen} />
+          ))}
+        </div>
+      </CollapsibleCard>
+
+      <DialogueModal d={open} onClose={() => setOpen(null)} />
+    </>
   );
 }

@@ -716,6 +716,31 @@ async def _t_hermes_self_assessment(args: Dict[str, Any]) -> Dict[str, Any]:
     return await _ev_hermes_self_assessment(args)
 
 
+# ---------------------------------------------------------------------
+# Inter-agent communication (CEO → subordinate, subordinate → CEO, peer↔peer)
+# ---------------------------------------------------------------------
+
+from agents.inter_agent import (  # noqa: E402
+    delegate_to_agent as _ia_delegate_to_agent,
+    escalate_to_hermes as _ia_escalate_to_hermes,
+    ask_colleague as _ia_ask_colleague,
+)
+
+
+async def _t_delegate_to_agent(args: Dict[str, Any]) -> Dict[str, Any]:
+    # Hermes is the only legitimate caller — pin from_agent explicitly.
+    args = {**args, "from_agent": "hermes"}
+    return await _ia_delegate_to_agent(args)
+
+
+async def _t_escalate_to_hermes(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ia_escalate_to_hermes(args)
+
+
+async def _t_ask_colleague(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ia_ask_colleague(args)
+
+
 # =====================================================================
 # Unified tool registry
 # =====================================================================
@@ -750,6 +775,10 @@ HERMES_TOOLS: Dict[str, Any] = {
     "list_policy_proposals":         _t_list_policy_proposals,
     "detect_automation_candidates":  _t_detect_automation_candidates,
     "hermes_self_assessment":        _t_hermes_self_assessment,
+    # Inter-agent communication
+    "delegate_to_agent":             _t_delegate_to_agent,
+    "escalate_to_hermes":            _t_escalate_to_hermes,
+    "ask_colleague":                 _t_ask_colleague,
 }
 
 
@@ -781,7 +810,14 @@ _TOOLS_DOC = (
     "- `propose_policy(title, scope, proposed_rule, justification?, severity?)` — предложить новый регламент компании.\n"
     "- `list_policy_proposals(status?, limit?)` — прочитать список предложенных правил.\n"
     "- `detect_automation_candidates(window?, min_count?)` — найти повторяющиеся ручные intent'ы для автоматизации.\n"
-    "- `hermes_self_assessment(window?)` — посмотреть свои метрики (confidence/escalation/mock_rate + журнал)."
+    "- `hermes_self_assessment(window?)` — посмотреть свои метрики (confidence/escalation/mock_rate + журнал).\n"
+    "- `delegate_to_agent(agent_id, task, context?)` — как CEO передать конкретную задачу подчинённому "
+    "(hr_mentor/client_manager/project_coord/analyst/bookkeeper/marketer/compliance) и получить его ответ. "
+    "ИСПОЛЬЗУЙ когда вопрос узкоспециализированный — не тяни одеяло на себя.\n"
+    "- `escalate_to_hermes(reason, evidence?, urgency?, from_agent, question?)` — путь СНИЗУ ВВЕРХ "
+    "(для подчинённых, не для тебя). Когда подчинённый эскалирует тебе — ты увидишь это в db.escalations.\n"
+    "- `ask_colleague(from_agent, agent_id, question, context?)` — peer-to-peer между подчинёнными "
+    "(не для тебя, используется в делегированных задачах)."
 )
 
 

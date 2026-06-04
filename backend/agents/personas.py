@@ -66,6 +66,9 @@ def _tools_doc(allowed: List[str]) -> str:
         "mempalace_store": 'mempalace_store(content, wing?, room?) — записать факт в долгосрочную память',
         "web_search": 'web_search(query, max_results?, region?) — поиск свежей информации в интернете (DuckDuckGo). ИСПОЛЬЗУЙ когда не уверен в факте — лучше поиск, чем выдумывание',
         "fetch_url": 'fetch_url(url, max_chars?) — открыть страницу из web_search и прочитать основной текст',
+        "delegate_to_agent": 'delegate_to_agent(agent_id, task, context?) — [ТОЛЬКО ДЛЯ HERMES] передать задачу подчинённому и получить его ответ',
+        "escalate_to_hermes": 'escalate_to_hermes(reason, evidence?, urgency?, from_agent, question?) — поднять ситуацию CEO. Используй когда вопрос вне твоей зоны / нужно его решение / видишь риск.',
+        "ask_colleague": 'ask_colleague(from_agent, agent_id, question, context?) — peer-to-peer спросить коллегу-агента до того, как ответить пользователю (не идёт через Hermes)',
     }
     return "\n".join(f"- `{name}` — {descriptions.get(name, '')}" for name in allowed)
 
@@ -74,16 +77,20 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
     "hermes": {
         "id": "hermes",
         "name": "Hermes",
-        "role": "Главный операционный координатор",
-        "description": "Сердце системы. Задачи, процессы, договорённости, общий контекст компании. Координирует все остальные персоны.",
+        "role": "CEO компании",
+        "description": "CEO и владелец финрезультата AI-компании. Принимает финальные решения, делегирует подчинённым через delegate_to_agent, собирает их ответы в единый бизнес-вердикт. Профит-инстинкт включён в каждый разговор.",
         "icon": "Crown",
         "color": "turquoise",
         "allowed_tools": list(HERMES_TOOLS.keys()),
         "system_prompt": (
-            "Ты — Hermes, главный COO платформы NXT8. Сердце операционной системы компании.\n\n"
-            "Ты координируешь все процессы: задачи, follow-up, SLA, кросс-департаментные связи.\n"
-            "Ты — менеджер менеджеров: используешь нужные инструменты, делегируешь и закрываешь хвосты.\n\n"
-            "Формат ответа: 1) Summary; 2) Что важно; 3) Действия (с приоритетом); 4) Ожидаемый эффект."
+            "Ты — Hermes, CEO компании NXT8 и владелец её финансового результата.\n\n"
+            "Ты управляешь командой из 7 специалистов (hr_mentor, client_manager, "
+            "project_coord, analyst, bookkeeper, marketer, compliance). Они подчиняются тебе.\n\n"
+            "Когда вопрос узкий — делегируй через `delegate_to_agent(agent_id, task)`. "
+            "Сильный CEO умеет поручать. Затем соедини ответы подчинённых в "
+            "единый CEO-вердикт от своего имени и подсвети, чей вклад был.\n\n"
+            "Формат: 1) Резюме; 2) Что важно; 3) Действия (приоритет); 4) Эффект; "
+            "5) 💡 Где здесь деньги."
         ),
         "data_fetchers": [],
     },
@@ -246,6 +253,20 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
         "data_fetchers": ["compliance_context"],
     },
 }
+
+
+# All 7 subordinates can escalate up to Hermes AND ask peers. Inject the
+# two inter-agent tools into every persona's allowed_tools (except hermes,
+# who already has `*` via HERMES_TOOLS.keys()).
+_INTER_AGENT_TOOLS_FOR_SUBORDINATES = ["escalate_to_hermes", "ask_colleague"]
+for _pid, _cfg in PERSONAS.items():
+    if _pid == "hermes":
+        continue
+    _allowed = _cfg.get("allowed_tools") or []
+    for _t in _INTER_AGENT_TOOLS_FOR_SUBORDINATES:
+        if _t not in _allowed:
+            _allowed.append(_t)
+    _cfg["allowed_tools"] = _allowed
 
 
 # =====================================================================

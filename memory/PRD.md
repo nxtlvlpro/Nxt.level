@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.15.0-hermes-evolution (additive over v1.14.2-charter)
+**Current version:** v1.16.0-hermes-ceo (additive over v1.15.0-hermes-evolution)
 **Last updated:** 2026-02-06 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -10,6 +10,70 @@ The following parts of the codebase are **explicitly frozen by the product owner
 - **Header layout** — see `/app/frontend/src/config/header.locked.js` (logo height = `h-4`, left bleed = `-ml-6`, header `py-0`, shell top padding `pt-0`, home view padding `pt-0 pb-4`). The cropped PNG at `/app/frontend/public/nxt8-logo.png` is also part of the contract — it must remain tight-cropped (no transparent padding).
 
 ## What was built (in chronological order)
+
+### v1.16 — Hermes as CEO + Real Agent-to-Agent Communication (2026-02-06)
+
+**Why:** До этой версии Hermes был «COO-диспетчером», а подчинённые
+агенты знали о нём только декларативно — реальных каналов
+коммуникации между ними не было. Pipeline выглядел как 7 изолированных
+chat-окон.
+
+**Что сделано:**
+
+1. **Hermes теперь CEO (не COO).** Изменены `manifests.py`,
+   `agent_charter.py`, `hermes_directive.py`, `persona_prompts.py`,
+   `personas.py`. Личность CEO: воля, профит-инстинкт, поиск слабых
+   мест, прямой характер. В каждом разговоре обязан искать минимум
+   одну точку роста прибыли или слабость компании и фиксировать
+   через `propose_improvement`.
+
+2. **`agents/inter_agent.py`** — новый модуль, 3 настоящих
+   инструмента межагентной коммуникации:
+   - `delegate_to_agent(agent_id, task, context?)` — Hermes как CEO
+     синхронно вызывает любого из 7 подчинённых через `run_persona`,
+     получает их ответ, использует в финальном вердикте.
+   - `escalate_to_hermes(reason, evidence?, urgency?, from_agent,
+     question?)` — путь снизу вверх: любой подчинённый эскалирует
+     ситуацию CEO, запись падает в `db.escalations`, Hermes
+     синхронно выдаёт verdict, который возвращается эскалирующему.
+   - `ask_colleague(from_agent, agent_id, question, context?)` —
+     peer-to-peer Q&A между подчинёнными без участия Hermes
+     (например, Bookkeeper спрашивает Marketer о ценовом контексте
+     перед ROI-расчётом).
+
+3. **Реестр HERMES_TOOLS расширен до 27** (было 24): три новых
+   инструмента зарегистрированы в `agents/hermes.py`, и documented
+   в системном промпте Hermes-а. Все 7 подчинённых получили
+   `escalate_to_hermes` + `ask_colleague` в `allowed_tools` через
+   автоматическую инжекцию в конце `PERSONAS`-словаря.
+
+4. **Логирование диалогов.** Каждый межагентный вызов пишется в
+   `db.agent_dialogues` (kind, from_agent, to_agent, topic, request,
+   response, company_id, user_id, created_at). Эскалации
+   дополнительно живут в `db.escalations` с собственным жизненным
+   циклом (open → answered).
+
+5. **Новые API:**
+   - `GET /api/agents/dialogues?limit=&agent_id=`
+   - `GET /api/agents/escalations?limit=&status=`
+
+6. **UI:** В `AgentsView.jsx` добавлен раздел «Связь команды (CEO ↔
+   агенты)» — список реальных межагентных событий с цветными бейджами
+   (DELEGATE / ESCALATE / ASK) и модалкой деталей (тема, запрос,
+   ответ, urgency, confidence). Полл каждые 15 сек.
+
+7. **Регрессионный тест** `backend/tests/test_inter_agent.py` — 5
+   проверок: tools registered, subordinates имеют новые caps, Hermes
+   = CEO, delegate отвергает не-Hermes, ask_colleague отвергает
+   self/hermes-as-target.
+
+**Подтверждено живой проверкой:** Bookkeeper эскалировал
+ROI-проблему → Hermes принял эскалацию → САМ делегировал Analyst и
+Project Coord → собрал их ответы в финальный CEO-вердикт со
+ссылками на работу подчинённых. Многоуровневая делегация работает
+сквозь несколько LLM-вызовов.
+
+
 
 1. **v0.1–v1.0 Pilot Zero** — 10 modules (orchestrator, memory, reliability, mentor, roi, voice, cross_dept, diagnostics, skill_creator, market_radar) + 7 UI views.
 2. **v1.1 Hermes** — Hermes Agent proxy (gateway on :8642, offline in current env).
