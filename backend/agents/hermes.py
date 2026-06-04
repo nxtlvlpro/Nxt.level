@@ -671,6 +671,51 @@ async def _t_fetch_url(args: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+# ---------------------------------------------------------------------
+# Hermes Evolution Engine wrappers (Directive §4-§11)
+# ---------------------------------------------------------------------
+# Thin pass-throughs so the unified tool registry can dispatch to the
+# evolution module while keeping its implementation isolated.
+
+from agents.hermes_evolution import (   # noqa: E402
+    propose_improvement as _ev_propose_improvement,
+    list_evolution_roadmap as _ev_list_evolution_roadmap,
+    approve_proposal as _ev_approve_proposal,
+    propose_policy as _ev_propose_policy,
+    list_policy_proposals as _ev_list_policy_proposals,
+    detect_automation_candidates as _ev_detect_automation_candidates,
+    hermes_self_assessment as _ev_hermes_self_assessment,
+)
+
+
+async def _t_propose_improvement(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ev_propose_improvement(args)
+
+
+async def _t_list_evolution_roadmap(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ev_list_evolution_roadmap(args)
+
+
+async def _t_approve_proposal(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ev_approve_proposal(args)
+
+
+async def _t_propose_policy(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ev_propose_policy(args)
+
+
+async def _t_list_policy_proposals(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ev_list_policy_proposals(args)
+
+
+async def _t_detect_automation_candidates(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ev_detect_automation_candidates(args)
+
+
+async def _t_hermes_self_assessment(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _ev_hermes_self_assessment(args)
+
+
 # =====================================================================
 # Unified tool registry
 # =====================================================================
@@ -697,6 +742,14 @@ HERMES_TOOLS: Dict[str, Any] = {
     # External world — free DuckDuckGo web search
     "web_search": _t_web_search,
     "fetch_url": _t_fetch_url,
+    # Hermes Evolution Engine (Directive §4-§11)
+    "propose_improvement":           _t_propose_improvement,
+    "list_evolution_roadmap":        _t_list_evolution_roadmap,
+    "approve_proposal":              _t_approve_proposal,
+    "propose_policy":                _t_propose_policy,
+    "list_policy_proposals":         _t_list_policy_proposals,
+    "detect_automation_candidates":  _t_detect_automation_candidates,
+    "hermes_self_assessment":        _t_hermes_self_assessment,
 }
 
 
@@ -720,7 +773,15 @@ _TOOLS_DOC = (
     "- `web_search(query, max_results?, region?)` — поиск в интернете (DuckDuckGo) — используй когда нужны свежие новости, "
     "определения, цены, имена компаний, факты которых нет во внутренней памяти. region по умолчанию `wt-wt` (мир), для рунета используй `ru-ru`.\n"
     "- `fetch_url(url, max_chars?)` — открыть страницу по URL и прочитать её основной текст (без меню/рекламы). "
-    "Используй ПОСЛЕ web_search, когда нужны подробности из конкретной статьи. max_chars по умолчанию 4000, максимум 8000."
+    "Используй ПОСЛЕ web_search, когда нужны подробности из конкретной статьи. max_chars по умолчанию 4000, максимум 8000.\n"
+    "- `propose_improvement(area, description, expected_benefit?, business_impact?, priority?)` — "
+    "записать предложение по развитию NXT8 в Evolution Journal. area: capability/agent/integration/architecture/product/process/policy. priority: P0..P3.\n"
+    "- `list_evolution_roadmap(area?, status?, limit?)` — прочитать journal (что уже предложено).\n"
+    "- `approve_proposal(id, status)` — перевести предложение в approved/rejected/done.\n"
+    "- `propose_policy(title, scope, proposed_rule, justification?, severity?)` — предложить новый регламент компании.\n"
+    "- `list_policy_proposals(status?, limit?)` — прочитать список предложенных правил.\n"
+    "- `detect_automation_candidates(window?, min_count?)` — найти повторяющиеся ручные intent'ы для автоматизации.\n"
+    "- `hermes_self_assessment(window?)` — посмотреть свои метрики (confidence/escalation/mock_rate + журнал)."
 )
 
 
@@ -756,9 +817,11 @@ def extract_tool_calls(content: str) -> List[Dict[str, Any]]:
 def _system_prompt(mode: str = "operational", autonomy: str = "assistant") -> str:
     from agents.agent_charter import CHARTER
     from agents.manifests import render_manifest_for_prompt
+    from agents.hermes_directive import DIRECTIVE
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return (
         f"{CHARTER}\n\n"
+        f"{DIRECTIVE}\n\n"
         f"{render_manifest_for_prompt('hermes')}\n\n"
         "Ты — Hermes, Chief Operating Officer Agent NXT8.PRO. Сердце операционной "
         "системы компании.\n\n"

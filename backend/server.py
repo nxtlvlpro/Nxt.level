@@ -1816,6 +1816,45 @@ async def company_settings_put(payload: Dict[str, Any]) -> Dict[str, Any]:
             "prompt_block": _cc.render_company_block(settings)}
 
 
+@api.get("/hermes/evolution/roadmap")
+async def hermes_evolution_roadmap(area: Optional[str] = None,
+                                   status: Optional[str] = None,
+                                   limit: int = 100) -> Dict[str, Any]:
+    """Read Hermes Evolution Journal — what improvements were proposed,
+    grouped by area (capability/agent/integration/architecture/product/process/policy)."""
+    from agents import hermes_evolution as _ev
+    return await _ev.list_evolution_roadmap(
+        {"area": area, "status": status, "limit": limit}
+    )
+
+
+@api.get("/hermes/evolution/policies")
+async def hermes_policy_proposals(status: Optional[str] = None,
+                                  limit: int = 50) -> Dict[str, Any]:
+    """Read policy proposals Hermes has filed for human review."""
+    from agents import hermes_evolution as _ev
+    return await _ev.list_policy_proposals({"status": status, "limit": limit})
+
+
+@api.post("/hermes/evolution/approve")
+async def hermes_evolution_approve(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Approve / reject / mark-done an evolution proposal. Human-only in
+    practice; Hermes can also use this to close his own loops."""
+    from agents import hermes_evolution as _ev
+    res = await _ev.approve_proposal(payload or {})
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "approve failed"))
+    return res
+
+
+@api.get("/hermes/self-assessment")
+async def hermes_self_assessment_endpoint(window: int = 200) -> Dict[str, Any]:
+    """Live snapshot of Hermes' operational metrics — confidence, escalations,
+    mock_rate, Evolution Journal counts, and honest signals."""
+    from agents import hermes_evolution as _ev
+    return await _ev.hermes_self_assessment({"window": window})
+
+
 @api.post("/personas/{persona_id}/chat")
 async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, Any]:
     """Chat with a specific persona. Enforces tariff gate."""

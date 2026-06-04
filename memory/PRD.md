@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.14.2-charter (additive over v1.14.1-deep-experts)
+**Current version:** v1.15.0-hermes-evolution (additive over v1.14.2-charter)
 **Last updated:** 2026-02-06 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -264,6 +264,37 @@ The following parts of the codebase are **explicitly frozen by the product owner
       - **Реальный web_search**: Marketer спрошен про "тренды AI-маркетинга 2026" → реально вызвал `web_search` (5 hits, реальные URL thegutenberg.com, novasapienlabs.com), потом `fetch_url` для чтения статьи. Никаких выдуманных ссылок.
     - **Total tests**: 73/73 passing (42 manifests + 18 company_context + 13 charter).
     - **Что это даёт бизнесу** — устранена самая опасная категория ошибок LLM (галлюциногенные цены, законы, URLs). Каждый ответ либо подкреплён источником, либо честно помечен "не знаю + где искать". Каждый ответ обязательно ищет business value. Это превращает NXT8 из "умного болтуна" в **trustworthy AI workforce**, которому можно делегировать ответы клиентам и руководству.
+
+25. **v1.15.0 Hermes Evolution Engine — Self-Development (2026-02-06):**
+    - **Motivation** — пользователь предоставил Hermes Core Operating Directive (12 секций: единая точка управления, корп.память, контроль исполнения, самоулучшение, развитие конституции, развитие агентов, орг.аналитика, граф знаний, цикл улучшений, саморазвитие, evolution roadmap, главная метрика).
+    - **`agents/hermes_directive.py`** (new) — DIRECTIVE константа из 12 секций, инжектится в `_system_prompt(hermes)` прямо после CHARTER. Hermes теперь буквально читает свою сверх-цель перед каждым ответом.
+    - **`agents/hermes_evolution.py`** (new, 280+ LOC) — самообучающаяся механика:
+      - `propose_improvement(area, description, expected_benefit?, business_impact?, priority?)` → `db.hermes_evolution_log`. Area: `capability/agent/integration/architecture/product/process/policy`. Priority: P0..P3.
+      - `list_evolution_roadmap(area?, status?, limit?)` — читает журнал, группирует по area.
+      - `approve_proposal(id, status)` — proposed → approved/rejected/done.
+      - `propose_policy(title, scope, proposed_rule, justification?, severity?)` → `db.policy_proposals` (детекция отсутствующих правил, §5 Директивы).
+      - `list_policy_proposals(status?, limit?)`.
+      - `detect_automation_candidates(window?, min_count?)` — сканирует `db.requests`, находит повторяющиеся intent'ы. Возвращает recommendation: `ready_to_automate` / `improve_prompt_first` / `fix_provider_first` (на основе avg_confidence ≥0.75 и escalation_rate <0.20).
+      - `hermes_self_assessment(window?)` — Hermes видит СВОИ метрики: avg_confidence, escalation_rate, mock_rate, top-5 intents, счётчики evolution journal по статусам, honest signals (⚠ если avg<0.7 или escalation>20% или mock>5%).
+      - `_safe_int()` — устойчивый парсер: «"200"», 200, «"7d"» → fallback к default. Hermes часто передаёт временные строки.
+    - **Все 7 tools зарегистрированы в `HERMES_TOOLS`** через тонкие `_t_*` wrappers. Tools doc дополнен (Hermes явно видит, что они существуют).
+    - **Новые endpoints**:
+      - `GET /api/hermes/evolution/roadmap?area=&status=&limit=` — журнал.
+      - `GET /api/hermes/evolution/policies?status=&limit=` — предложенные правила.
+      - `POST /api/hermes/evolution/approve` — approve/reject/done.
+      - `GET /api/hermes/self-assessment?window=` — live KPI Hermes + сигналы.
+    - **`backend/tests/test_hermes_evolution.py`** (new) — 9 тестов: DIRECTIVE содержит все 12 секций, 7 tools зарегистрированы, propose_improvement валидирует area+description, persist+approve flow, propose_policy валидирует rule, detect_automation_candidates shape, hermes_self_assessment shape. **9/9 PASS** (с MONGO_URL из .env).
+    - **Verified end-to-end** живой LLM-проверкой:
+      - `/api/hermes/self-assessment` → реальный отчёт: 125 scanned, escalation_rate=49% (⚠ выше 20%), mock_rate=6% (⚠ нестабилен) → Hermes видит свои проблемы.
+      - Запрос "вызови self-assessment + propose 2 improvements + list roadmap" → Hermes реально вызвал 4 tools подряд:
+        - `hermes_self_assessment` → ok
+        - `propose_improvement(area=process)` → "Автоматизировать еженедельный дайджест" P1 (экономия 2ч/нед)
+        - `propose_improvement(area=integration)` → "Google Calendar / Outlook integration" P2 (снижение пропущенных дедлайнов на 20%)
+        - `list_evolution_roadmap` → roadmap прочитан
+      - Финальный ответ Hermes — структурированное резюме с пометкой "✅ Записал в Evolution Roadmap: …" как требует §Правило вызова Директивы.
+    - **`GET /api/hermes/evolution/roadmap`** показывает 4 записи в 3 категориях (integration/process/capability) — живой роадмап.
+    - **Total tests**: 82/82 (42 manifests + 18 company_context + 13 charter + 9 evolution).
+    - **What this unlocks** — Hermes теперь **самообучающийся CEO**: каждый ответ может содержать запись в Evolution Journal. Со временем (после N пользовательских сессий) у компании будет реальный backlog улучшений NXT8 с приоритетами, бизнес-импактом и категориями. Это **первая в индустрии реализация саморазвивающегося AI-COO**, который письменно ведёт журнал собственного развития, открытый для человеческого approval.
 
 ## Architecture (as built)
 
