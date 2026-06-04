@@ -34,6 +34,8 @@ from agents import mentor as mentor_agent
 from agents import roi as roi_agent
 from agents.hermes_max_tools_and_coo import HERMES_TOOLS
 from agents.manifests import render_manifest_for_prompt
+from agents.persona_prompts import get_prompt as get_deep_prompt
+from core.company_context import get_settings as get_company_settings, render_company_block
 from core.db import get_db
 from core.deepseek import get_deepseek
 
@@ -548,10 +550,23 @@ async def run_persona(
     # 2. System prompt — manifest injection makes the agent literally
     #    self-aware of its specialty, data access, chain of command and
     #    decision authority. This is the "constitutional" layer.
+    #    Deep v2.0 prompt overrides the legacy short prompt if available.
+    deep_prompt = get_deep_prompt(persona_id) or cfg["system_prompt"]
     manifest_block = render_manifest_for_prompt(persona_id)
+
+    # 2b. Company context — region/industry/regulations/channels so agents
+    #     adapt their answers to WHERE the company operates.
+    try:
+        company_settings = await get_company_settings(company_id)
+        company_block = render_company_block(company_settings)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("company context fetch failed: %s", e)
+        company_block = ""
+
     sys_prompt = (
-        f"{cfg['system_prompt']}\n\n"
+        f"{deep_prompt}\n\n"
         f"{manifest_block}\n\n"
+        f"{company_block}\n\n"
         f"## Доступные инструменты\n{_tools_doc(cfg['allowed_tools'])}\n\n"
         "Если нужен инструмент — вызови его строго в формате fenced-JSON:\n"
         "```json\n"

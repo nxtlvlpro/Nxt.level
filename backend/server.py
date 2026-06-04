@@ -1789,6 +1789,33 @@ async def agent_manifest(agent_id: str) -> Dict[str, Any]:
     }
 
 
+@api.get("/company-settings")
+async def company_settings_get(company_id: str = "default") -> Dict[str, Any]:
+    """Return the active company context (region, industry, currency,
+    channels, applicable regulations). All personas read this before answering."""
+    from core import company_context as _cc
+    settings = await _cc.get_settings(company_id)
+    return {
+        "settings": settings,
+        "regulations": _cc.REGIONAL_REGULATIONS.get(
+            (settings.get("region") or "GLOBAL").upper()
+        ) or _cc.REGIONAL_REGULATIONS["GLOBAL"],
+        "prompt_block": _cc.render_company_block(settings),
+    }
+
+
+@api.put("/company-settings")
+async def company_settings_put(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Upsert company settings. Auto-derives currency + channels from region
+    if not supplied. Personas pick up changes on their next invocation."""
+    from core import company_context as _cc
+    company_id = (payload.get("company_id") or "default").strip() or "default"
+    patch = {k: v for k, v in payload.items() if k != "company_id"}
+    settings = await _cc.update_settings(company_id, patch)
+    return {"settings": settings,
+            "prompt_block": _cc.render_company_block(settings)}
+
+
 @api.post("/personas/{persona_id}/chat")
 async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, Any]:
     """Chat with a specific persona. Enforces tariff gate."""

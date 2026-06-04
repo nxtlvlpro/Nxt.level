@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.14.0-agent-constitution (additive over v1.13.3-graph-ui)
+**Current version:** v1.14.1-deep-experts (additive over v1.14.0-agent-constitution)
 **Last updated:** 2026-02-06 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -222,6 +222,33 @@ The following parts of the codebase are **explicitly frozen by the product owner
       - Compliance → корректно: read-only, write только в `audit_log`, перечисляет GDPR/152-ФЗ/CCPA/AI Act/SOC 2.
       - Constitutional Graph v2 run после изменений: 8 hops, Hermes verdict=approve, final output coherent. Регрессии нет.
     - **What this unlocks** — каждый агент теперь "корпоративный сотрудник" с настоящей должностной, узкой экспертизой и понятным местом в иерархии. Это устраняет "галлюцинации компетенций" (когда LLM пытается ответить вне своей зоны) и **создаёт основу для следующего этапа** — реального Approval Gate (Этап 4: chain of command + delegation tool) и enforcement матрицы доступа в коде (Этап 3: access_guard).
+
+23. **v1.14.1 Deep Experts + Region Awareness (2026-02-06):**
+    - **Motivation** — пользователь: "агент юрист должен понимать законы региона где работает компания. агент рекламщик должен глубоко разбираться в самых лучших маркетинговых стратегиях и глубоко изучать мировые тенденции. поэтому нужно прокачать каждого на максимум возможностей".
+    - **`agents/persona_prompts.py`** (new, 300+ LOC) — **world-class brief** для каждой из 8 персон, написанный как "найм senior-консультанта":
+      - **Hermes** — McKinsey/BCG-уровневый COO: RACI/DACI decision tree, эскалация при confidence<0.7 или $5k+ сделках, 5-блочный формат ответа.
+      - **HR-Mentor** — Bloom's taxonomy + 70-20-10 + Lominger 67 competencies + 5-уровневая NXT8 шкала, region-aware (ТК РФ vs EU WTD vs US at-will).
+      - **Client Manager** — LTV/CAC/Payback + NPS/CSAT/CES + BANT/SPIN/MEDDIC + AIDA/Empathy-Bridge-Solution copywriting + SLA bands + region-aware каналы и holiday windows.
+      - **Project Coord** — PMP/SAFe-уровень: RACI + OKR + CPM + dependency mapping + Agile ceremonies + risk register с probability×impact.
+      - **Analyst** — FAANG data analyst: confidence intervals, correlation≠causation, attribution models (first/last/linear/time-decay/U-shaped), cohort retention, anomaly >3σ.
+      - **Bookkeeper** — CFA-ориентация: Unit Economics (CAC/LTV/Payback >12), cost decomposition NXT8-specific (deepseek V3 vs R1, compute, escalation, storage), hourly ROI, anomaly detection.
+      - **Marketer** — CMO уровень с Gary Vee × April Dunford × Andrew Chen mindset: JTBD + AIDA/PASTOR/PAS + 4P/7P/4C + PESO + Porter's 5 Forces + PESTEL + North Star Metric + ГЛОБАЛЬНЫЕ ТРЕНДЫ 2026 (AI-content automation, privacy-first ad-tech, short-form video, community-led growth, multi-modal search, creator economy, email renaissance).
+      - **Compliance** — DLA Piper/Baker McKenzie senior associate: глубокое знание GDPR (Art. 6/7/17/33/35/44-49), 152-ФЗ (ст. 18 ч.5 локализация, ст. 22 РКН), AI Act (4 risk tiers), CCPA/CPRA, PIPL, LGPD, DPDP Act + методология анализа документа (тип → governing law → 7 категорий риска → severity matrix).
+    - **`core/company_context.py`** (new) — единый source of truth о том, ГДЕ и В ЧЁМ работает компания. Хранится в `db.company_settings` (singleton по `company_id`). Поля: `region` (ISO-2), `country`, `industry`, `team_size`, `currency`, `primary_language`, `primary_channels`, `data_residency`. Auto-derives currency + channels из region.
+    - **9 регионов** в `REGIONAL_REGULATIONS` map: RU (152-ФЗ, ТК РФ, ФЗ-38, ФЗ-54), EU (GDPR, AI Act, ePrivacy, DSA, DMA, NIS2), US (CCPA, HIPAA, SOX, FTC §5, GLBA, COPPA), UK, CN (PIPL), BR (LGPD), IN (DPDP), AE, SG + GLOBAL fallback.
+    - **9 регионов** в `REGIONAL_MARKET_CONTEXT`: каждый со своей валютой и каналами (RU → Telegram/VK/Yandex/WhatsApp, БЕЗ Meta; CN → WeChat/Douyin/Weibo/Xiaohongshu/Baidu, БЕЗ Google/Meta; и т.д.).
+    - **`render_company_block(settings)`** — компактный prompt-блок, который инжектится в **КАЖДЫЙ** persona system prompt перед ответом. Содержит регион, валюту, регуляции, каналы. Указание: "если ответ зависит от закона/тренда/валюты — ОБЯЗАТЕЛЬНО используй данные выше".
+    - **Новые endpoints**:
+      - `GET /api/company-settings?company_id=default` — текущий контекст + регуляции + prompt block.
+      - `PUT /api/company-settings` — апдейт (auto-derives currency/каналы от region).
+    - **`backend/tests/test_company_context.py`** (new) — 18 тестов: дефолтные поля, region→regs (RU→152-ФЗ, EU→GDPR, CN→PIPL, BR→LGPD, IN→DPDP), region→currency, render_company_block содержит правильные законы и не содержит чужие. **18/18 PASS**.
+    - **Verified end-to-end** живыми LLM-проверками с переключением региона:
+      - region=RU + Compliance "какие 3 закона?" → процитировал **152-ФЗ** с конкретными статьями (п.1 ст.9, ст.18 ч.5, ст.22), штрафы в **₽ (75k/300k)**, упомянул Роскомнадзор, ФЗ-38.
+      - region=EU + Compliance тот же вопрос → переключился на **GDPR Art. 6/7/28/33/37**, ePrivacy, DPO Германии (BfDI), штрафы **20M EUR / 4% global turnover**.
+      - region=EU + Marketer "3 канала на квартал" → **LinkedIn (€2-3k/мес) + Email**.
+      - region=RU + Marketer тот же → **Telegram (50-100k ₽) + Yandex.Direct** (никакого Meta).
+    - **Total tests passing**: 60/60 (42 manifests + 18 company_context).
+    - **What this unlocks** — каждый агент стал **узким специалистом мирового класса с региональной адаптацией**. Compliance в Мюнхене и Compliance в Москве — буквально два разных юриста. Маркетолог адаптируется под локальный mix каналов. Это устраняет "general LLM advice" в пользу контекстно-релевантных решений и закрывает требование пользователя "каждый агент максимально прокачен по своей специальности".
 
 ## Architecture (as built)
 
