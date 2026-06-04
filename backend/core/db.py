@@ -74,6 +74,15 @@ async def ensure_indexes() -> None:
     await db.client_profiles.create_index("phone")
     await db.client_profiles.create_index("telegram")
     await db.access_codes.create_index("code", unique=True)
+    # Hermes Operating Graph (10-node continuous cycle).
+    await db.hermes_os_cycles.create_index("cycle_id", unique=True)
+    await db.hermes_os_cycles.create_index([("started_at", -1)])
+    await db.hermes_os_cycles.create_index([("event.source", 1), ("started_at", -1)])
+    # 4-layer Hermes memory.
+    await db.knowledge_graph.create_index([("source", 1), ("target", 1), ("relation", 1)])
+    await db.knowledge_graph.create_index([("created_at", -1)])
+    await db.institutional_memory.create_index([("scope", 1), ("created_at", -1)])
+    await db.institutional_memory.create_index([("tags", 1)])
 
 
 def close_db() -> None:

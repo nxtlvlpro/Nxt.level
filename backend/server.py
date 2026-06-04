@@ -1426,6 +1426,69 @@ async def llm_router_stats() -> Dict[str, Any]:
 
 
 # =====================================================================
+# Hermes Operating Graph (10-node continuous cycle, see hermes_os_graph.py)
+# =====================================================================
+
+
+class HermesOSCycleRequest(BaseModel):
+    source: str = "manual"
+    kind: str = "generic"
+    payload: Optional[Dict[str, Any]] = None
+    user_id: Optional[str] = None
+    company_id: Optional[str] = None
+    lang: Optional[str] = "ru"
+    persist: bool = True
+
+
+@api.post("/hermes/os/cycle")
+async def hermes_os_cycle(req: HermesOSCycleRequest) -> Dict[str, Any]:
+    """Run one full Observe→Context→Validate→Reason→Route→Execute→
+    Monitor→Learn→Improve→Evolve cycle on the supplied event."""
+    from agents import hermes_os_graph as _os
+    event = {
+        "source":     req.source,
+        "kind":       req.kind,
+        "payload":    req.payload or {},
+        "user_id":    req.user_id,
+        "company_id": req.company_id,
+        "lang":       req.lang or "ru",
+    }
+    state = await _os.run_os_cycle(event, persist=req.persist)
+    return state
+
+
+@api.get("/hermes/os/cycle/{cycle_id}")
+async def hermes_os_cycle_get(cycle_id: str) -> Dict[str, Any]:
+    """Fetch a persisted cycle by id."""
+    db = get_db()
+    doc = await db.hermes_os_cycles.find_one({"cycle_id": cycle_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="cycle not found")
+    return doc
+
+
+@api.get("/hermes/os/cycles")
+async def hermes_os_cycles_list(limit: int = 20, source: Optional[str] = None) -> Dict[str, Any]:
+    """List recent cycles for the Ops dashboard."""
+    db = get_db()
+    limit = max(1, min(int(limit or 20), 200))
+    q: Dict[str, Any] = {}
+    if source:
+        q["event.source"] = source
+    cursor = db.hermes_os_cycles.find(q, {"_id": 0, "history": 0, "stages": 0}) \
+        .sort("started_at", -1).limit(limit)
+    items = await cursor.to_list(length=limit)
+    return {"count": len(items), "items": items}
+
+
+@api.get("/hermes/os/nodes")
+async def hermes_os_nodes() -> Dict[str, Any]:
+    """Return the canonical 10-node order — used by the UI to render the graph."""
+    from agents import hermes_os_graph as _os
+    return {"nodes": _os.list_node_order()}
+
+
+# =====================================================================
 # Channel adapters (Wingman-inspired ingress)
 # =====================================================================
 

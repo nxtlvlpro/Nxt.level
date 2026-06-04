@@ -373,3 +373,41 @@ The following parts of the codebase are **explicitly frozen by the product owner
 - **VPS deployment validation** under `nxt8.pro` (kit already exists in `/app/deploy/`).
 - **DocumentsPanel UX polish** — show severity-stats grid with zeros on first empty load; add explicit fetch-error banner instead of silent empty list.
 - Hermes Gateway (`:8642`) optional native execution path.
+
+
+---
+
+## v1.16.0 — Hermes Operating Architecture (Phase 1, 2026-02-06)
+
+User-supplied spec: "NXT8 Hermes LangGraph Operating Architecture" — a 10-node continuous StateGraph that turns Hermes from a one-shot task executor into the company's always-on operating system. Cycle: **Observe → Understand → Validate → Reason → Route → Execute → Monitor → Learn → Improve → Evolve**.
+
+### What ships in Phase 1
+- **`backend/agents/hermes_os_graph.py`** — new 10-node graph, parallel to (NOT replacing) `hermes_graph_v2.py`.
+  - All 10 nodes implemented as async DeepSeek-backed functions returning strict-JSON deltas.
+  - Deterministic built-in runtime with `MAX_HOPS=30` cap; every node crash is trapped and traced.
+  - Best-effort writes to `db.knowledge_graph`, `db.institutional_memory`, `db.hermes_evolution_log` (in Learning / Improvement / Evolution nodes).
+- **Endpoints** (all under `/api/hermes/os/`):
+  - `POST /cycle` — run one full Observe→Evolve pass on a supplied event payload.
+  - `GET  /cycle/{cycle_id}` — fetch the persisted cycle (full stages + history).
+  - `GET  /cycles?limit=&source=` — list recent cycles (lightweight, for Ops dashboard).
+  - `GET  /nodes` — canonical 10-node order (for the future UI).
+- **New collections** wired into `core/db.py:ensure_indexes`:
+  - `db.hermes_os_cycles` (unique on `cycle_id`, recency + source indexes)
+  - `db.knowledge_graph` (source/target/relation + recency)
+  - `db.institutional_memory` (scope + tags + recency)
+- **User decisions captured (2026-02-06):**
+  - Strategy: build OS graph as a NEW separate graph (v2 stays untouched).
+  - Trigger model: hook on every incoming event (channel webhook, document upload, task creation) — Phase 3.
+  - Knowledge Graph storage: MongoDB collection.
+
+### Verified
+End-to-end curl run on a real LLM cycle:
+- `POST /api/hermes/os/cycle` with a Russian "new client message" event → returned `stage=done`, `hops=10`, `error=null`, and all 10 stage slices populated with non-trivial DeepSeek output (observation entities, validation flagged `needs_review` with policy citations, reasoning produced 3 options + risks, routing chose `mixed` mode, monitoring/learning/improvement/evolution all wrote sensible content).
+- `GET /api/hermes/os/cycle/{id}` returns the persisted full doc with 10 stages + 12 history events.
+- `GET /api/hermes/os/cycles` lists recent cycles.
+
+### Next phases (still pending)
+- **Phase 2** — flesh out the 4-layer Hermes memory (Short-Term LRU, Operational reads, Knowledge Graph queries, Institutional best-practice retrieval) + plug them into the Context Assembly node.
+- **Phase 3** — wire automatic triggers from channel webhook / document upload / task creation hooks into `run_os_cycle`.
+- **Phase 4** — `HermesOSView.jsx` frontend: 10-node graph visualisation, cycle stream, KG explorer.
+- Plus the earlier P0/P1 backlog (Data Access Guard, Real Approval Gate, SSE for GraphView, real Stripe checkout, Agent Passport UI).
