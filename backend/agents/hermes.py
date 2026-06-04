@@ -754,8 +754,12 @@ def extract_tool_calls(content: str) -> List[Dict[str, Any]]:
 
 
 def _system_prompt(mode: str = "operational", autonomy: str = "assistant") -> str:
+    from agents.agent_charter import CHARTER
+    from agents.manifests import render_manifest_for_prompt
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return (
+        f"{CHARTER}\n\n"
+        f"{render_manifest_for_prompt('hermes')}\n\n"
         "Ты — Hermes, Chief Operating Officer Agent NXT8.PRO. Сердце операционной "
         "системы компании.\n\n"
         f"Режим: {mode}; Автономность: {autonomy.upper()}; Дата: {today}\n\n"

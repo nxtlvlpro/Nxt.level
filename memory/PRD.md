@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.14.1-deep-experts (additive over v1.14.0-agent-constitution)
+**Current version:** v1.14.2-charter (additive over v1.14.1-deep-experts)
 **Last updated:** 2026-02-06 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -249,6 +249,21 @@ The following parts of the codebase are **explicitly frozen by the product owner
       - region=RU + Marketer тот же → **Telegram (50-100k ₽) + Yandex.Direct** (никакого Meta).
     - **Total tests passing**: 60/60 (42 manifests + 18 company_context).
     - **What this unlocks** — каждый агент стал **узким специалистом мирового класса с региональной адаптацией**. Compliance в Мюнхене и Compliance в Москве — буквально два разных юриста. Маркетолог адаптируется под локальный mix каналов. Это устраняет "general LLM advice" в пользу контекстно-релевантных решений и закрывает требование пользователя "каждый агент максимально прокачен по своей специальности".
+
+24. **v1.14.2 NXT8 Charter — Anti-Hallucination + Proactive Business Value (2026-02-06):**
+    - **Motivation** — пользователь: "первоочередная задача системы и каждого агента — использовать каждую возможность когда агент может улучшить работу компании, принести прибыль, помочь в структуре и данных. строгий запрет на выдумывает. лучше сказать не знаю или взять паузу на поиск ответа в интернете".
+    - **`agents/agent_charter.py`** (new) — `CHARTER` константа с тремя обязательными принципами:
+      1. **Проактивный поиск бизнес-ценности** — каждый ответ ищет revenue/economy/process/risk-reduction. Если запрос — простой факт, агент добавляет блок "💡 Возможность для бизнеса" с 1-3 идеями.
+      2. **Строгий запрет на вымысел** — НИКОГДА не выдумывать факты/числа/даты/цитаты/законы/URL. При неуверенности агент должен (a) честно сказать "Не знаю", (b) вызвать `web_search`, или (c) попросить контекст у пользователя.
+      3. **Источник для каждого факта** — пометки `(memory)`, `(doc: …)`, `(web: <url>)`, `(общие знания)`, `(контекст компании)`.
+    - **`with_charter(prompt)`** helper и автоматический инжект CHARTER **ПЕРЕД** всеми остальными блоками во всех агентов: 8 персон (`personas.py:run_persona`), 7 системных нод Constitutional Graph (`hermes_graph_v2.py:_llm_role_call`), главный Hermes (`hermes.py:_system_prompt`).
+    - **web_search + fetch_url для ВСЕХ персон** — раньше эти инструменты были только у Hermes. Теперь все 8 персон могут гуглить (DuckDuckGo via `ddgs`) и читать страницы (`trafilatura`). Добавлены в `allowed_tools` каждой персоны и в манифесты (через `LOW_IMPACT_ACTIONS` — не требует approval gate, безопасное действие).
+    - **`backend/tests/test_charter.py`** (new) — 13 тестов: CHARTER содержит все 3 принципа + ключевые слова, `with_charter` корректно префиксит/возвращает CHARTER на пустом вводе, **все 8 персон имеют web_search/fetch_url в манифесте** (Hermes wildcard). **13/13 PASS**.
+    - **Verified end-to-end** двумя жёсткими сценариями на живом DeepSeek:
+      - **"Не знаю"-триггер**: Marketer спрошен "ровно какая цена Salesforce Pro?" → НЕ выдумал цифру. Ответ: "Я не знаю точную цену… могу выполнить web_search… или обратиться к Bookkeeper". Завершил блоком "💡 Возможность для бизнеса" (сравнить с AmoCRM/Bitrix24/HubSpot, "разница 30-50% в пользу российских").
+      - **Реальный web_search**: Marketer спрошен про "тренды AI-маркетинга 2026" → реально вызвал `web_search` (5 hits, реальные URL thegutenberg.com, novasapienlabs.com), потом `fetch_url` для чтения статьи. Никаких выдуманных ссылок.
+    - **Total tests**: 73/73 passing (42 manifests + 18 company_context + 13 charter).
+    - **Что это даёт бизнесу** — устранена самая опасная категория ошибок LLM (галлюциногенные цены, законы, URLs). Каждый ответ либо подкреплён источником, либо честно помечен "не знаю + где искать". Каждый ответ обязательно ищет business value. Это превращает NXT8 из "умного болтуна" в **trustworthy AI workforce**, которому можно делегировать ответы клиентам и руководству.
 
 ## Architecture (as built)
 

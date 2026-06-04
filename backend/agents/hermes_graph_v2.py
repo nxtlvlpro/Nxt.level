@@ -41,6 +41,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from core.deepseek import get_deepseek
 from agents.manifests import render_manifest_for_prompt
+from agents.agent_charter import CHARTER
 
 logger = logging.getLogger("nxt8.graph_v2")
 
@@ -152,10 +153,14 @@ async def _llm_role_call(
     LLM literally knows its identity / authority / chain of command."""
     try:
         ds = get_deepseek()
+        # Prepend the universal NXT8 charter (anti-hallucination + proactive
+        # business value) to every role. Then layer the role-specific manifest.
+        prefix = CHARTER
         if role_id:
             manifest_block = render_manifest_for_prompt(role_id)
             if manifest_block:
-                system_prompt = f"{system_prompt}\n\n{manifest_block}"
+                prefix = f"{prefix}\n\n{manifest_block}"
+        system_prompt = f"{prefix}\n\n{system_prompt}"
         kwargs = dict(
             messages=[
                 {"role": "system", "content": system_prompt},

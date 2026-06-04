@@ -35,6 +35,7 @@ from agents import roi as roi_agent
 from agents.hermes_max_tools_and_coo import HERMES_TOOLS
 from agents.manifests import render_manifest_for_prompt
 from agents.persona_prompts import get_prompt as get_deep_prompt
+from agents.agent_charter import CHARTER
 from core.company_context import get_settings as get_company_settings, render_company_block
 from core.db import get_db
 from core.deepseek import get_deepseek
@@ -63,6 +64,8 @@ def _tools_doc(allowed: List[str]) -> str:
         "evaluate_action_roi": 'evaluate_action_roi(action) — оценить ROI действия',
         "mempalace_search": 'mempalace_search(query, wing?, room?, top_k?) — поиск в долговременной памяти (wing=documents для договоров)',
         "mempalace_store": 'mempalace_store(content, wing?, room?) — записать факт в долгосрочную память',
+        "web_search": 'web_search(query, max_results?, region?) — поиск свежей информации в интернете (DuckDuckGo). ИСПОЛЬЗУЙ когда не уверен в факте — лучше поиск, чем выдумывание',
+        "fetch_url": 'fetch_url(url, max_chars?) — открыть страницу из web_search и прочитать основной текст',
     }
     return "\n".join(f"- `{name}` — {descriptions.get(name, '')}" for name in allowed)
 
@@ -91,7 +94,7 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
         "description": "Оценивает сотрудников, находит слабые места, даёт рекомендации по обучению и менторингу. Видит 5 уровней (junior→strategist) и сравнивает с уровневой нормой.",
         "icon": "GraduationCap",
         "color": "violet",
-        "allowed_tools": ["search_memory"],
+        "allowed_tools": ["search_memory", "web_search", "fetch_url"],
         "system_prompt": (
             "Ты — HR-Ментор NXT8. Твой фокус: люди.\n\n"
             "Ты анализируешь performance, выявляешь weak patterns (low_accuracy, "
@@ -116,6 +119,8 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
             "monitor_sla_violations",
             "find_opportunities_in_contact",
             "suggest_reply_template",
+            "web_search",
+            "fetch_url",
         ],
         "system_prompt": (
             "Ты — Менеджер по клиентам NXT8. Ни один запрос не должен потеряться.\n\n"
@@ -142,6 +147,8 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
             "update_task",
             "create_cross_department_bridge",
             "monitor_sla_violations",
+            "web_search",
+            "fetch_url",
         ],
         "system_prompt": (
             "Ты — Координатор проектов NXT8. Фокус: не дать задаче зависнуть между отделами.\n\n"
@@ -178,7 +185,7 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
         "description": "Считает costs/revenue/ROI каждый час. Видит структуру расходов (API/compute/escalations) и доходов по агентам. Готовит цифры — не заменяет бухгалтерию компании.",
         "icon": "Calculator",
         "color": "emerald",
-        "allowed_tools": ["search_memory"],
+        "allowed_tools": ["search_memory", "web_search", "fetch_url"],
         "system_prompt": (
             "Ты — Бухгалтер NXT8. Считаешь unit-economics AI-операций компании.\n\n"
             "В контексте у тебя — реальные cifры за последний час и тренд:\n"
@@ -199,7 +206,7 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
         "description": "Следит за сигналами рынка: конкуренты, цены, регуляции, технологии. Даёт еженедельный дайджест и идеи для команды.",
         "icon": "Radar",
         "color": "orange",
-        "allowed_tools": ["search_memory", "suggest_next_best_action"],
+        "allowed_tools": ["search_memory", "suggest_next_best_action", "web_search", "fetch_url"],
         "system_prompt": (
             "Ты — Маркетолог NXT8. Твой объект — внешний рынок.\n\n"
             "В контексте — свежие сигналы (competitor, pricing, regulation, tech, "
@@ -219,7 +226,7 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
         "description": "Хранит политики и SLA. Анализирует загруженные документы (PDF/DOCX/TXT), подсвечивает риски и категории (ответственность, оплата, расторжение, данные, регуляции). Мониторит противоречия и regulatory сигналы.",
         "icon": "Shield",
         "color": "slate",
-        "allowed_tools": ["search_memory", "mempalace_search"],
+        "allowed_tools": ["search_memory", "mempalace_search", "web_search", "fetch_url"],
         "system_prompt": (
             "Ты — Compliance Officer NXT8.\n\n"
             "Твоя зона:\n"
@@ -564,6 +571,7 @@ async def run_persona(
         company_block = ""
 
     sys_prompt = (
+        f"{CHARTER}\n\n"
         f"{deep_prompt}\n\n"
         f"{manifest_block}\n\n"
         f"{company_block}\n\n"
