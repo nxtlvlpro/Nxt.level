@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.12.0-onboarding (additive over v1.11.2-voice-gpt4o-tts)
+**Current version:** v1.13.0-graph-v2 (additive over v1.12.0-onboarding)
 **Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -135,6 +135,24 @@ The following parts of the codebase are **explicitly frozen by the product owner
       - Backend: 13/13 pytest checks (insights static + LLM RU fallback, code 888/123/ab, profile save with/without code, missing-field 400, brief generation in ~7-12 s, 404 on unknown profile).
       - Frontend: full happy-path through Q1-Q7 + screenshot confirms processing → reply with personalised DeepSeek output ("Alex, I hear you loud and clear — losing leads in ecommerce is like watching money walk out the door."), 2 team cards, 3×30d items, free-test CTA when code 888 supplied.
     - **What this unlocks commercially** — every paid tier now ships with an automatic qualification step that doubles as a delight moment. Hot leads (urgency=hot + code=888) bypass payment for the pilot, warm leads land in checkout with context already captured, cold leads still see a personalised brief which improves retention for the email digest.
+
+18. **v1.13 Hermes Constitutional Graph v2 (2026-06-04):**
+    - **Source of truth** — user-supplied `HERMES LANGGRAPH EXECUTION CONSTITUTION v1.0` (Hermes-first, deterministic flow, state-only comms, traceability).
+    - **`agents/hermes_graph_v2.py`** (new, 500+ LOC) — faithful implementation of every constitutional article, lives in parallel with the legacy `nxt8_langgraph_ultra.py` so production traffic stays on the v1 graph until v2 is battle-tested.
+    - **Constitutional state schema (§3)** implemented as a `TypedDict`-style nested dict: `task / intent / context / hermes / memory / agents / artifacts / tools / routing / status`. Every node writes ONLY state deltas. `status.history` accumulates a per-hop audit trail (§2.5).
+    - **Six constitutional nodes** (§5) — `hermes_check`, `planner`, `executor`, `reviewer`, `fixer`, `hermes_validation`, plus a small `finalization` packer.
+    - **Single LLM, multiple roles** — per user policy "всё через DeepSeek", every role runs DeepSeek-V3 with a role-specific system prompt. ~2× cheaper than four separate models, fully deterministic JSON outputs.
+    - **Hermes Policy Gate (§4)** — first node, returns `{status: allowed|restricted|denied, allowed_agents, blocked_actions, constraints, required_checks, approval_required}`. DENY short-circuits the graph immediately (verified end-to-end with a malicious-task curl: graph stopped at 3 hops, no plan generated, no execution attempted).
+    - **Deterministic routing (§2/§6)** — `routing.next` set explicitly by every node with `reason` text. The runtime is a tiny built-in loop honouring `routing.next` directly — LangGraph is not required at runtime (it remains available behind an `LANGGRAPH_OK` flag for future tracing UIs).
+    - **Plan → Execute → Review → Fix loop** — Reviewer FAIL routes to Fixer (`routing.next=fixer`), Fixer increments `status.retry_count` and routes back to Executor. §9 retry cap = 3 → STOP and surface `error.code=retry_exhausted`.
+    - **Hermes Validation (§5.5)** — final authority node after all plan steps are reviewed PASS. Approve → finalization. Reject → planner (replan) with its own retry counter.
+    - **Hard hop-cap** `MAX_HOPS=25` protects against any pathological loop; `MAX_PLAN_STEPS=3` keeps a single synchronous run under Cloudflare's 100 s edge timeout (42 s observed for a 3-step plan).
+    - **Endpoint** `POST /api/graph/v2/run` — body `{task, intent?, task_type?, context?}` → returns the FULL final `GraphState` so callers can inspect every layer of the audit trail and the packed `final_output`.
+    - **Verified end-to-end** through three curl scenarios:
+      1. **ALLOWED business task** — full flow runs (hermes_check → planner → 4×(executor→reviewer) → hermes_validation → finalization). Hermes approves, final output is coherent business prose.
+      2. **DENIED malicious task** — graph short-circuits at hermes_check in 3 hops with `error.code=denied` and a clear reason. No plan, no execution, no leak.
+      3. **Cloudflare 100s timing test** — 3-step plan completes in 42 s through the preview URL.
+    - **What this unlocks** — every future Hermes feature can opt into the constitutional graph for stronger guarantees (audit log, policy gate, fix loop) WITHOUT touching the legacy supervisor flow. When the v2 graph proves itself, the legacy `nxt8_langgraph_ultra.py` can be retired and v2 becomes the canonical Hermes runtime.
 
 ## Architecture (as built)
 
