@@ -17,6 +17,16 @@ export const api = {
   recentRequests: (limit = 10) =>
     http.get(`/requests?limit=${limit}`).then((r) => r.data),
 
+  // Onboarding survey (Connect → 7-question intake → Hermes brief)
+  onboardingInsight: (payload) =>
+    http.post("/onboarding/insight", payload).then((r) => r.data),
+  onboardingVerifyCode: (code) =>
+    http.post("/onboarding/verify-code", { code }).then((r) => r.data),
+  onboardingSaveProfile: (payload) =>
+    http.post("/onboarding/profiles", payload).then((r) => r.data),
+  onboardingBrief: (profileId) =>
+    http.post(`/onboarding/brief/${profileId}`).then((r) => r.data),
+
   memoryStore: (payload) => http.post("/memory/store", payload).then((r) => r.data),
   memorySearch: (payload) => http.post("/memory/search", payload).then((r) => r.data),
   memoryList: (type, limit = 50) =>

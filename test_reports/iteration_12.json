@@ -1,0 +1,49 @@
+{
+  "summary": "Onboarding flow tested end-to-end. Backend: 13/13 pytest tests passed (funnel, insights static+LLM RU fallback, verify-code 888/123/ab, profile save with/without code, missing-field 400/422, brief+Hermes RU reply, profile persistence with brief, 404). Hermes brief built in ~7-12s — Russian 4-block reply rendered with all required fields. Frontend: OnboardingFlow modal opens via the `nxt8:open-onboarding` custom event; intro splash (Start the test) appears first then Q1. All 7 questions answered, insights ('FOR YOU') appear after industry, team_size, first pain pick, first tools pick, goal_90days, urgency. Code 888 validation works (onb-code-valid marker + 'CODE ACCEPTED · PILOT 2026'). localStorage 'nxt8.onboarding.v1' persists progress. HOWEVER multiple spec-required data-testids are MISSING in the DOM, blocking automated verification of the reply UI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/onboarding/profiles", "issue": "Missing required field (pydantic) returns 422, not the 400 mentioned in spec. Sending empty industry='' returns 400 via business validator. Both behaviours are acceptable but inconsistent."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OnboardingFlow (contact step)", "issue": "Final 'send' submit button is missing data-testid='onb-submit' — only onb-next exists (it appears to be re-purposed as submit on Q7). Spec explicitly requires onb-submit.", "selector": "button:has-text('send')", "priority": "HIGH"},
+      {"component": "OnboardingFlow (processing screen)", "issue": "Missing testids onb-processing-step-0..3 — none are present in DOM after submit; cannot verify processing animation.", "selector": "[data-testid^='onb-processing-step-']", "priority": "HIGH"},
+      {"component": "OnboardingFlow (Hermes reply)", "issue": "All reply testids are missing: onb-reply, onb-reply-block1..4, onb-team-card-{i}, onb-reply-30d-{i}, onb-reply-cta. Backend brief endpoint returns the correct payload — but the UI does not expose the testids required by the test harness, so success cannot be automated.", "selector": "[data-testid='onb-reply']", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Pain multi-select (Q3)", "issue": "Clicking pain_primary=leads_lost then pain_primary=chaos OVERWRITES the first instead of capturing two values (primary + secondary). After two clicks localStorage shows {pain_primary:'chaos', pain_secondary:''}. Spec says 'multi-select up to 2: leads_lost + chaos'.", "affected_selectors": ["[data-testid='onb-opt-pain_primary-leads_lost']", "[data-testid='onb-opt-pain_primary-chaos']"]}
+    ],
+    "design_issues": [
+      {"screen": "OnboardingFlow header", "issues": ["Progress percentage text in top-right looks like '168%' / clipped (likely '100%' truncated by close icon overlap on Q7). Minor visual glitch."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_onboarding.py",
+    "/app/test_reports/pytest/iter12_onboarding.xml"
+  ],
+  "action_items": [
+    "Add data-testid='onb-submit' to the final 'send' button on the contact step (currently uses onb-next).",
+    "Render and expose processing-step UI with data-testid='onb-processing-step-0'..'onb-processing-step-3'.",
+    "Add data-testids to the Hermes reply screen: onb-reply (container), onb-reply-block1..4, onb-team-card-{i} (one per profession card), onb-reply-30d-{i} (each item in block3), onb-reply-cta (CTA button).",
+    "Fix pain multi-select so primary + secondary are both captured when user picks two distinct options (currently the second click overwrites the first).",
+    "Fix progress-percentage label overlap with close icon on Q7 (small visual clip)."
+  ],
+  "critical_code_review_comments": [
+    "OnboardingFlow.jsx: spec defines a rich testid contract (see agent_to_agent_context_note) but only ~14 of ~25 expected testids are wired. Treat that block of testids as a hard contract and add the missing ones in one pass.",
+    "agents/onboarding.py REQUIRED_FIELDS validation runs only after pydantic — and pydantic already declares industry/team_size/pain_primary/goal_90days/name as required (no default). So missing-field calls return 422, not the 400 declared in spec. Either drop pydantic defaults to allow empty strings through, or update spec to mention 422.",
+    "build_brief() defaults pain_secondary='chaos' when not provided AND no chaos already in list — combined with the front-end bug above this can mask the missing secondary pain from end users (they will still see Ops Director card even though they never picked chaos).",
+    "Hermes reply LLM call has no client-side timeout caller-side; the FE waits 80s. If DeepSeek is slow the user is stuck on processing — consider streaming or a 30s soft-timeout that falls back to the deterministic _fallback_reply payload (already implemented backend-side; just needs to be surfaced faster)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_onboarding.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "60%"},
+  "test_credentials": "none — pilot has no auth",
+  "seed_data_creation": "Three TEST_-prefixed client_profiles created via backend tests (TEST_Alex, TEST_NoCodeUser, TEST_BriefUser). Access code 888 used_count incremented by ~1 per code-bearing test.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend onboarding APIs are stable; rerun /app/backend/tests/test_onboarding.py for regression. Frontend OnboardingFlow modal opens correctly via window.dispatchEvent(new CustomEvent('nxt8:open-onboarding')) — but you MUST first click the intro splash 'Start the test' / 'Начать тест' before Q1 testids appear. The agent-to-agent testid contract in the review request is partly NOT honoured (onb-submit, onb-processing-step-*, onb-reply*, onb-team-card-*, onb-reply-30d-*, onb-reply-cta all missing). Once main agent adds those testids, the rest of the happy-path script will pass.",
+  "rca of the issue": "Frontend dev only wired testids on the question/input/nav elements (onb-q-*, onb-opt-*, onb-input-*, onb-next, onb-back, onb-code-valid). The submit button on the contact step reuses onb-next instead of branching to onb-submit. The processing and reply screens were rendered without any data-testid attributes at all — likely because they are conditional sub-components added later and not covered by the testid pass. Fix is purely additive: add the testids per the contract in the review request."
+}

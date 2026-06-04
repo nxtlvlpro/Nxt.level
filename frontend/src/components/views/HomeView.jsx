@@ -13,6 +13,7 @@ import {
 import api from "../../lib/api";
 import { useT } from "../../i18n/LanguageContext";
 import Waveform from "../Waveform";
+import OnboardingFlow from "../OnboardingFlow";
 
 // ============================================================
 // Static content keys (texts come from i18n dictionary)
@@ -173,7 +174,20 @@ const STEPS = [
 const CHECKOUT_BASE = "https://nxt8.pro/checkout";
 
 function goToCheckout(planId) {
-  const url = `${CHECKOUT_BASE}?plan=${encodeURIComponent(planId)}`;
+  // Any "Connect"/tariff CTA now opens the 7-question onboarding survey first.
+  // The modal lives in <HomeView> and listens to this custom event; after the
+  // survey completes the user is either sent to checkout for the chosen plan
+  // or unlocked into the free test (when a valid access code was entered).
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("nxt8:open-onboarding", { detail: { planId } })
+    );
+  }
+}
+
+function continueToCheckout(planId) {
+  // Called by OnboardingFlow when the user is ready to proceed to payment.
+  const url = `${CHECKOUT_BASE}?plan=${encodeURIComponent(planId || "pilot")}`;
   if (typeof window !== "undefined") {
     window.open(url, "_blank", "noopener,noreferrer");
   }
@@ -1237,11 +1251,35 @@ function HowItWorks({ t }) {
 
 export default function HomeView() {
   const { t, lang } = useT();
+  const [onboarding, setOnboarding] = useState({ open: false, planId: "" });
+
+  useEffect(() => {
+    const handler = (e) => {
+      const planId = (e?.detail?.planId) || "";
+      setOnboarding({ open: true, planId });
+    };
+    window.addEventListener("nxt8:open-onboarding", handler);
+    return () => window.removeEventListener("nxt8:open-onboarding", handler);
+  }, []);
+
   return (
     <div data-testid="home-view">
       <AgentsSwipe t={t} />
       <HermesChat t={t} lang={lang} />
       <HowItWorks t={t} />
+      <OnboardingFlow
+        open={onboarding.open}
+        planId={onboarding.planId}
+        onClose={() => setOnboarding({ open: false, planId: "" })}
+        onCheckout={(plan) => continueToCheckout(plan)}
+        onTestAccess={(profileId) => {
+          // Free pilot access — for now just continue to the in-app Hermes chat;
+          // we can extend this later (auto-create demo workspace, e-mail magic link, …).
+          if (typeof window !== "undefined") {
+            try { localStorage.setItem("nxt8.test_access", profileId || "1"); } catch { /* ignore */ }
+          }
+        }}
+      />
     </div>
   );
 }

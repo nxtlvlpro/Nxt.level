@@ -87,6 +87,12 @@ async def _roi_scheduler() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await ensure_indexes()
+    # Seed default onboarding access code(s) — currently a single pilot code.
+    try:
+        from agents import onboarding as _onb
+        await _onb.seed_default_codes()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("onboarding seed failed: %s", e)
     deepseek = get_deepseek()
     logger.info("DeepSeek mock_mode=%s model=%s", deepseek.mock_mode, deepseek.model)
     task = asyncio.create_task(_roi_scheduler())
@@ -1273,6 +1279,111 @@ async def joker_stats(window_minutes: int = 60) -> Dict[str, Any]:
     from agents import joker as _joker
     window = max(5, min(int(window_minutes or 60), 24 * 60))
     return await _joker.stats(window_minutes=window)
+
+
+# =====================================================================
+# Onboarding survey (Connect button → 7 questions → Hermes brief)
+# =====================================================================
+
+
+class OnboardingProfileRequest(BaseModel):
+    id: Optional[str] = None
+    industry: str
+    team_size: str
+    has_sales_team: bool = False
+    has_marketer: bool = False
+    pain_primary: str
+    pain_secondary: str = ""
+    tools_current: List[str] = []
+    crm_name: str = ""
+    goal_90days: str
+    urgency: str = "warm"
+    name: str
+    phone: str = ""
+    telegram: str = ""
+    timezone: str = ""
+    lang: str = "en"
+    selected_plan: str = ""
+    access_code: str = ""
+
+
+class OnboardingInsightRequest(BaseModel):
+    qid: str
+    answer: str
+    lang: str = "en"
+
+
+class AccessCodeRequest(BaseModel):
+    code: str
+
+
+@api.post("/onboarding/insight")
+async def onboarding_insight(req: OnboardingInsightRequest) -> Dict[str, Any]:
+    """Return the '💡 ДЛЯ ВАС' line for a single question/answer pair."""
+    from agents import onboarding as _onb
+    return await _onb.get_insight(req.qid, req.answer, req.lang)
+
+
+@api.post("/onboarding/verify-code")
+async def onboarding_verify_code(req: AccessCodeRequest) -> Dict[str, Any]:
+    """Check if an access code is valid and not exhausted (read-only)."""
+    from agents import onboarding as _onb
+    return await _onb.verify_access_code(req.code)
+
+
+@api.post("/onboarding/profiles")
+async def onboarding_save_profile(req: OnboardingProfileRequest) -> Dict[str, Any]:
+    """Save the completed survey and, if an access code was provided, validate
+    and consume it. Returns the profile id plus a `test_access` flag.
+    """
+    from agents import onboarding as _onb
+    payload = req.model_dump()
+    test_access = False
+    code = (payload.get("access_code") or "").strip()
+    if code:
+        check = await _onb.verify_access_code(code)
+        if check.get("valid"):
+            consumed = await _onb.consume_access_code(code)
+            test_access = bool(consumed)
+    payload["test_access"] = test_access
+    saved = await _onb.save_profile(payload)
+    if not saved.get("ok"):
+        raise HTTPException(status_code=400, detail=saved.get("error") or "save_failed")
+    return {"ok": True, "profile_id": saved["id"], "test_access": test_access}
+
+
+@api.get("/onboarding/profiles/{profile_id}")
+async def onboarding_get_profile(profile_id: str) -> Dict[str, Any]:
+    from agents import onboarding as _onb
+    profile = await _onb.get_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="profile_not_found")
+    return profile
+
+
+@api.post("/onboarding/brief/{profile_id}")
+async def onboarding_brief(profile_id: str) -> Dict[str, Any]:
+    """Build the brief and generate Hermes' 4-block personalised reply."""
+    from agents import onboarding as _onb
+    profile = await _onb.get_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="profile_not_found")
+    brief = _onb.build_brief(profile)
+    reply = await _onb.generate_hermes_reply(profile, brief, lang=profile.get("lang", "en"))
+    # Persist for later retrieval (Ops / admin).
+    db = get_db()
+    await db.client_profiles.update_one(
+        {"id": profile_id},
+        {"$set": {"brief": brief, "hermes_reply": reply, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"profile_id": profile_id, "brief": brief, "hermes_reply": reply}
+
+
+@api.get("/onboarding/funnel")
+async def onboarding_funnel(days: int = 30) -> Dict[str, Any]:
+    from agents import onboarding as _onb
+    days = max(1, min(int(days or 30), 365))
+    return await _onb.funnel_stats(days)
 
 
 # =====================================================================

@@ -68,6 +68,12 @@ async def ensure_indexes() -> None:
     )
     await db.channel_events.create_index([("channel_id", 1), ("ts", -1)])
     await db.channel_events.create_index([("ts", -1)])
+    # Onboarding survey + access codes.
+    await db.client_profiles.create_index([("created_at", -1)])
+    await db.client_profiles.create_index([("urgency", 1), ("created_at", -1)])
+    await db.client_profiles.create_index("phone")
+    await db.client_profiles.create_index("telegram")
+    await db.access_codes.create_index("code", unique=True)
 
 
 def close_db() -> None:
