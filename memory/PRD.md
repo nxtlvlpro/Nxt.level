@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.11.0-channels (additive over v1.10.1-voice-polish)
+**Current version:** v1.11.1-voice-hd (additive over v1.11.0-channels)
 **Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -83,6 +83,19 @@ The following parts of the codebase are **explicitly frozen by the product owner
     - **Stable session** — `make_session_id(channel_id, external_user_id)` is deterministic, so a returning external user keeps conversational context across calls without out-of-band negotiation.
     - **Verified end-to-end** with 10 curl scenarios: list, wildcard→hermes, intent→joker, intent→persona:hr_mentor (1210-char data-driven response), upsert via API, valid HMAC, invalid HMAC→401, unknown channel→404, recent events feed, delete binding.
     - **What this unlocks** — Slack / WhatsApp / Email / CRM adapters become a 1-class port each (`channels/slack.py`, etc.) without touching `server.py` or any agent code. JOKER and Personas automatically gain external reach.
+
+15. **v1.11.1 Voice quality upgrade — `gpt-4o-mini-tts` + tts-1-hd auto-fallback (2026-06-04):**
+    - **Goal** — make the TTS voice noticeably "alive" without forcing the user to bring their own OpenAI key.
+    - **`agents/voice.py` rewritten** — default model bumped from `tts-1` → `gpt-4o-mini-tts`. New `instructions` parameter (style/tone control) auto-picked per detected STT language:
+      - `DEFAULT_INSTRUCTIONS_EN` — "calm, confident COO briefing a colleague; warm, measured, natural pauses, faint smile, no theatrics".
+      - `DEFAULT_INSTRUCTIONS_RU` — same persona in Russian.
+    - **Two-path provider** (unchanged design but updated TTS surface):
+      - **Native OpenAI SDK** (when `OPENAI_API_KEY` is set): direct `client.audio.speech.create(model="gpt-4o-mini-tts", instructions=..., voice="onyx", ...)`. Full feature parity.
+      - **Emergent proxy via litellm** (when only `EMERGENT_LLM_KEY` is set): bypasses the emergentintegrations `OpenAITextToSpeech` helper (which whitelists only tts-1/tts-1-hd and drops the `instructions` arg) and goes straight through `litellm.aspeech(model="openai/gpt-4o-mini-tts", api_base=<emergent proxy>, ...)`.
+    - **Graceful auto-fallback** — if the provider rejects `gpt-4o-mini-tts` (HTTP 400 "Invalid model name"), `synthesize()` transparently retries with `tts-1-hd` and the caller never sees a 502.
+    - **`/api/voice/converse` and `/api/voice/converse/stream`** — now pass the detected STT `language` as `lang` into `synthesize()` so the style instructions are auto-localised (RU prompt for RU speech, EN prompt for EN speech).
+    - **Current production reality on Emergent platform:** confirmed via support ticket that the Emergent LLM proxy currently exposes only `tts-1` and `tts-1-hd`. The user's voice today therefore runs on **`tts-1-hd` automatically** (warmer + clearer than the previous `tts-1`) via the fallback. To unlock the full `gpt-4o-mini-tts` + style-instructions experience, add `OPENAI_API_KEY` to `backend/.env` — the native SDK path activates immediately, no other code changes needed.
+    - **Verified** with 3 curl scenarios: EN + RU + explicit tts-1-hd — all return HTTP 200 with valid MP3 payloads (22–70 KB depending on text length).
 
 ## Architecture (as built)
 

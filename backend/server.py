@@ -731,7 +731,11 @@ async def voice_converse(
     tts_error: Optional[str] = None
     if reply_text:
         try:
-            audio_bytes = await voice_agent.synthesize(text=reply_text, voice=voice)
+            audio_bytes = await voice_agent.synthesize(
+                text=reply_text,
+                voice=voice,
+                lang=(stt.get("language") or "en"),
+            )
             audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
         except Exception as e:  # noqa: BLE001
             logger.exception("converse TTS failed: %s", e)
@@ -905,7 +909,11 @@ async def voice_converse_stream(
 
         async def tts_one(idx: int, text: str):
             try:
-                audio_bytes = await voice_agent.synthesize(text=text, voice=voice)
+                audio_bytes = await voice_agent.synthesize(
+                    text=text,
+                    voice=voice,
+                    lang=(stt.get("language") or "en"),
+                )
                 return idx, text, base64.b64encode(audio_bytes).decode("ascii"), None
             except Exception as e:  # noqa: BLE001
                 logger.exception("voice_stream tts chunk %d failed: %s", idx, e)
