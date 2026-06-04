@@ -533,3 +533,37 @@ End-to-end Playwright run on the deployed preview:
 
 These were not bundled into this step on purpose — the OS UI on its own is a meaningful unit to verify; the rest are independent and can be sequenced one-by-one.
 
+
+---
+
+## v1.16.5 — Real Stripe Checkout (replaces static link), 2026-02-06
+
+### What ships
+- **`backend/agents/payments.py`** — module wrapping the `emergentintegrations.payments.stripe.checkout.StripeCheckout` library.
+  - Fixed `PLANS` catalogue defined backend-side ONLY (per security checklist): `personal $9`, `team $14`, `operations $19`, `headquarters $24`. Amount × quantity computed by backend; frontend cannot manipulate price.
+  - `create_session()` builds `success_url=<origin>/payment/return?session_id={CHECKOUT_SESSION_ID}` and `cancel_url=<origin>/payment/cancel?plan=<id>` from the supplied `origin` (window.location.origin), creates the Stripe Checkout Session via the emergent Stripe proxy, persists a pending `db.payment_transactions` row, and returns `{url, session_id, transaction_id}`.
+  - `get_status()` polls Stripe directly with `stripe.checkout.Session.retrieve()`, mirroring the library's `stripe.api_base = "https://integrations.emergentagent.com/stripe"` routing for the `sk_test_emergent` placeholder key. **Graceful degradation**: when the emergent Stripe proxy answers "No such checkout.session" for a retrieve call (known limitation — proxy currently forwards CREATE but not RETRIEVE), the endpoint returns the last persisted row state with `fallback: "stripe_retrieve_unavailable"` so the UI doesn't break. Webhook stays the authoritative path.
+  - `handle_webhook()` calls the library's `handle_webhook` and persists `payment_status` updates.
+  - `plan_catalog()` exposes the plans list for the frontend pricing cards.
+- **New endpoints in `server.py`:**
+  - `GET  /api/payments/plans`
+  - `POST /api/payments/checkout/session` — accepts `{plan_id, quantity, origin, user_id?, company_id?}`.
+  - `GET  /api/payments/checkout/status/{session_id}` — polled by the frontend.
+  - `POST /api/webhook/stripe` — Stripe → us push (verified by the library).
+- **New collection** `db.payment_transactions` with unique index on `session_id`.
+- **Frontend:**
+  - Replaced `CHECKOUT_BASE = "https://nxt8.pro/checkout"` in `HomeView.jsx` with `continueToCheckout(planId)` that calls `api.checkoutSessionCreate({plan_id, quantity:1, origin: window.location.origin})` and redirects the **same tab** to the returned Stripe-hosted `url`. Falls back to `nxt8:checkout-error` event if creation fails, so OnboardingFlow can show an inline error.
+  - Added `PLAN_ID_MAP` to translate UI plan slugs (`pilot`) to backend IDs (`personal` for the lightest tier).
+  - **`api.js`**: `checkoutPlans`, `checkoutSessionCreate`, `checkoutStatus` helpers.
+  - **New view `PaymentReturnView.jsx`** wired into `App.js` via pathname check `startsWith("/payment/return")`. Renders **standalone** (no header / sidenav so the user is never confused mid-flow). Polls `/api/payments/checkout/status/<sid>` up to 12 attempts every 2.5 s; switches to `paid / expired / timeout / error` states with clear copy. When the polling hits the fallback path, surfaces "Live retrieval via Stripe proxy is delayed — relying on the webhook" so the user knows the system is OK.
+- **Env** — `STRIPE_API_KEY=sk_test_emergent` appended to `/app/backend/.env`. No real Stripe account required for dev.
+
+### Verified
+- `POST /api/payments/checkout/session` with `{plan_id:"personal", quantity:3, origin: backend_url}` → 200 OK, returns `cs_test_a1ZAu0…` URL pointing at `checkout.stripe.com`. `db.payment_transactions` row created with `status=initiated, payment_status=pending, amount=27.0`.
+- Browser test on the preview: navigated to `/payment/return?session_id=cs_test_...` → standalone view rendered (no main shell), spinner showed `Polling Stripe (attempt 5/12)`, fallback notice surfaced as expected.
+- Browser test of the create-session flow from page console: `fetch('/api/payments/checkout/session', ...)` returned `{status:200, hasUrl:true, urlPrefix:"https://checkout.stripe.com/c/pay/cs_tes...", sessionId:"cs_test_..."}`. The home pricing CTAs (`home-tariff-cta-*` testids) now follow this path through the onboarding modal before redirecting.
+
+### Notes
+- **Known limitation**: Stripe retrieve via the emergent proxy returns "No such checkout.session" — the polling endpoint degrades gracefully and the webhook reconciles the final state. This is acceptable for dev / test-mode; in production a real Stripe key would make retrieve work directly.
+- The user only needs to send their origin (`window.location.origin`); amounts are NEVER accepted from the client.
+

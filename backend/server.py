@@ -2289,6 +2289,71 @@ async def attachments_raw(attachment_id: str) -> Response:
 
 
 # =====================================================================
+# Payments — Stripe Checkout Sessions
+# =====================================================================
+
+
+class CheckoutSessionRequest(BaseModel):
+    plan_id: str
+    quantity: int = 1
+    origin: str    # window.location.origin from the browser
+    user_id: Optional[str] = None
+    company_id: Optional[str] = None
+
+
+@api.get("/payments/plans")
+async def payments_plans() -> Dict[str, Any]:
+    from agents import payments as _pay
+    return _pay.plan_catalog()
+
+
+@api.post("/payments/checkout/session")
+async def payments_create_session(req: CheckoutSessionRequest,
+                                   http_request: Request) -> Dict[str, Any]:
+    from agents import payments as _pay
+    host_url = str(http_request.base_url)
+    try:
+        return await _pay.create_session(
+            plan_id=req.plan_id,
+            quantity=req.quantity,
+            origin=req.origin,
+            host_url=host_url,
+            user_id=req.user_id,
+            company_id=req.company_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        logger.exception("stripe create session failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"stripe_failed: {e}")
+
+
+@api.get("/payments/checkout/status/{session_id}")
+async def payments_get_status(session_id: str,
+                               http_request: Request) -> Dict[str, Any]:
+    from agents import payments as _pay
+    host_url = str(http_request.base_url)
+    try:
+        return await _pay.get_status(session_id=session_id, host_url=host_url)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("stripe status check failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"stripe_status_failed: {e}")
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(http_request: Request) -> Dict[str, Any]:
+    from agents import payments as _pay
+    body = await http_request.body()
+    sig = http_request.headers.get("Stripe-Signature")
+    host_url = str(http_request.base_url)
+    try:
+        return await _pay.handle_webhook(body, sig, host_url)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("stripe webhook failed: %s", e)
+        raise HTTPException(status_code=400, detail=f"webhook_invalid: {e}")
+
+
+# =====================================================================
 # Mount + CORS
 # =====================================================================
 

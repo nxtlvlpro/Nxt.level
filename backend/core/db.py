@@ -83,6 +83,10 @@ async def ensure_indexes() -> None:
     await db.knowledge_graph.create_index([("created_at", -1)])
     await db.institutional_memory.create_index([("scope", 1), ("created_at", -1)])
     await db.institutional_memory.create_index([("tags", 1)])
+    # Stripe payment transactions
+    await db.payment_transactions.create_index("session_id", unique=True)
+    await db.payment_transactions.create_index([("created_at", -1)])
+    await db.payment_transactions.create_index([("user_id", 1), ("created_at", -1)])
 
 
 def close_db() -> None:

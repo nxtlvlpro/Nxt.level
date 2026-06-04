@@ -159,6 +159,13 @@ export const api = {
   attachmentRawUrl: (id) =>
     `${http.defaults.baseURL}/attachments/${id}/raw`,
 
+  // Payments — Stripe Checkout Sessions
+  checkoutPlans: () => http.get("/payments/plans").then((r) => r.data),
+  checkoutSessionCreate: (payload) =>
+    http.post("/payments/checkout/session", payload).then((r) => r.data),
+  checkoutStatus: (session_id) =>
+    http.get(`/payments/checkout/status/${session_id}`).then((r) => r.data),
+
   voiceConverse: (blob, opts = {}) => {
     const fd = new FormData();
     const filename = opts.filename || "speech.webm";

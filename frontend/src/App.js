@@ -13,12 +13,19 @@ import MicView from "./components/views/MicView";
 import OpsView from "./components/views/OpsView";
 import GraphView from "./components/views/GraphView";
 import HermesOSView from "./components/views/HermesOSView";
+import PaymentReturnView from "./components/views/PaymentReturnView";
 import api from "./lib/api";
 import { useT } from "./i18n/LanguageContext";
 import { HEADER_LOCKED } from "./config/header.locked";
 
 function App() {
   const { t } = useT();
+  // Pathname routing: payment return / cancel pages render standalone,
+  // bypassing the main app shell so the user is never confused mid-flow.
+  const pathname =
+    typeof window !== "undefined" ? window.location.pathname : "/";
+  const isPaymentReturn = pathname.startsWith("/payment/return");
+
   const [view, setView] = useState("home");
   const [alertCount, setAlertCount] = useState(0);
   const [seedStatus, setSeedStatus] = useState("idle");
@@ -80,6 +87,13 @@ function App() {
       className="App led-matrix h-screen flex flex-col relative overflow-hidden"
       data-testid="app-root"
     >
+      {isPaymentReturn ? (
+        <PaymentReturnView />
+      ) : (
+        <></>
+      )}
+      {isPaymentReturn ? null : (
+        <>
       <div className="fixed inset-0 led-matrix pointer-events-none -z-10"></div>
 
       {/* Full-width ticker — pinned at very top */}
@@ -132,6 +146,8 @@ function App() {
       >
         <BottomNav active={view} onChange={setView} alertCount={alertCount} />
       </div>
+        </>
+      )}
     </div>
   );
 }

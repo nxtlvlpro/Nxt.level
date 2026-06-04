@@ -176,7 +176,15 @@ const STEPS = [
   { n: "03", titleKey: "home.how.step3.title", descKey: "home.how.step3.desc" },
 ];
 
-const CHECKOUT_BASE = "https://nxt8.pro/checkout";
+const PLAN_ID_MAP = {
+  // Map user-facing tariff slugs to backend plan_ids
+  personal:     "personal",
+  team:         "team",
+  operations:   "operations",
+  headquarters: "headquarters",
+  // Pilot plan = lightest tier
+  pilot:        "personal",
+};
 
 function goToCheckout(planId) {
   // Any "Connect"/tariff CTA now opens the 7-question onboarding survey first.
@@ -190,11 +198,31 @@ function goToCheckout(planId) {
   }
 }
 
-function continueToCheckout(planId) {
+async function continueToCheckout(planId) {
   // Called by OnboardingFlow when the user is ready to proceed to payment.
-  const url = `${CHECKOUT_BASE}?plan=${encodeURIComponent(planId || "pilot")}`;
-  if (typeof window !== "undefined") {
-    window.open(url, "_blank", "noopener,noreferrer");
+  // Now creates a real Stripe Checkout Session via our backend and
+  // redirects in the same tab so the return-flow (`/payment/return`)
+  // can poll status without losing context.
+  if (typeof window === "undefined") return;
+  const stripePlanId = PLAN_ID_MAP[planId] || PLAN_ID_MAP.pilot;
+  try {
+    const res = await api.checkoutSessionCreate({
+      plan_id: stripePlanId,
+      quantity: 1,
+      origin: window.location.origin,
+    });
+    if (res?.url) {
+      window.location.href = res.url;
+      return;
+    }
+    throw new Error("no checkout url");
+  } catch (e) {
+    // Fall back to onboarding contact (no payment) so the visitor isn't stranded.
+    window.dispatchEvent(
+      new CustomEvent("nxt8:checkout-error", {
+        detail: { planId: stripePlanId, message: String(e?.message || e) },
+      })
+    );
   }
 }
 
