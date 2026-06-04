@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
@@ -1265,6 +1265,138 @@ async def joker_stats(window_minutes: int = 60) -> Dict[str, Any]:
     from agents import joker as _joker
     window = max(5, min(int(window_minutes or 60), 24 * 60))
     return await _joker.stats(window_minutes=window)
+
+
+# =====================================================================
+# Channel adapters (Wingman-inspired ingress)
+# =====================================================================
+
+
+@api.get("/channels")
+async def channels_list(include_inactive: bool = False) -> Dict[str, Any]:
+    """List all channel bindings (file defaults + DB overrides merged)."""
+    from channels import list_bindings
+    items = await list_bindings(include_inactive=include_inactive)
+    return {
+        "count": len(items),
+        "items": [b.to_dict() for b in items],
+    }
+
+
+class ChannelBindingRequest(BaseModel):
+    channel_id: str
+    channel_kind: str = "webhook"
+    agent: str = "hermes"
+    intent_filter: str = ""
+    name: str = ""
+    signing_secret: str = ""
+    active: bool = True
+
+
+@api.post("/channels/bindings")
+async def channels_upsert(req: ChannelBindingRequest) -> Dict[str, Any]:
+    """Create or update a runtime binding (stored in db.channel_bindings)."""
+    from channels import upsert_binding, ChannelBinding
+    b = ChannelBinding(
+        channel_id=req.channel_id.strip(),
+        channel_kind=req.channel_kind.strip() or "webhook",
+        agent=(req.agent or "hermes").strip(),
+        intent_filter=req.intent_filter or "",
+        name=req.name or "",
+        signing_secret=req.signing_secret or "",
+        active=bool(req.active),
+    )
+    saved = await upsert_binding(b)
+    return {"ok": True, "binding": saved.to_dict()}
+
+
+@api.delete("/channels/bindings")
+async def channels_delete(channel_id: str, intent_filter: str = "") -> Dict[str, Any]:
+    from channels import delete_binding
+    deleted = await delete_binding(channel_id, intent_filter)
+    return {"ok": True, "deleted": deleted}
+
+
+@api.post("/channels/webhook/{channel_id}")
+async def channels_webhook_inbound(
+    channel_id: str,
+    request: Request,
+) -> Dict[str, Any]:
+    """
+    Generic webhook ingress.
+
+    External systems POST JSON `{ "text": "...", "user_id": "...", "lang": "ru" }`.
+    The bindings registry picks the best agent (most-specific-first) and
+    returns its reply in the same response.
+
+    Optional HMAC verification: header `X-NXT8-Signature: sha256=<hex>`
+    is checked against the matching binding's `signing_secret`.
+    """
+    from channels import get_binding, invoke_agent_for_binding
+    from channels.webhook import WebhookAdapter
+    import time as _time
+
+    t0 = _time.time()
+    raw_body = await request.body()
+    try:
+        payload = json.loads(raw_body or b"{}")
+        if not isinstance(payload, dict):
+            payload = {"text": str(payload)}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    text_preview = (payload.get("text") or payload.get("message") or "").strip()
+    if not text_preview:
+        raise HTTPException(status_code=400, detail="Missing `text` field")
+
+    binding = await get_binding(channel_id, text_preview)
+    if not binding:
+        raise HTTPException(status_code=404, detail=f"No active binding for channel '{channel_id}'")
+
+    # HMAC verification when the binding declares a signing_secret.
+    if binding.signing_secret:
+        sig = request.headers.get("x-nxt8-signature") or request.headers.get("X-NXT8-Signature")
+        if not WebhookAdapter.verify_signature(raw_body, sig, binding.signing_secret):
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
+    adapter = WebhookAdapter()
+    event = await adapter.parse(channel_id, payload, dict(request.headers))
+    reply = await invoke_agent_for_binding(binding, event)
+
+    # Lightweight audit so the Ops dashboard can show channel activity.
+    try:
+        db = get_db()
+        await db.channel_events.insert_one({
+            "id": f"ch_{uuid.uuid4().hex[:12]}",
+            "channel_id": channel_id,
+            "channel_kind": "webhook",
+            "external_user_id": event.external_user_id,
+            "session_id": event.session_id,
+            "binding_agent": binding.agent,
+            "binding_filter": binding.intent_filter,
+            "text_in": text_preview[:500],
+            "text_out": (reply.text or "")[:500],
+            "tokens_total": reply.tokens_total,
+            "latency_ms": int((_time.time() - t0) * 1000),
+            "routed_to": reply.routed_to,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger("nxt8.server").warning("channel_events audit failed: %s", e)
+
+    return await adapter.format(reply, event)
+
+
+@api.get("/channels/{channel_id}/events")
+async def channels_recent_events(channel_id: str, limit: int = 20) -> Dict[str, Any]:
+    """Recent inbound events for a given channel (for Ops dashboard)."""
+    db = get_db()
+    limit = max(1, min(int(limit or 20), 200))
+    items: List[Dict[str, Any]] = []
+    async for r in db.channel_events.find({"channel_id": channel_id}).sort("ts", -1).limit(limit):
+        r.pop("_id", None)
+        items.append(r)
+    return {"channel_id": channel_id, "count": len(items), "items": items}
 
 
 @api.post("/hermes/chat")

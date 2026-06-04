@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.10.0-joker (additive over v1.9.1-locked-header)
+**Current version:** v1.11.0-channels (additive over v1.10.1-voice-polish)
 **Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -61,6 +61,28 @@ The following parts of the codebase are **explicitly frozen by the product owner
 13. **v1.10.1 Voice UX polish (2026-06-04):**
     - **Waveform integration finished** — the existing `frontend/src/components/Waveform.jsx` is now actually fed audio in BOTH directions inside HomeView voice mode: live MediaStream during recording, currently-playing `<audio>` element during TTS playback (was previously dead — `activeAudio` state was declared but never set).
     - **Breathing mic button** — the idle large mic CTA on HomeView was hard to notice (faint `border-brand-turquoise/40` only). Replaced with a smooth 3.2 s "breathing" turquoise glow (`.voice-mic-breathe` keyframes on border + box-shadow + inner shadow) plus a slower outer halo ring (`.voice-mic-halo`) for layered depth. Animation gates OFF when the button is in red/turquoise/purple event states so the visual language stays clear.
+
+14. **v1.11 Channel Adapters — Wingman-inspired ingress layer (2026-06-04):**
+    - **Motivation** — user asked to evaluate migrating to wingman-ai as a skeleton. Deep analysis (TS+Bun+SQLite local dev-tool vs Python+FastAPI+MongoDB SaaS) showed migration would require ~300h rewrite for a functionally weaker product. Decision: **stay on current stack, cherry-pick best ideas**. First port: Wingman's channel/bindings ingress.
+    - **`backend/channels/`** — new package introducing a uniform ingress contract:
+      - `base.py` — `InboundEvent`, `OutboundReply`, abstract `ChannelAdapter`, `ChannelBinding` dataclasses. Adapter contract: `parse(payload, headers) → InboundEvent` + `format(reply, event) → dict`.
+      - `webhook.py` — `WebhookAdapter` (generic JSON ingress, optional HMAC-SHA256 signature verification with constant-time `hmac.compare_digest`).
+      - `registry.py` — most-specific-first bindings router. Merges built-in defaults from `data/channels.json` with runtime DB overrides from `db.channel_bindings`. Resolution: longest matching `intent_filter` regex wins; empty filter is the wildcard.
+      - `invoke_agent_for_binding()` dispatches to `agents.hermes.hermes_chat` / `agents.joker.respond` / `agents.personas.run_persona` with consistent `OutboundReply` shape — keeps channels package free of upstream agent imports cycles.
+    - **Persona dispatch unlocks the tariff gate** — channel webhooks are server-to-server, so they call `run_persona(..., plan_id="enterprise")` to bypass user-tier restrictions while still respecting persona system prompts and tools.
+    - **Endpoints** in `server.py`:
+      - `GET  /api/channels` — list merged bindings (file + DB)
+      - `POST /api/channels/bindings` — upsert runtime binding (stored in Mongo)
+      - `DELETE /api/channels/bindings?channel_id=&intent_filter=` — remove runtime binding
+      - `POST /api/channels/webhook/{channel_id}` — main ingress: parses JSON `{text, user_id, lang, attachments}`, resolves binding, verifies HMAC if `signing_secret` set, invokes agent, logs to `db.channel_events`, returns formatted reply.
+      - `GET  /api/channels/{channel_id}/events?limit=20` — recent activity feed for Ops dashboard.
+    - **New collections** in `db.py:ensure_indexes`:
+      - `db.channel_bindings` — unique index on `(channel_id, intent_filter)`.
+      - `db.channel_events` — indexes on `(channel_id, ts)` and `(ts)`. Schema: `{id, channel_id, channel_kind, external_user_id, session_id, binding_agent, binding_filter, text_in[:500], text_out[:500], tokens_total, latency_ms, routed_to, ts}`.
+    - **Seed file** `backend/data/channels.json` — 3 demo bindings on the `demo-webhook` channel: catch-all → Hermes, regex `\\b(joke|анекдот|meme|загадк|riddle)\\b` → JOKER, regex `\\b(сотрудник|команд|hr|onboard|hire|увольн)\\b` → `persona:hr_mentor`. Shows how a single channel can fan out by intent.
+    - **Stable session** — `make_session_id(channel_id, external_user_id)` is deterministic, so a returning external user keeps conversational context across calls without out-of-band negotiation.
+    - **Verified end-to-end** with 10 curl scenarios: list, wildcard→hermes, intent→joker, intent→persona:hr_mentor (1210-char data-driven response), upsert via API, valid HMAC, invalid HMAC→401, unknown channel→404, recent events feed, delete binding.
+    - **What this unlocks** — Slack / WhatsApp / Email / CRM adapters become a 1-class port each (`channels/slack.py`, etc.) without touching `server.py` or any agent code. JOKER and Personas automatically gain external reach.
 
 ## Architecture (as built)
 

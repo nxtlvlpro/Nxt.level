@@ -1,0 +1,29 @@
+[
+  {
+    "channel_id": "demo-webhook",
+    "channel_kind": "webhook",
+    "agent": "hermes",
+    "intent_filter": "",
+    "name": "Demo webhook → Hermes (default catch-all)",
+    "signing_secret": "",
+    "active": true
+  },
+  {
+    "channel_id": "demo-webhook",
+    "channel_kind": "webhook",
+    "agent": "joker",
+    "intent_filter": "\\b(joke|анекдот|meme|мем|загадк|riddle)\\b",
+    "name": "Demo webhook → JOKER (entertainment override)",
+    "signing_secret": "",
+    "active": true
+  },
+  {
+    "channel_id": "demo-webhook",
+    "channel_kind": "webhook",
+    "agent": "persona:hr_mentor",
+    "intent_filter": "\\b(сотрудник|команд|перформанс|hr|onboard|увольн|hire)\\b",
+    "name": "Demo webhook → HR-Mentor persona (employee topics)",
+    "signing_secret": "",
+    "active": true
+  }
+]

@@ -62,6 +62,12 @@ async def ensure_indexes() -> None:
     # JOKER sandbox audit ledger — used for rate-limit + dashboard counts.
     await db.joker_audit.create_index([("session_id", 1), ("ts", -1)])
     await db.joker_audit.create_index([("ts", -1)])
+    # Channel bindings (Wingman-inspired ingress router).
+    await db.channel_bindings.create_index(
+        [("channel_id", 1), ("intent_filter", 1)], unique=True
+    )
+    await db.channel_events.create_index([("channel_id", 1), ("ts", -1)])
+    await db.channel_events.create_index([("ts", -1)])
 
 
 def close_db() -> None:
