@@ -888,43 +888,51 @@ async def hermes_chat(
             history_for_joker.append({"role": "assistant", "content": content})
 
     if last_user_msg.strip():
-        try:
-            from agents import classifier as _classifier
-            from agents import joker as _joker
-            verdict = await _classifier.classify(
-                last_user_msg,
-                history=history_for_joker[:-1],  # everything except the current turn
-            )
-            if verdict.get("route") == "joker":
-                jr = await _joker.respond(
-                    message=last_user_msg,
-                    session_id=user_id or "anon",
-                    history=history_for_joker[:-1],
-                    user_id=user_id,
-                    lang=("ru" if any(ord(c) > 1000 for c in last_user_msg) else "en"),
+        # Feature-flag: JOKER is benched until further notice. Keep the
+        # classifier + sandbox code intact so we can re-enable later by
+        # flipping JOKER_ENABLED=true in backend/.env. While disabled,
+        # every turn — including jokes and small-talk — goes through the
+        # normal Hermes path.
+        import os as _os
+        joker_enabled = (_os.environ.get("JOKER_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
+        if joker_enabled:
+            try:
+                from agents import classifier as _classifier
+                from agents import joker as _joker
+                verdict = await _classifier.classify(
+                    last_user_msg,
+                    history=history_for_joker[:-1],  # everything except the current turn
                 )
-                # Return payload in the SAME shape Hermes normally returns
-                # so all downstream consumers (server.py / voice / chat panels)
-                # work without changes. Tool traces are empty by definition.
-                return {
-                    "content": jr.get("content", ""),
-                    "tool_calls": [],
-                    "iterations": 0,
-                    "company_id": company,
-                    "confidence": 0.5,
-                    "mock": jr.get("mock", False),
-                    "tokens_total": jr.get("tokens_total", 0),
-                    "provider": "joker_sandbox",
-                    "autonomy_level": autonomy_level,
-                    "routed_to": "joker",
-                    "routing_reason": verdict.get("reason"),
-                    "routing_stage": verdict.get("stage"),
-                    "downgraded": jr.get("downgraded", False),
-                }
-        except Exception as e:  # noqa: BLE001
-            # Classifier or JOKER failure must NEVER block a business request.
-            # Fall through to normal Hermes path.
-            logger.warning("joker pre-route failed (%s) — falling back to Hermes", e)
+                if verdict.get("route") == "joker":
+                    jr = await _joker.respond(
+                        message=last_user_msg,
+                        session_id=user_id or "anon",
+                        history=history_for_joker[:-1],
+                        user_id=user_id,
+                        lang=("ru" if any(ord(c) > 1000 for c in last_user_msg) else "en"),
+                    )
+                    # Return payload in the SAME shape Hermes normally returns
+                    # so all downstream consumers (server.py / voice / chat panels)
+                    # work without changes. Tool traces are empty by definition.
+                    return {
+                        "content": jr.get("content", ""),
+                        "tool_calls": [],
+                        "iterations": 0,
+                        "company_id": company,
+                        "confidence": 0.5,
+                        "mock": jr.get("mock", False),
+                        "tokens_total": jr.get("tokens_total", 0),
+                        "provider": "joker_sandbox",
+                        "autonomy_level": autonomy_level,
+                        "routed_to": "joker",
+                        "routing_reason": verdict.get("reason"),
+                        "routing_stage": verdict.get("stage"),
+                        "downgraded": jr.get("downgraded", False),
+                    }
+            except Exception as e:  # noqa: BLE001
+                # Classifier or JOKER failure must NEVER block a business request.
+                # Fall through to normal Hermes path.
+                logger.warning("joker pre-route failed (%s) — falling back to Hermes", e)
 
     full_messages: List[Dict[str, Any]] = [
         {"role": "system", "content": _system_prompt(mode, autonomy_level)},

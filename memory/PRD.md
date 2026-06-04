@@ -933,3 +933,38 @@ Applies automatically to every TTS call across all 4 voice endpoints.
 - Add a `?nocache=1` query param if we ever need to bust the cache
   manually (currently no business need — TTL handles staleness).
 
+
+---
+
+## v1.22.0 — JOKER benched (feature-flag off) — 2026-06-04
+
+### User request
+"убираем Джокера пока на скамейку запасных. вернём позже в проект"
+
+### What shipped
+- New env flag `JOKER_ENABLED=false` in `backend/.env`. All Joker code paths
+  (`agents/joker.py`, `agents/classifier.py`, `db.joker_audit`,
+  `MANIFESTS["joker"]`) are **kept intact** — just gated.
+- `agents/hermes.py` — Joker pre-route block now wrapped in
+  `if joker_enabled:`. When off, every turn (including jokes / small-talk /
+  emoji-only) goes through the normal Hermes path.
+- `agents/manifests.py` — `all_persona_ids()` and `list_all_manifests()`
+  now hide the Joker manifest from public API consumers when
+  `JOKER_ENABLED=false`. Frontend agent-list and passport modal won't
+  show Joker.
+- `/api/joker/stats` endpoint kept alive so historical stats still queryable.
+
+### Verification
+- `/api/agents/manifests` count: 15 → **14** (no joker entry).
+- Joke phrase `"расскажи анекдот про программистов"` →
+  `provider=deepseek_direct, routed_to=None` (Hermes, not sandbox).
+- Flip `JOKER_ENABLED=true` → re-enables instantly: same phrase routes back
+  to `provider=joker_sandbox, routed_to=joker`. **Zero code edits needed
+  to return Joker** — just env flip + backend restart.
+- Business request (ROI question) unaffected.
+
+### Files touched
+- `backend/.env` — `JOKER_ENABLED=false`
+- `backend/agents/hermes.py` — gated pre-route block
+- `backend/agents/manifests.py` — `all_persona_ids()` + `list_all_manifests()` filter
+

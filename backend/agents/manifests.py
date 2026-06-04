@@ -473,11 +473,21 @@ def get_manifest(agent_id: str) -> Dict[str, Any]:
 
 
 def list_all_manifests() -> List[Dict[str, Any]]:
-    """Return all manifests with their type."""
+    """Return all manifests with their type.
+
+    JOKER is suppressed from this list when `JOKER_ENABLED=false` so the
+    sandbox doesn't appear in the public agents UI while benched.
+    """
+    import os as _os
+    joker_enabled = (_os.environ.get("JOKER_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
     out: List[Dict[str, Any]] = []
-    for m in MANIFESTS.values():
+    for aid, m in MANIFESTS.items():
+        if aid == "joker" and not joker_enabled:
+            continue
         out.append({**m, "agent_type": "persona"})
-    for m in GRAPH_NODE_MANIFESTS.values():
+    for aid, m in GRAPH_NODE_MANIFESTS.items():
+        if aid == "joker" and not joker_enabled:
+            continue
         out.append({**m, "agent_type": "graph_node"})
     return out
 
@@ -574,4 +584,10 @@ def can_write(agent_id: str, collection: str) -> bool:
 
 
 def all_persona_ids() -> List[str]:
-    return list(MANIFESTS.keys())
+    # JOKER is feature-flagged off (benched). Surface it only when explicitly enabled.
+    import os as _os
+    joker_enabled = (_os.environ.get("JOKER_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
+    ids = list(MANIFESTS.keys())
+    if not joker_enabled:
+        ids = [i for i in ids if i != "joker"]
+    return ids
