@@ -864,3 +864,72 @@ then a **5-block** personal Hermes reply with a dynamic CTA driven by urgency
 - `backend/agents/voice.py` (Fish primary + fallback wiring, ~80 new lines)
 - `backend/.env` (3 new keys: `FISH_API_KEY`, `FISH_TTS_MODEL`, `FISH_DEFAULT_VOICE_ID`)
 
+
+---
+
+## v1.21.0 — Voice: Brad Pitt + Streaming + Cache — 2026-06-04
+
+### User request
+- Использовать модель Brad Pitt `d9247a00779649adbe7f4fdde2ac11c8`
+- Настройки: деловой, профессиональный, живой, внимательный, задумчивый на паузах
+- Streaming для быстрого ответа
+- Экономия на повторяющихся фразах через кэш
+
+### What shipped
+
+**1. Brad Pitt voice model bound** — `.env`:
+```
+FISH_DEFAULT_VOICE_ID=d9247a00779649adbe7f4fdde2ac11c8
+```
+Applies automatically to every TTS call across all 4 voice endpoints.
+
+**2. Prosody — "business, professional, lively, thoughtful pauses"**
+- `_fish_payload()` now sets:
+  - `latency: "balanced"` — favours TTFB (good for streaming chat replies)
+  - `chunk_length: 200` — natural pause cadence
+  - `normalize: true` — keeps punctuation pauses (the "thoughtful" feel)
+  - `prosody: { speed: 0.95, volume: 0 }` — slightly slower than natural = "measured"
+
+**3. Streaming endpoint — `/api/voice/tts/stream`**
+- New `fish_synthesize_stream()` async generator in `voice.py` uses
+  `httpx.AsyncClient.stream()` and `aiter_bytes(chunk_size=4096)` to relay
+  MP3 chunks as Fish Audio produces them.
+- Server endpoint wraps it in FastAPI `StreamingResponse` with
+  `media_type="audio/mpeg"` and `X-Accel-Buffering: no` so Nginx/Cloudflare
+  don't buffer.
+- Graceful degradation: if Fish stream fails, the producer falls through
+  to a single-chunk `voice_agent.synthesize()` call (OpenAI fallback path).
+- **Measured TTFB**: 41 ms vs 1660 ms wall time for full audio
+  (≈40× faster perceived start-of-speech).
+
+**4. Repeating-phrase cache — `db.tts_cache`**
+- `_cache_get` / `_cache_set` hash `(model + voice_id + normalised_text)`
+  with SHA-256, store the audio as BSON Binary in Mongo.
+- Only caches phrases ≤500 chars (short, repeatable lines like "ок",
+  "минутку", "понял, делаю"). Long-form replies are not cached.
+- TTL index on `created_at`: documents auto-expire after 30 days.
+- Tracks `hits` count + `last_hit_at` for ROI analysis.
+- **Measured speed-up**: 1221 ms → 171 ms (~7× faster, zero credits used).
+- Cache is **per-voice** — switching `FISH_DEFAULT_VOICE_ID` invalidates
+  cache automatically by design.
+
+### Verification (curl, all 200 OK)
+1. First TTS call: `Fish 200 → 46 KB MP3 → cached`, wall 1221 ms
+2. Second identical call: `cache HIT → 46 KB MP3`, wall 171 ms (7× faster)
+3. Streaming with new text: `audio/mpeg streamed`, TTFB 41 ms, 81 KB total
+4. Mongo `tts_cache` collection: 1 doc, voice `d9247a00779649`, hits=1
+
+### Files touched
+- `backend/.env` — `FISH_DEFAULT_VOICE_ID=d9247a00779649adbe7f4fdde2ac11c8`
+- `backend/agents/voice.py` — `_fish_payload()`, `_cache_get/_set`,
+  `fish_synthesize_stream()`, prosody defaults (~150 new lines)
+- `backend/server.py` — `/api/voice/tts/stream` endpoint (~40 new lines)
+
+### Open follow-ups
+- Frontend doesn't yet hit `/api/voice/tts/stream` — the existing voice
+  flow still uses non-streaming `/api/voice/tts`. Wire it in when we want
+  real perceived-latency wins for chat replies. (Trivial: swap fetch URL,
+  feed `MediaSource` API for progressive playback.)
+- Add a `?nocache=1` query param if we ever need to bust the cache
+  manually (currently no business need — TTL handles staleness).
+

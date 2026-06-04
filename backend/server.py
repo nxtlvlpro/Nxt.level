@@ -620,6 +620,46 @@ async def voice_tts(req: TTSRequest) -> Response:
         raise HTTPException(status_code=502, detail=f"tts_failed: {e}")
 
 
+@api.post("/voice/tts/stream")
+async def voice_tts_stream(req: TTSRequest) -> StreamingResponse:
+    """Stream MP3 chunks from Fish Audio for low time-to-first-byte playback.
+
+    On any Fish failure, the response degrades gracefully into a single-chunk
+    stream filled with audio from the OpenAI fallback path so the browser
+    `<audio>` element can still play.
+    """
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    async def producer():
+        primed = False
+        try:
+            async for chunk in voice_agent.fish_synthesize_stream(text, lang=None):
+                primed = True
+                yield chunk
+            if primed:
+                return
+        except Exception as e:  # noqa: BLE001
+            logger.warning("voice_tts_stream Fish failed, falling back: %s", e)
+        # Fallback: single-shot OpenAI/Emergent path, sent as one chunk.
+        try:
+            audio = await voice_agent.synthesize(
+                text=text, voice=req.voice, speed=req.speed, model=req.model
+            )
+            yield audio
+        except Exception as e:  # noqa: BLE001
+            logger.exception("voice_tts_stream fallback failed: %s", e)
+            # Nothing else to do — client gets an empty stream, browser will
+            # emit a media error which the frontend already handles.
+
+    return StreamingResponse(
+        producer(),
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
 VOICE_REPLY_MAX_CHARS = 220
 VOICE_REPLY_MAX_SENTENCES = 2
 VOICE_SYSTEM_HINT = (
