@@ -815,3 +815,52 @@ then a **5-block** personal Hermes reply with a dynamic CTA driven by urgency
 - 5.8% silent mock-leakage from LLM provider wobbles
 - 4-Layer Memory M2/M3/M4/M6 (chat→memories, client_profile auto-create, cross-device search, KG from chat)
 
+
+---
+
+## v1.20.0 — Voice: Fish Audio как primary TTS — 2026-06-04
+
+### User request
+"меняем голос на фишаудио. этот оставим как запасной вариант.
+91cbccc8152f4c23901857b0ada4715a"
+
+### What shipped
+
+**Backend — `agents/voice.py`**
+- New `_fish_synthesize(text, lang)` — direct `httpx.AsyncClient` POST to
+  `https://api.fish.audio/v1/tts` with `Authorization: Bearer`, `model: s1`
+  header, JSON body `{text, format: mp3, mp3_bitrate: 128, latency: normal,
+  chunk_length: 200}`, optional `reference_id` for custom voice models.
+- `synthesize()` now calls Fish Audio first; on **any** failure (no key, 4xx/5xx,
+  transport error, empty audio) it transparently falls back to the existing
+  OpenAI / Emergent path. Caller never sees a 502 during the migration.
+- `FISH_BUILTIN_VOICE` per-language map kept empty by default so Fish Audio's
+  S1 model auto-detects the language. Override via `FISH_DEFAULT_VOICE_ID`
+  env var once we pick a custom voice model from fish.audio's library.
+
+**Backend — `.env`**
+- `FISH_API_KEY=91cbccc8152f4c23901857b0ada4715a` (user-provided)
+- `FISH_TTS_MODEL=s1`
+- `FISH_DEFAULT_VOICE_ID=` (empty — Fish picks default voice for S1)
+
+### Verification
+- ✅ Valid Fish key → HTTP 200, ~95 KB MP3 audio, log:
+  `TTS via Fish Audio: 95293 bytes`. Confirmed `content-type: audio/mpeg`.
+- ✅ Invalid Fish key (simulated 401) → automatic OpenAI fallback, HTTP 200,
+  ~37 KB MP3. Log: `Fish Audio HTTP 401: Invalid Token → falling back to OpenAI`.
+- ✅ Restored Fish key → traffic returns to Fish Audio.
+
+### Notes
+- All four TTS-using endpoints (`/api/voice/tts`, `/api/voice/converse`,
+  `/api/voice/converse_stream`, voice chunks in `voice_converse_stream`)
+  automatically use the new primary path because they all call
+  `voice_agent.synthesize()`.
+- OpenAI `instructions` / persona-tone parameter still works on the fallback
+  path but is **not** sent to Fish Audio. To replicate that on Fish, we can
+  later create a custom voice model from sample recordings and store its
+  `reference_id` in `FISH_DEFAULT_VOICE_ID`.
+
+### Files touched
+- `backend/agents/voice.py` (Fish primary + fallback wiring, ~80 new lines)
+- `backend/.env` (3 new keys: `FISH_API_KEY`, `FISH_TTS_MODEL`, `FISH_DEFAULT_VOICE_ID`)
+

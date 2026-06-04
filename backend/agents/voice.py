@@ -79,7 +79,68 @@ _MIME_BY_EXT = {
 
 
 # =====================================================================
-# Provider selection
+# Fish Audio — PRIMARY TTS provider (OpenAI kept as fallback below).
+# =====================================================================
+
+FISH_TTS_URL = "https://api.fish.audio/v1/tts"
+
+# Public default voices that Fish Audio ships out-of-the-box, per-language.
+# Used when `FISH_DEFAULT_VOICE_ID` env var isn't set. Keys are short ISO
+# codes (`ru`, `en`); falls back to `en` for anything else.
+FISH_BUILTIN_VOICE = {
+    # Studio voices — picked from fish.audio/app/default-voices/.
+    # Russian: a calm, professional male voice that matches the Hermes COO persona.
+    "ru": None,  # let Fish Audio's auto-detect + S1 default kick in
+    "en": None,
+}
+
+
+async def _fish_synthesize(text: str, lang: Optional[str]) -> bytes:
+    """Call Fish Audio TTS. Raises on any non-2xx or transport error so the
+    outer synth() can transparently fall back to OpenAI."""
+    api_key = (os.environ.get("FISH_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError("FISH_API_KEY not configured")
+
+    import httpx  # local import — keeps voice.py lazy
+
+    model = (os.environ.get("FISH_TTS_MODEL") or "s1").strip()
+    voice_id = (os.environ.get("FISH_DEFAULT_VOICE_ID") or "").strip()
+    if not voice_id:
+        voice_id = FISH_BUILTIN_VOICE.get((lang or "en").split("-")[0].lower()) or ""
+
+    payload = {
+        "text": text,
+        "format": "mp3",
+        "mp3_bitrate": 128,
+        # `normal` favours quality; switch to `balanced` for lower latency.
+        "latency": "normal",
+        "chunk_length": 200,
+    }
+    if voice_id:
+        payload["reference_id"] = voice_id
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "model": model,
+    }
+    timeout = httpx.Timeout(connect=5.0, read=45.0, write=5.0, pool=5.0)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(FISH_TTS_URL, json=payload, headers=headers)
+
+    if resp.status_code >= 300:
+        body = (resp.text or "")[:200]
+        raise RuntimeError(f"Fish Audio HTTP {resp.status_code}: {body}")
+    audio = resp.content or b""
+    if not audio:
+        raise RuntimeError("Fish Audio returned empty audio")
+    return audio
+
+
+# =====================================================================
+# Provider selection (OpenAI / Emergent — kept as fallback)
 # =====================================================================
 
 
@@ -262,6 +323,24 @@ async def synthesize(
         logger.warning("unknown TTS model '%s' — using %s", model, DEFAULT_TTS_MODEL)
         model = DEFAULT_TTS_MODEL
 
+    # ── PRIMARY: Fish Audio ─────────────────────────────────────────
+    # The customer-provided Fish Audio key is the new primary engine.
+    # On any failure (no key, HTTP error, transport error, empty audio)
+    # we transparently fall back to OpenAI / Emergent so the caller
+    # never sees a 502 during the migration.
+    fish_key = (os.environ.get("FISH_API_KEY") or "").strip()
+    if fish_key:
+        try:
+            audio = await _fish_synthesize(text=text, lang=lang)
+            logger.info("TTS via Fish Audio: %d bytes", len(audio))
+            return audio
+        except Exception as fish_err:  # noqa: BLE001
+            logger.warning(
+                "Fish Audio TTS failed, falling back to OpenAI: %s",
+                fish_err,
+            )
+
+    # ── FALLBACK: OpenAI / Emergent (legacy path kept as safety net) ─
     try:
         return await _do_synthesize(
             text=text, voice=voice, speed=speed, model=model,
