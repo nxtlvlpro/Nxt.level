@@ -1,39 +1,43 @@
 // OnboardingFlow.jsx
-// Modal-overlay survey shown when a user clicks any "Connect" / tariff CTA.
-// 7 questions → 2-3s analysing screen → personalised Hermes 4-block reply.
-// Supports a 3-digit access code (e.g. 888) for free pilot access.
+// 9-question Hermes onboarding survey shown as a carousel — one question per
+// screen, slide-in animation, progress bar, short Hermes insight after every
+// answer, animated "analysing" screen, then a 5-block personalised Hermes
+// reply with a dynamic CTA based on urgency.
 //
-// Keeps strictly inside the existing NXT8 design tokens — no new colors
-// or fonts. Mobile-first; full-screen on small viewports.
+// Spec: NXT8 — Онбординг-анкета Hermes (2026-06-04).
+// Keeps strictly inside the existing NXT8 design tokens.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { X, ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
 import api from "../lib/api";
 import { useT } from "../i18n/LanguageContext";
 
-const STORAGE_KEY = "nxt8.onboarding.v1";
+const STORAGE_KEY = "nxt8.onboarding.v2";
 
 // ---------------------------------------------------------------------
-// Question schema (single source of truth for the flow)
+// Question schema (9 questions across 4 blocks + final contact card)
 // ---------------------------------------------------------------------
 const QUESTIONS = [
+  // ── BLOCK 1. О ВАШЕМ БИЗНЕСЕ ───────────────────────────────────────
   {
     id: "industry",
+    block: 1,
     type: "single",
     options: [
-      { v: "edu",          k: "onb.industry.edu" },
-      { v: "services",     k: "onb.industry.services" },
-      { v: "ecommerce",    k: "onb.industry.ecommerce" },
+      { v: "edu",           k: "onb.industry.edu" },
+      { v: "services",      k: "onb.industry.services" },
+      { v: "ecommerce",     k: "onb.industry.ecommerce" },
       { v: "manufacturing", k: "onb.industry.manufacturing" },
-      { v: "wellness",     k: "onb.industry.wellness" },
-      { v: "realestate",   k: "onb.industry.realestate" },
-      { v: "horeca",       k: "onb.industry.horeca" },
-      { v: "saas",         k: "onb.industry.saas" },
-      { v: "other",        k: "onb.industry.other" },
+      { v: "saas",          k: "onb.industry.saas" },
+      { v: "realestate",    k: "onb.industry.realestate" },
+      { v: "horeca",        k: "onb.industry.horeca" },
+      { v: "wellness",      k: "onb.industry.wellness" },
+      { v: "other",         k: "onb.industry.other" },
     ],
   },
   {
     id: "team_size",
+    block: 1,
     type: "single",
     options: [
       { v: "solo",  k: "onb.team.solo" },
@@ -42,54 +46,98 @@ const QUESTIONS = [
       { v: "21-50", k: "onb.team.s2150" },
       { v: "50+",   k: "onb.team.s50p" },
     ],
-    extras: [
-      { id: "has_sales_team", k: "onb.team.has_sales" },
-      { id: "has_marketer",   k: "onb.team.has_marketer" },
-    ],
   },
   {
-    id: "pain_primary",
-    type: "multi",
-    max: 2,
-    storeAs: ["pain_primary", "pain_secondary"],
-    options: [
-      { v: "leads_lost",         k: "onb.pain.leads_lost" },
-      { v: "chaos",              k: "onb.pain.chaos" },
-      { v: "no_clients_source",  k: "onb.pain.no_clients_source" },
-      { v: "routine",            k: "onb.pain.routine" },
-      { v: "low_sales",          k: "onb.pain.low_sales" },
-      { v: "finance",            k: "onb.pain.finance" },
-      { v: "legal",              k: "onb.pain.legal" },
-    ],
-  },
-  {
-    id: "tools_current",
-    type: "multi",
-    options: [
-      { v: "whatsapp", k: "onb.tools.whatsapp" },
-      { v: "telegram", k: "onb.tools.telegram" },
-      { v: "social",   k: "onb.tools.social" },
-      { v: "crm",      k: "onb.tools.crm", withInput: "crm_name" },
-      { v: "sheets",   k: "onb.tools.sheets" },
-      { v: "1c",       k: "onb.tools.1c" },
-      { v: "notion",   k: "onb.tools.notion" },
-      { v: "none",     k: "onb.tools.none" },
-    ],
-  },
-  {
-    id: "goal_90days",
+    id: "management_structure",
+    block: 1,
     type: "single",
     options: [
-      { v: "grow_sales",        k: "onb.goal.grow_sales" },
-      { v: "order_processes",   k: "onb.goal.order_processes" },
-      { v: "cut_costs",         k: "onb.goal.cut_costs" },
-      { v: "scale",             k: "onb.goal.scale" },
-      { v: "automate",          k: "onb.goal.automate" },
-      { v: "legal_safety",      k: "onb.goal.legal_safety" },
+      { v: "owner_only", k: "onb.mgmt.owner_only" },
+      { v: "few_leads",  k: "onb.mgmt.few_leads" },
+      { v: "full_team",  k: "onb.mgmt.full_team" },
+    ],
+  },
+  // ── BLOCK 2. КАК РАБОТАЕТ БИЗНЕС ───────────────────────────────────
+  {
+    id: "communication_channels",
+    block: 2,
+    type: "multi",
+    options: [
+      { v: "whatsapp",  k: "onb.comm.whatsapp" },
+      { v: "telegram",  k: "onb.comm.telegram" },
+      { v: "instagram", k: "onb.comm.instagram" },
+      { v: "facebook",  k: "onb.comm.facebook" },
+      { v: "email",     k: "onb.comm.email" },
+      { v: "phone",     k: "onb.comm.phone" },
+      { v: "crm",       k: "onb.comm.crm" },
+      { v: "other",     k: "onb.comm.other" },
+    ],
+  },
+  {
+    id: "process_system",
+    block: 2,
+    type: "single",
+    options: [
+      { v: "head",   k: "onb.proc.head" },
+      { v: "chats",  k: "onb.proc.chats" },
+      { v: "sheets", k: "onb.proc.sheets" },
+      { v: "notion", k: "onb.proc.notion" },
+      { v: "trello", k: "onb.proc.trello" },
+      { v: "asana",  k: "onb.proc.asana" },
+      { v: "crm",    k: "onb.proc.crm" },
+      { v: "other",  k: "onb.proc.other" },
+    ],
+  },
+  {
+    id: "knowledge_storage",
+    block: 2,
+    type: "single",
+    options: [
+      { v: "employees", k: "onb.know.employees" },
+      { v: "gdrive",    k: "onb.know.gdrive" },
+      { v: "notion",    k: "onb.know.notion" },
+      { v: "dropbox",   k: "onb.know.dropbox" },
+      { v: "local",     k: "onb.know.local" },
+      { v: "other",     k: "onb.know.other" },
+    ],
+  },
+  // ── BLOCK 3. ЧТО МЕШАЕТ РОСТУ ──────────────────────────────────────
+  {
+    id: "pain_points",
+    block: 3,
+    type: "multi",
+    max: 3,
+    options: [
+      { v: "leads_lost",            k: "onb.pain.leads_lost" },
+      { v: "low_sales",             k: "onb.pain.low_sales" },
+      { v: "chaos",                 k: "onb.pain.chaos" },
+      { v: "owner_overloaded",      k: "onb.pain.owner_overloaded" },
+      { v: "no_visibility",         k: "onb.pain.no_visibility" },
+      { v: "manual_work",           k: "onb.pain.manual_work" },
+      { v: "no_numbers",            k: "onb.pain.no_numbers" },
+      { v: "cant_scale",            k: "onb.pain.cant_scale" },
+      { v: "weak_finance_control",  k: "onb.pain.weak_finance_control" },
+      { v: "documents_overhead",    k: "onb.pain.documents_overhead" },
+    ],
+  },
+  // ── BLOCK 4. ЦЕЛЬ ──────────────────────────────────────────────────
+  {
+    id: "goal_90days",
+    block: 4,
+    type: "single",
+    options: [
+      { v: "grow_sales",         k: "onb.goal.grow_sales" },
+      { v: "order_in_company",   k: "onb.goal.order_in_company" },
+      { v: "automate_processes", k: "onb.goal.automate_processes" },
+      { v: "scale_business",     k: "onb.goal.scale_business" },
+      { v: "team_control",       k: "onb.goal.team_control" },
+      { v: "financial_clarity",  k: "onb.goal.financial_clarity" },
+      { v: "free_my_time",       k: "onb.goal.free_my_time" },
     ],
   },
   {
     id: "urgency",
+    block: 4,
     type: "single",
     options: [
       { v: "hot",  k: "onb.urgency.hot" },
@@ -97,8 +145,10 @@ const QUESTIONS = [
       { v: "cold", k: "onb.urgency.cold" },
     ],
   },
+  // ── BLOCK 5. КОНТАКТЫ ──────────────────────────────────────────────
   {
     id: "contact",
+    block: 5,
     type: "contact",
   },
 ];
@@ -111,7 +161,7 @@ function ProgressBar({ current, total }) {
   return (
     <div className="space-y-1" data-testid="onb-progress">
       <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-400">
-        <span data-testid="onb-progress-label">Q {current + 1} / {total}</span>
+        <span data-testid="onb-progress-label">{current + 1} / {total}</span>
         <span data-testid="onb-progress-pct">{pct}%</span>
       </div>
       <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
@@ -128,19 +178,19 @@ function InsightBanner({ text }) {
   if (!text) return null;
   return (
     <div
-      className="rounded-2xl border border-brand-turquoise/40 bg-brand-turquoise/5 px-4 py-3"
+      className="rounded-2xl border border-brand-turquoise/40 bg-brand-turquoise/5 px-4 py-3 animate-[fadeIn_0.35s_ease-out]"
       data-testid="onb-insight"
     >
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-brand-turquoise">
         <Sparkles className="w-3 h-3" />
-        <span>FOR YOU</span>
+        <span>HERMES</span>
       </div>
       <p className="mt-2 text-sm text-slate-100 leading-relaxed">{text}</p>
     </div>
   );
 }
 
-function OptionPill({ active, onClick, label, testId }) {
+function OptionPill({ active, onClick, label, testId, multi }) {
   return (
     <button
       type="button"
@@ -153,7 +203,7 @@ function OptionPill({ active, onClick, label, testId }) {
       }`}
     >
       <span
-        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+        className={`w-4 h-4 ${multi ? "rounded-md" : "rounded-full"} border-2 flex items-center justify-center shrink-0 ${
           active ? "border-brand-turquoise" : "border-slate-500"
         }`}
       >
@@ -171,6 +221,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
   const { t, lang } = useT();
   const [step, setStep] = useState("intro"); // intro | q | processing | reply
   const [qIndex, setQIndex] = useState(0);
+  const [slideDir, setSlideDir] = useState("right"); // animation direction
   const [answers, setAnswers] = useState({});
   const [insight, setInsight] = useState("");
   const [insightLoading, setInsightLoading] = useState(false);
@@ -188,7 +239,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
       if (raw) {
         const saved = JSON.parse(raw);
         if (saved.answers) setAnswers(saved.answers);
-        if (saved.qIndex && saved.step === "q") {
+        if (typeof saved.qIndex === "number" && saved.step === "q") {
           setQIndex(saved.qIndex);
           setStep("q");
         }
@@ -233,6 +284,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
   };
 
   const startSurvey = () => {
+    setSlideDir("right");
     setStep("q");
     setQIndex(0);
   };
@@ -243,34 +295,23 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
     if (q.type === "single") {
       nextAnswers[q.id] = value;
     } else if (q.type === "multi") {
-      // When storeAs is set we use a separate `<q.id>_arr` slot for the
-      // running array so the flat storeAs keys (which collide with q.id)
-      // can be safely mirrored below without trampling the array itself.
-      const arrKey = q.storeAs ? `${q.id}_arr` : q.id;
-      const prev = Array.isArray(nextAnswers[arrKey]) ? nextAnswers[arrKey] : [];
+      const prev = Array.isArray(nextAnswers[q.id]) ? nextAnswers[q.id] : [];
       let updated;
       if (prev.includes(value)) {
         updated = prev.filter((x) => x !== value);
       } else if (q.max && prev.length >= q.max) {
+        // Rotate out the oldest pick so users can keep clicking.
         updated = [...prev.slice(1), value];
       } else {
         updated = [...prev, value];
       }
-      nextAnswers[arrKey] = updated;
-      if (q.storeAs) {
-        // Mirror to flat keys for backend payload (pain_primary / pain_secondary).
-        q.storeAs.forEach((k, i) => { nextAnswers[k] = updated[i] || ""; });
-      } else {
-        // No storeAs → q.id itself is the array slot for the backend.
-        nextAnswers[q.id] = updated;
-      }
+      nextAnswers[q.id] = updated;
     }
     setAnswers(nextAnswers);
-    // Fire insight only on single-select OR when first value of a multi-select picked.
-    const arrKey = q.type === "multi" ? (q.storeAs ? `${q.id}_arr` : q.id) : null;
-    const insightAnswer = q.type === "single"
-      ? value
-      : (nextAnswers[arrKey]?.[0] || value);
+
+    // Insight fires on every pick. For multi-select we send the latest one.
+    const arr = q.type === "multi" ? nextAnswers[q.id] : null;
+    const insightAnswer = q.type === "single" ? value : (arr?.[arr.length - 1] || value);
     if (insightAnswer) {
       try {
         setInsightLoading(true);
@@ -287,41 +328,59 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
   const goNext = () => {
     setInsight("");
     if (qIndex < total - 1) {
+      setSlideDir("right");
       setQIndex(qIndex + 1);
     } else {
       submit();
     }
   };
 
+  const goBack = () => {
+    setInsight("");
+    if (qIndex === 0) return;
+    setSlideDir("left");
+    setQIndex(qIndex - 1);
+  };
+
   // ------- contact + submit -------
   const setContactField = (k, v) => setAnswers((a) => ({ ...a, [k]: v }));
 
-  const validateContact = () => (answers.name || "").trim().length >= 2;
+  const validateContact = () => {
+    const name = (answers.name || "").trim();
+    const phone = (answers.phone || "").trim();
+    const tg = (answers.telegram || "").trim();
+    // ТЗ: name required; at least one of phone/telegram. Email optional.
+    return name.length >= 2 && (phone.length >= 4 || tg.length >= 2);
+  };
 
   const submit = async () => {
     setError("");
     setStep("processing");
     try {
-      const painArr = Array.isArray(answers.pain_primary_arr) ? answers.pain_primary_arr : [];
-      const toolsArr = Array.isArray(answers.tools_current) ? answers.tools_current : [];
+      const painArr = Array.isArray(answers.pain_points) ? answers.pain_points : [];
+      const channels = Array.isArray(answers.communication_channels) ? answers.communication_channels : [];
       const payload = {
-        industry:        answers.industry || "other",
-        team_size:       answers.team_size || "solo",
-        has_sales_team:  !!answers.has_sales_team,
-        has_marketer:    !!answers.has_marketer,
-        pain_primary:    answers.pain_primary || painArr[0] || "",
-        pain_secondary:  answers.pain_secondary || painArr[1] || "",
-        tools_current:   toolsArr,
-        crm_name:        answers.crm_name || "",
-        goal_90days:     answers.goal_90days || "",
-        urgency:         answers.urgency || "warm",
-        name:            (answers.name || "Friend").trim(),
-        phone:           (answers.phone || "").trim(),
-        telegram:        (answers.telegram || "").trim(),
-        timezone:        Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        industry:               answers.industry || "other",
+        team_size:              answers.team_size || "solo",
+        management_structure:   answers.management_structure || "",
+        communication_channels: channels,
+        process_system:         answers.process_system || "",
+        knowledge_storage:      answers.knowledge_storage || "",
+        pain_points:            painArr,
+        // legacy mirrors (kept for backwards compat with anything still reading them)
+        pain_primary:           painArr[0] || "",
+        pain_secondary:         painArr[1] || "",
+        tools_current:          channels,
+        goal_90days:            answers.goal_90days || "",
+        urgency:                answers.urgency || "warm",
+        name:                   (answers.name || "Friend").trim(),
+        phone:                  (answers.phone || "").trim(),
+        telegram:               (answers.telegram || "").trim(),
+        email:                  (answers.email || "").trim(),
+        timezone:               Intl.DateTimeFormat().resolvedOptions().timeZone || "",
         lang,
-        selected_plan:   planId || "",
-        access_code:     (answers.access_code || "").trim(),
+        selected_plan:          planId || "",
+        access_code:            (answers.access_code || "").trim(),
       };
       const saved = await api.onboardingSaveProfile(payload);
       setProfileId(saved.profile_id);
@@ -329,22 +388,35 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
       const brief = await api.onboardingBrief(saved.profile_id);
       setHermesReply(brief.hermes_reply);
       setStep("reply");
-    } catch (e) {
+    } catch {
       setError(t("onb.error.submit"));
-      setStep("q"); // bring user back to last question
+      setStep("q");
     }
   };
 
-  // ------- next-step action from Hermes block 4 -------
+  // ------- next-step action from Hermes block 5 (CTA) -------
   const handleCTA = () => {
     if (testAccess) {
       onTestAccess?.(profileId);
       close();
       return;
     }
-    if (planId) onCheckout?.(planId);
+    if (planId) {
+      onCheckout?.(planId);
+    }
     close();
   };
+
+  // Disabled-state helpers
+  const nextDisabled = (() => {
+    if (currentQ.type === "single") return !answers[currentQ.id];
+    if (currentQ.type === "multi") {
+      const arr = answers[currentQ.id] || [];
+      return !Array.isArray(arr) || arr.length === 0;
+    }
+    if (currentQ.type === "contact") return !validateContact();
+    return false;
+  })();
 
   // ---------- RENDER ----------
   return (
@@ -364,12 +436,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
         </button>
 
         {step === "intro" && (
-          <IntroScreen
-            t={t}
-            planId={planId}
-            onStart={startSurvey}
-            data-testid="onb-intro"
-          />
+          <IntroScreen t={t} planId={planId} onStart={startSurvey} />
         )}
 
         {step === "q" && (
@@ -377,40 +444,51 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
             <div className="pr-10">
               <ProgressBar current={qIndex} total={total} />
             </div>
-            <h2 className="text-xl sm:text-2xl font-semibold text-white leading-tight" data-testid="onb-question-title">
-              {t(`onb.q.${currentQ.id}.title`)}
-            </h2>
-            {currentQ.type === "single" && (
-              <SingleSelect q={currentQ} value={answers[currentQ.id]} onPick={(v) => commitAnswer(currentQ, v)} t={t} />
-            )}
-            {currentQ.type === "multi" && (
-              <MultiSelect
-                q={currentQ}
-                values={
-                  currentQ.storeAs
-                    ? (answers[`${currentQ.id}_arr`] || [])
-                    : (answers[currentQ.id] || [])
-                }
-                crmName={answers.crm_name || ""}
-                onCrmChange={(v) => setContactField("crm_name", v)}
-                onPick={(v) => commitAnswer(currentQ, v)}
-                t={t}
-              />
-            )}
-            {currentQ.type === "contact" && (
-              <ContactForm answers={answers} setField={setContactField} t={t} />
-            )}
-            {currentQ.extras && (
-              <YesNoExtras extras={currentQ.extras} answers={answers} setField={setContactField} t={t} />
-            )}
-            {(insight || insightLoading) && currentQ.type !== "contact" && (
-              <InsightBanner text={insightLoading ? t("onb.insight.loading") : insight} />
-            )}
+
+            {/* Carousel slide */}
+            <div
+              key={qIndex}
+              className={`space-y-5 ${
+                slideDir === "right"
+                  ? "animate-[slideInRight_0.32s_cubic-bezier(.22,.61,.36,1)]"
+                  : "animate-[slideInLeft_0.32s_cubic-bezier(.22,.61,.36,1)]"
+              }`}
+              data-testid={`onb-slide-${qIndex}`}
+            >
+              <p className="text-[10px] uppercase tracking-widest text-brand-turquoise" data-testid="onb-block-tag">
+                {t(`onb.block.${currentQ.block}`)}
+              </p>
+              <h2
+                className="text-xl sm:text-2xl font-semibold text-white leading-tight"
+                data-testid="onb-question-title"
+              >
+                {t(`onb.q.${currentQ.id}.title`)}
+              </h2>
+
+              {currentQ.type === "single" && (
+                <SingleSelect q={currentQ} value={answers[currentQ.id]} onPick={(v) => commitAnswer(currentQ, v)} t={t} />
+              )}
+              {currentQ.type === "multi" && (
+                <MultiSelect
+                  q={currentQ}
+                  values={answers[currentQ.id] || []}
+                  onPick={(v) => commitAnswer(currentQ, v)}
+                  t={t}
+                />
+              )}
+              {currentQ.type === "contact" && (
+                <ContactForm answers={answers} setField={setContactField} t={t} />
+              )}
+
+              {(insight || insightLoading) && currentQ.type !== "contact" && (
+                <InsightBanner text={insightLoading ? t("onb.insight.loading") : insight} />
+              )}
+            </div>
 
             <div className="pt-2 flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => { setInsight(""); setQIndex(Math.max(0, qIndex - 1)); }}
+                onClick={goBack}
                 disabled={qIndex === 0}
                 className="text-xs uppercase tracking-widest text-slate-400 hover:text-white disabled:opacity-30"
                 data-testid="onb-back"
@@ -420,16 +498,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
               <button
                 type="button"
                 onClick={goNext}
-                disabled={
-                  (currentQ.type === "single" && !answers[currentQ.id])
-                  || (currentQ.type === "multi" && (() => {
-                    const arr = currentQ.storeAs
-                      ? (answers[`${currentQ.id}_arr`] || [])
-                      : (answers[currentQ.id] || []);
-                    return !Array.isArray(arr) || arr.length === 0;
-                  })())
-                  || (currentQ.type === "contact" && !validateContact())
-                }
+                disabled={nextDisabled}
                 className="rounded-full bg-brand-turquoise text-brand-dark px-6 py-3 text-sm font-semibold flex items-center gap-2 disabled:opacity-40 hover:shadow-[0_0_24px_var(--brand-turquoise)] transition-all"
                 data-testid={qIndex < total - 1 ? "onb-next" : "onb-submit"}
               >
@@ -441,19 +510,25 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
           </div>
         )}
 
-        {step === "processing" && (
-          <ProcessingScreen t={t} />
-        )}
+        {step === "processing" && <ProcessingScreen t={t} />}
 
         {step === "reply" && hermesReply && (
           <HermesReplyScreen
             reply={hermesReply}
+            urgency={answers.urgency || "warm"}
             testAccess={testAccess}
             t={t}
             onCta={handleCTA}
           />
         )}
       </div>
+
+      {/* Local keyframes — kept inline to avoid touching global CSS. */}
+      <style>{`
+        @keyframes slideInRight { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes slideInLeft  { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes fadeIn       { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
     </div>
   );
 }
@@ -505,70 +580,29 @@ function SingleSelect({ q, value, onPick, t }) {
   );
 }
 
-function MultiSelect({ q, values, crmName, onCrmChange, onPick, t }) {
+function MultiSelect({ q, values, onPick, t }) {
   return (
     <div className="space-y-2" data-testid={`onb-q-${q.id}`}>
       {q.max && (
-        <p className="text-[10px] uppercase tracking-widest text-slate-500">
+        <p className="text-[10px] uppercase tracking-widest text-slate-500" data-testid="onb-multi-hint">
           {t("onb.multi.hint").replace("{n}", q.max)}
+          {" · "}
+          <span className="text-brand-turquoise">{values.length}/{q.max}</span>
         </p>
       )}
       {q.options.map((opt) => {
         const active = values.includes(opt.v);
         return (
-          <div key={opt.v}>
-            <OptionPill
-              active={active}
-              onClick={() => onPick(opt.v)}
-              label={t(opt.k)}
-              testId={`onb-opt-${q.id}-${opt.v}`}
-            />
-            {opt.withInput === "crm_name" && active && (
-              <input
-                type="text"
-                value={crmName}
-                onChange={(e) => onCrmChange(e.target.value)}
-                placeholder={t("onb.crm.placeholder")}
-                className="mt-2 ml-7 w-[calc(100%-1.75rem)] rounded-xl bg-brand-dark/60 border border-white/10 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-brand-turquoise focus:outline-none"
-                data-testid="onb-input-crm-name"
-              />
-            )}
-          </div>
+          <OptionPill
+            key={opt.v}
+            multi
+            active={active}
+            onClick={() => onPick(opt.v)}
+            label={t(opt.k)}
+            testId={`onb-opt-${q.id}-${opt.v}`}
+          />
         );
       })}
-    </div>
-  );
-}
-
-function YesNoExtras({ extras, answers, setField, t }) {
-  return (
-    <div className="space-y-2 pt-2" data-testid="onb-extras">
-      {extras.map((ex) => (
-        <div key={ex.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-brand-dark/40 px-4 py-3">
-          <span className="text-sm text-slate-200">{t(ex.k)}</span>
-          <div className="flex items-center gap-2">
-            {["yes", "no"].map((val) => {
-              const isYes = val === "yes";
-              const active = !!answers[ex.id] === isYes;
-              return (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setField(ex.id, isYes)}
-                  data-testid={`onb-extra-${ex.id}-${val}`}
-                  className={`text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border ${
-                    active
-                      ? "border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise"
-                      : "border-white/10 text-slate-400 hover:border-white/30"
-                  }`}
-                >
-                  {t(`onb.${val}`)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -618,7 +652,17 @@ function ContactForm({ answers, setField, t }) {
         className="w-full rounded-2xl bg-brand-dark/60 border border-white/10 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-brand-turquoise focus:outline-none"
         data-testid="onb-input-telegram"
       />
-      <div className="pt-1">
+      <input
+        type="email"
+        value={answers.email || ""}
+        onChange={(e) => setField("email", e.target.value)}
+        placeholder={t("onb.contact.email")}
+        className="w-full rounded-2xl bg-brand-dark/60 border border-white/10 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-brand-turquoise focus:outline-none"
+        data-testid="onb-input-email"
+      />
+      <p className="text-[10px] text-slate-500">{t("onb.contact.note")}</p>
+
+      <div className="pt-2">
         <label className="text-[10px] uppercase tracking-widest text-slate-500 block mb-1">
           {t("onb.contact.code.label")}
         </label>
@@ -690,9 +734,16 @@ function ProcessingScreen({ t }) {
   );
 }
 
-function HermesReplyScreen({ reply, testAccess, t, onCta }) {
+function HermesReplyScreen({ reply, urgency, testAccess, t, onCta }) {
   const teamCards = Array.isArray(reply.block2_team) ? reply.block2_team : [];
   const items30   = Array.isArray(reply.block3_in_30_days) ? reply.block3_in_30_days : [];
+
+  // CTA copy is driven by urgency per the spec.
+  let ctaKey = "onb.reply.cta.warm";
+  if (testAccess) ctaKey = "onb.reply.cta.test";
+  else if (urgency === "hot") ctaKey = "onb.reply.cta.hot";
+  else if (urgency === "cold") ctaKey = "onb.reply.cta.cold";
+
   return (
     <div className="p-5 sm:p-8 space-y-6" data-testid="onb-reply">
       <div className="inline-flex items-center gap-2 rounded-full border border-brand-turquoise/40 px-3 py-1 text-[10px] uppercase tracking-widest text-brand-turquoise">
@@ -707,18 +758,18 @@ function HermesReplyScreen({ reply, testAccess, t, onCta }) {
       </Section>
 
       <Section title={t("onb.reply.block2")} testId="onb-reply-block2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <ul className="space-y-2">
           {teamCards.map((c, i) => (
-            <div
+            <li
               key={i}
-              className="rounded-2xl border border-white/10 bg-brand-dark/40 p-4"
+              className="flex items-start gap-3 text-sm text-slate-200"
               data-testid={`onb-team-card-${i}`}
             >
-              <p className="text-xs uppercase tracking-widest text-brand-turquoise">{c.title}</p>
-              <p className="text-sm text-slate-200 mt-1 leading-relaxed">{c.desc}</p>
-            </div>
+              <Check className="w-4 h-4 text-brand-turquoise mt-1 shrink-0" />
+              <span><span className="text-brand-turquoise">{c.title}.</span> {c.desc}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       </Section>
 
       <Section title={t("onb.reply.block3")} testId="onb-reply-block3">
@@ -736,15 +787,23 @@ function HermesReplyScreen({ reply, testAccess, t, onCta }) {
         </ul>
       </Section>
 
-      <Section title={t("onb.reply.block4")} testId="onb-reply-block4">
-        <p className="text-sm text-slate-300">{reply.block4_cta}</p>
+      {reply.block4_potential && (
+        <Section title={t("onb.reply.block4")} testId="onb-reply-block4">
+          <p className="text-sm text-slate-200 leading-relaxed">{reply.block4_potential}</p>
+        </Section>
+      )}
+
+      <Section title={t("onb.reply.block5")} testId="onb-reply-block5">
+        {reply.block5_cta && (
+          <p className="text-sm text-slate-300 mb-3">{reply.block5_cta}</p>
+        )}
         <button
           type="button"
           onClick={onCta}
-          className="mt-3 rounded-full bg-brand-turquoise text-brand-dark px-6 py-3 text-sm font-semibold inline-flex items-center gap-2 hover:shadow-[0_0_24px_var(--brand-turquoise)] transition-all"
+          className="rounded-full bg-brand-turquoise text-brand-dark px-6 py-3 text-sm font-semibold inline-flex items-center gap-2 hover:shadow-[0_0_24px_var(--brand-turquoise)] transition-all"
           data-testid="onb-reply-cta"
         >
-          {testAccess ? t("onb.reply.cta.test") : t("onb.reply.cta.checkout")}
+          {t(ctaKey)}
           <ArrowRight className="w-4 h-4" />
         </button>
       </Section>

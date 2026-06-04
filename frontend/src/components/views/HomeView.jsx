@@ -1504,6 +1504,42 @@ function HowItWorks({ t }) {
   );
 }
 // ============================================================
+// "Test NXT8" hero CTA — primary onboarding entry-point.
+// ============================================================
+function TestCTA({ t }) {
+  const open = () => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("nxt8:open-onboarding", { detail: { planId: "" } })
+    );
+  };
+  return (
+    <section className="px-4 lg:px-8 py-10 sm:py-14" data-testid="home-test-cta">
+      <div className="relative mx-auto max-w-3xl rounded-3xl border border-brand-turquoise/40 bg-gradient-to-br from-brand-turquoise/10 via-brand-dark/60 to-brand-dark p-6 sm:p-10 text-center overflow-hidden">
+        <div className="pointer-events-none absolute -top-24 -right-24 w-64 h-64 bg-brand-turquoise/20 blur-3xl rounded-full" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 w-64 h-64 bg-brand-turquoise/10 blur-3xl rounded-full" />
+        <div className="relative space-y-4">
+          <h2 className="text-2xl sm:text-3xl font-semibold text-white leading-tight">
+            {t("home.test_cta.title")}
+          </h2>
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl mx-auto">
+            {t("home.test_cta.subtitle")}
+          </p>
+          <button
+            type="button"
+            onClick={open}
+            data-testid="home-test-cta-button"
+            className="mt-2 inline-flex items-center gap-2 rounded-full bg-brand-turquoise text-brand-dark px-8 py-4 text-sm font-semibold hover:shadow-[0_0_32px_var(--brand-turquoise)] transition-all"
+          >
+            {t("home.test_cta.button")} →
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================
 // Root
 // ============================================================
 
@@ -1523,6 +1559,7 @@ export default function HomeView() {
   return (
     <div data-testid="home-view">
       <AgentsSwipe t={t} />
+      <TestCTA t={t} />
       <HermesChat t={t} lang={lang} />
       <HowItWorks t={t} />
       <OnboardingFlow

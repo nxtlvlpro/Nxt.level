@@ -123,6 +123,56 @@ PROFESSIONS: Dict[str, Dict[str, Any]] = {
         "desc_en": "absorbs repeat busywork — reports, follow-ups, reminders",
         "icon": "repeat",
     },
+    # --- New pain mappings introduced by the 9-question onboarding ---
+    "owner_overloaded": {
+        "title_ru": "Заместитель",
+        "title_en": "Deputy",
+        "desc_ru": "снимает с вас текущие решения, чтобы вы занимались стратегией",
+        "desc_en": "takes the day-to-day decisions off your plate so you can lead",
+        "icon": "user-check",
+    },
+    "no_visibility": {
+        "title_ru": "Координатор по команде",
+        "title_en": "People coordinator",
+        "desc_ru": "видит кто чем занят и где задачи стоят без движения",
+        "desc_en": "sees who's doing what and where work has stalled",
+        "icon": "users",
+    },
+    "manual_work": {
+        "title_ru": "Автоматизатор",
+        "title_en": "Automation lead",
+        "desc_ru": "превращает повторяющиеся действия в фоновые процессы",
+        "desc_en": "turns repetitive steps into background processes",
+        "icon": "zap",
+    },
+    "no_numbers": {
+        "title_ru": "Аналитик",
+        "title_en": "Analyst",
+        "desc_ru": "собирает цифры бизнеса в один понятный экран без таблиц",
+        "desc_en": "puts your business numbers on one clear screen — no spreadsheets",
+        "icon": "trending-up",
+    },
+    "cant_scale": {
+        "title_ru": "Стратег роста",
+        "title_en": "Growth strategist",
+        "desc_ru": "находит узкие места, которые мешают расти, и убирает их",
+        "desc_en": "spots the bottlenecks blocking growth and clears them",
+        "icon": "rocket",
+    },
+    "weak_finance_control": {
+        "title_ru": "Финансовый контролёр",
+        "title_en": "Finance controller",
+        "desc_ru": "держит руку на пульсе денег: остатки, оплаты, кассовые разрывы",
+        "desc_en": "keeps a hand on the cash: balances, payments, gap forecasts",
+        "icon": "wallet",
+    },
+    "documents_overhead": {
+        "title_ru": "Юрист-делопроизводитель",
+        "title_en": "Document specialist",
+        "desc_ru": "оформляет договоры и документы за минуты, а не за часы",
+        "desc_en": "drafts contracts and docs in minutes, not hours",
+        "icon": "file-text",
+    },
 }
 
 # Tools → integration plan (just labels for now; channels package wires the wires).
@@ -147,12 +197,14 @@ TOOL_INTEGRATIONS: Dict[str, Dict[str, str]] = {
 
 # Urgency → ETA + next-step CTA copy.
 URGENCY_CTAS: Dict[str, Dict[str, Any]] = {
-    "hot":  {"label_ru": "Начать сейчас",   "label_en": "Start now",
+    "hot":  {"label_ru": "Начать работу с Hermes",
+             "label_en": "Start working with Hermes",
              "action": "contact_now"},
-    "warm": {"label_ru": "Получить демо",   "label_en": "Get a demo",
+    "warm": {"label_ru": "Получить персональное демо",
+             "label_en": "Get a personalised demo",
              "action": "book_demo"},
-    "cold": {"label_ru": "Подписаться на обновления",
-             "label_en": "Subscribe to updates",
+    "cold": {"label_ru": "Следить за развитием NXT8",
+             "label_en": "Follow NXT8's progress",
              "action": "subscribe"},
 }
 
@@ -337,7 +389,7 @@ async def get_insight(qid: str, answer: str, lang: str = "en") -> Dict[str, Any]
 # =====================================================================
 
 
-REQUIRED_FIELDS = ("industry", "team_size", "pain_primary", "goal_90days", "urgency", "name")
+REQUIRED_FIELDS = ("industry", "team_size", "goal_90days", "urgency", "name")
 
 
 async def save_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -345,30 +397,52 @@ async def save_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
     if missing:
         return {"ok": False, "error": f"missing fields: {', '.join(missing)}"}
     profile_id = payload.get("id") or str(uuid.uuid4())
+
+    # The new 9-question onboarding sends `pain_points` (list, up to 3).
+    # We keep backward-compat with the old `pain_primary` / `pain_secondary`
+    # fields so older clients still work.
+    pain_points = list(payload.get("pain_points") or [])
+    pain_primary = str(payload.get("pain_primary") or (pain_points[0] if pain_points else ""))
+    pain_secondary = str(payload.get("pain_secondary") or (pain_points[1] if len(pain_points) > 1 else ""))
+    pain_tertiary = str(pain_points[2] if len(pain_points) > 2 else "")
+
+    # Communication channels: new field. Falls back to legacy `tools_current`
+    # so the OLD frontend doesn't break.
+    communication_channels = list(payload.get("communication_channels")
+                                  or payload.get("tools_current") or [])
+
     doc = {
-        "id":                  profile_id,
-        "industry":            str(payload.get("industry", "other")),
-        "industry_template":   INDUSTRY_TEMPLATES.get(payload.get("industry", "other"), {}),
-        "team_size":           str(payload.get("team_size", "")),
-        "has_sales_team":      bool(payload.get("has_sales_team")),
-        "has_marketer":        bool(payload.get("has_marketer")),
-        "pain_primary":        str(payload.get("pain_primary", "")),
-        "pain_secondary":      str(payload.get("pain_secondary", "")),
-        "tools_current":       list(payload.get("tools_current") or []),
-        "crm_name":            str(payload.get("crm_name") or ""),
-        "goal_90days":         str(payload.get("goal_90days", "")),
-        "urgency":             str(payload.get("urgency", "warm")),
-        "name":                str(payload.get("name") or "Friend"),
-        "phone":               str(payload.get("phone") or ""),
-        "telegram":            str(payload.get("telegram") or ""),
-        "timezone":            str(payload.get("timezone") or ""),
-        "lang":                str(payload.get("lang") or "en"),
-        "selected_plan":       str(payload.get("selected_plan") or ""),
-        "access_code":         str(payload.get("access_code") or ""),
-        "test_access":         bool(payload.get("test_access")),
-        "status":              "submitted",
-        "created_at":          _now(),
-        "updated_at":          _now(),
+        "id":                       profile_id,
+        "industry":                 str(payload.get("industry", "other")),
+        "industry_template":        INDUSTRY_TEMPLATES.get(payload.get("industry", "other"), {}),
+        "team_size":                str(payload.get("team_size", "")),
+        "management_structure":     str(payload.get("management_structure") or ""),
+        "communication_channels":   communication_channels,
+        "process_system":           str(payload.get("process_system") or ""),
+        "knowledge_storage":        str(payload.get("knowledge_storage") or ""),
+        "pain_points":              pain_points,
+        # legacy mirrors
+        "has_sales_team":           bool(payload.get("has_sales_team")),
+        "has_marketer":             bool(payload.get("has_marketer")),
+        "pain_primary":             pain_primary,
+        "pain_secondary":           pain_secondary,
+        "pain_tertiary":            pain_tertiary,
+        "tools_current":            communication_channels,
+        "crm_name":                 str(payload.get("crm_name") or ""),
+        "goal_90days":              str(payload.get("goal_90days", "")),
+        "urgency":                  str(payload.get("urgency", "warm")),
+        "name":                     str(payload.get("name") or "Friend"),
+        "phone":                    str(payload.get("phone") or ""),
+        "telegram":                 str(payload.get("telegram") or ""),
+        "email":                    str(payload.get("email") or ""),
+        "timezone":                 str(payload.get("timezone") or ""),
+        "lang":                     str(payload.get("lang") or "en"),
+        "selected_plan":            str(payload.get("selected_plan") or ""),
+        "access_code":              str(payload.get("access_code") or ""),
+        "test_access":              bool(payload.get("test_access")),
+        "status":                   "submitted",
+        "created_at":               _now(),
+        "updated_at":               _now(),
     }
     db = get_db()
     await db.client_profiles.update_one(
@@ -392,15 +466,21 @@ async def get_profile(profile_id: str) -> Optional[Dict[str, Any]]:
 
 def build_brief(profile: Dict[str, Any]) -> Dict[str, Any]:
     industry = profile.get("industry", "other")
-    pain_primary = profile.get("pain_primary", "")
-    pain_secondary = profile.get("pain_secondary", "")
-    tools = list(profile.get("tools_current") or [])
+    # New 9-Q flow: pain_points is the canonical list (up to 3).
+    # Legacy 7-Q flow: build it from pain_primary + pain_secondary.
+    pain_list = list(profile.get("pain_points") or [])
+    if not pain_list:
+        for p in (profile.get("pain_primary", ""), profile.get("pain_secondary", "")):
+            if p:
+                pain_list.append(p)
+    tools = list(profile.get("communication_channels")
+                 or profile.get("tools_current") or [])
     urgency = profile.get("urgency", "warm")
     lang = "ru" if str(profile.get("lang", "en")).startswith("ru") else "en"
 
-    # Professions list (primary pain first, then secondary, dedup).
+    # Professions list (preserves order from pain_points; dedup).
     prof_keys: List[str] = []
-    for p in (pain_primary, pain_secondary):
+    for p in pain_list:
         if p and p in PROFESSIONS and p not in prof_keys:
             prof_keys.append(p)
     # Always add an Ops anchor if not already present (Hermes role).
@@ -462,7 +542,8 @@ Return STRICT JSON ONLY (no markdown, no fences) with exactly this shape:
     {"title": "string", "desc": "string"}
   ],
   "block3_in_30_days": ["string", "string", "string"],
-  "block4_cta": "string — one short sentence preceding the button"
+  "block4_potential": "string — one paragraph (2-3 sentences) about the growth potential you see, written as if you've already looked at their setup",
+  "block5_cta": "string — one short sentence preceding the button"
 }
 """.strip()
 
@@ -472,7 +553,7 @@ def _system_prompt_for_reply(lang: str) -> str:
         return (
             "Ты — Гермес, опытный операционный директор. Ты говоришь с предпринимателем "
             "по-человечески, без жаргона, без эмодзи, без воды.\n"
-            "Твоя задача — на основе анкеты собрать персональный ответ из 4 блоков. "
+            "Твоя задача — на основе анкеты собрать персональный ответ из 5 блоков. "
             "Клиент должен почувствовать «меня поняли». Никаких общих фраз. "
             "Только конкретика под его нишу и боль.\n"
             "Никогда не выдумывай статистику. Никогда не упоминай таблицы или API.\n"
@@ -481,7 +562,7 @@ def _system_prompt_for_reply(lang: str) -> str:
     return (
         "You are Hermes, a senior operations director talking with a business owner.\n"
         "Speak like a human — no jargon, no emoji, no fluff.\n"
-        "Your job: turn the onboarding survey into a personal 4-block reply. "
+        "Your job: turn the onboarding survey into a personal 5-block reply. "
         "The client must feel 'they understood me'. No generic phrases. "
         "Be specific to their industry and primary pain.\n"
         "Never invent statistics. Never reference tables or APIs.\n"
@@ -495,34 +576,44 @@ def _fallback_reply(profile: Dict[str, Any], brief: Dict[str, Any]) -> Dict[str,
     lang = brief.get("lang", "en")
     if lang == "ru":
         return {
-            "intro": f"{name}, вот что я вижу по вашей ситуации:",
+            "intro": f"{name}, я изучил информацию о вашей компании.",
             "block1_understood": (
-                "Вы хотите больше управляемости и меньше хаоса в ежедневной работе. "
-                "Ваши ответы показывают конкретные точки, где автоматизация даст эффект "
-                "уже в первые недели."
+                "Сейчас значительная часть управления зависит от ручного контроля. "
+                "По мере роста это обычно приводит к потере информации, перегрузке руководителя "
+                "и замедлению принятия решений."
             ),
             "block2_team": [{"title": p["title"], "desc": p["desc"]} for p in brief["professions"]],
             "block3_in_30_days": [
-                "Ни одна заявка не останется без ответа.",
-                "Команда будет получать чёткий план каждое утро.",
-                "Вы увидите, откуда реально приходят деньги.",
+                "Организую единое пространство для работы компании.",
+                "Подключу текущие инструменты и коммуникации.",
+                "Настрою контроль задач и подготовлю базу для автоматизации.",
             ],
-            "block4_cta": "Один шаг — и команда подключается:",
+            "block4_potential": (
+                "На основе ваших ответов я вижу значительный потенциал для автоматизации "
+                "и систематизации работы компании без смены привычных инструментов. "
+                "Часть операционной нагрузки можно постепенно перевести на цифровых специалистов NXT8."
+            ),
+            "block5_cta": "Один шаг — и я приступаю к работе:",
         }
     return {
-        "intro": f"{name}, here's what I see in your situation:",
+        "intro": f"{name}, I've reviewed the information about your company.",
         "block1_understood": (
-            "You want more control and less chaos in day-to-day work. "
-            "Your answers point to specific spots where automation pays back "
-            "within the first weeks."
+            "Right now a large part of running the business depends on hands-on control. "
+            "As the company grows, this usually leads to information loss, owner overload, "
+            "and slower decisions."
         ),
         "block2_team": [{"title": p["title"], "desc": p["desc"]} for p in brief["professions"]],
         "block3_in_30_days": [
-            "No lead will go unanswered.",
-            "Your team gets a crisp morning plan every day.",
-            "You'll see where the money actually comes from.",
+            "I'll set up a single workspace for the company.",
+            "I'll connect your existing tools and communication channels.",
+            "I'll put task control in place and prepare the ground for automation.",
         ],
-        "block4_cta": "One step and the team is on:",
+        "block4_potential": (
+            "Based on your answers I see significant potential to automate and systematise "
+            "the company's work without changing the tools you already use. Part of the operational "
+            "load can be gradually handed off to the NXT8 digital specialists."
+        ),
+        "block5_cta": "One step and I'm on it:",
     }
 
 
@@ -538,11 +629,15 @@ async def generate_hermes_reply(
         "name":         profile.get("name"),
         "industry":     profile.get("industry"),
         "team_size":    profile.get("team_size"),
-        "pain_primary": profile.get("pain_primary"),
-        "pain_secondary": profile.get("pain_secondary"),
+        "management_structure":   profile.get("management_structure"),
+        "communication_channels": profile.get("communication_channels"),
+        "process_system":         profile.get("process_system"),
+        "knowledge_storage":      profile.get("knowledge_storage"),
+        "pain_points":  profile.get("pain_points") or [
+            x for x in (profile.get("pain_primary"), profile.get("pain_secondary")) if x
+        ],
         "goal_90days": profile.get("goal_90days"),
         "urgency":     profile.get("urgency"),
-        "tools":       profile.get("tools_current"),
         "professions_picked": [p["title"] for p in brief["professions"]],
         "integration_plan":   [i["plan"] for i in brief["integrations"]],
     }
@@ -554,7 +649,7 @@ async def generate_hermes_reply(
                 {"role": "user",   "content": json.dumps(user_blob, ensure_ascii=False)},
             ],
             temperature=0.5,
-            max_tokens=700,
+            max_tokens=900,
             request_logprobs=False,
         )
         raw = (resp.get("content") or "").strip()
@@ -564,7 +659,7 @@ async def generate_hermes_reply(
         # Validate shape — fall back if anything is missing.
         if not all(k in data for k in (
             "intro", "block1_understood", "block2_team",
-            "block3_in_30_days", "block4_cta"
+            "block3_in_30_days", "block4_potential", "block5_cta"
         )):
             raise ValueError("missing keys")
         if not isinstance(data["block2_team"], list) or not data["block2_team"]:
