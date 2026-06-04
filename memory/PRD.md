@@ -717,3 +717,101 @@ P1:
 - `scripts/simulate_business.sh` — 27-step business simulation harness
 - `test_reports/business_simulation_audit.md` — full audit report
 
+
+---
+
+## v1.19.0 — Onboarding v2 (9-question carousel) — 2026-06-04
+
+### ТЗ (from user)
+Rebuild the onboarding survey as a per-question carousel, 9 questions across
+4 blocks, with a short Hermes insight after every answer, an analysing screen,
+then a **5-block** personal Hermes reply with a dynamic CTA driven by urgency
+(hot/warm/cold). Add a primary "Test NXT8" CTA on the home page.
+
+### What shipped (~2h)
+
+**Frontend — `OnboardingFlow.jsx` (full rewrite)**
+- 9 questions: `industry`, `team_size`, `management_structure`,
+  `communication_channels` (multi), `process_system`, `knowledge_storage`,
+  `pain_points` (multi, max=3, FIFO eviction), `goal_90days`, `urgency`
+- Carousel slide-in animation (`slideInRight` / `slideInLeft` keyframes)
+- Progress bar `n/10 · n%`, block tag per question
+- Insight banner with Hermes branding after every single-select
+- Multi-select counter `0/3 … 3/3`
+- Contact form: name + phone + telegram + **email** (optional)
+- Submit gated on: `name.length >= 2 && (phone>=4 || telegram>=2)`
+- Animated `ProcessingScreen` with 4 dynamic step messages
+- `HermesReplyScreen` renders **5 blocks** + dynamic CTA by urgency
+
+**Frontend — `HomeView.jsx`**
+- New `<TestCTA>` section above HermesChat with primary hero CTA
+  ("Test NXT8" / "Протестировать NXT8") — dispatches `nxt8:open-onboarding`
+  event with `planId = ""` (free test mode)
+- Onboarding modal `z-[90]` to clear cookie-banner `z-[80]`
+
+**Backend — `agents/onboarding.py`**
+- `save_profile`: accepts new fields (`management_structure`,
+  `communication_channels`, `process_system`, `knowledge_storage`,
+  `pain_points` list, `email`); keeps legacy mirrors (`pain_primary`,
+  `pain_secondary`, `tools_current`) populated automatically for
+  backwards-compat with older clients still on the v1 schema
+- `build_brief`: picks professions from `pain_points[0..2]`, adds Ops
+  anchor if missing; CTA driven by `URGENCY_CTAS`
+- `PROFESSIONS`: extended with mappings for all 10 new pain points
+  (owner_overloaded, no_visibility, manual_work, no_numbers, cant_scale,
+  weak_finance_control, documents_overhead)
+- `INSIGHTS`: added static entries for `management_structure`,
+  `communication_channels`, `process_system`, `knowledge_storage`,
+  `pain_points`, and refreshed `goal_90days` to new ТЗ keys
+- `URGENCY_CTAS`: copy aligned to ТЗ
+  - hot  → "Начать работу с Hermes" / "Start working with Hermes"
+  - warm → "Получить персональное демо" / "Get a personalised demo"
+  - cold → "Следить за развитием NXT8" / "Follow NXT8's progress"
+- `REPLY_SCHEMA_HINT` + `_system_prompt_for_reply` + `_fallback_reply` +
+  LLM validator: now require **5 blocks** — `intro`, `block1_understood`,
+  `block2_team`, `block3_in_30_days`, `block4_potential`, `block5_cta`
+- `max_tokens` bumped 700 → 900 for the extra block
+
+**Backend — `server.py`**
+- `OnboardingProfileRequest`: added v2 fields; old fields made optional
+  (with empty defaults) so legacy clients still validate
+
+**i18n — `translations.js`**
+- Replaced the whole `onb.*` block in EN + RU with the new schema (~110 keys)
+- Other 8 languages auto-fall-back to EN (LanguageContext supports it)
+- Added `home.test_cta.{title,subtitle,button}` for the new hero CTA
+
+### Test results
+- **Backend**: 16/16 pytest pass — funnel, insight static + LLM RU fallback,
+  verify-code (888/123/ab), profile save with/without code, missing/empty
+  industry → 400/422, brief+hermes_reply with all 6 keys including
+  `block4_potential` + `block5_cta`, profile persistence with brief, 404
+  case, CTA-by-urgency parametrised for warm + cold, new 9-Q schema
+  acceptance with all new fields persisting to Mongo.
+- **Frontend**: 23/23 Playwright pass — full carousel, all 9 questions,
+  multi-select FIFO cap, insight after each pick, processing screen with
+  4 steps, final reply with 5 blocks, 3 team cards, hot-urgency CTA copy.
+- **E2E curl**: `intro` ("Иван, я внимательно изучил вашу ситуацию."),
+  block1_understood (full paragraph), 3 personalised professions in
+  block2_team, 3 concrete 30-day items in block3, block4_potential
+  ("у вас есть все предпосылки для масштабирования…"),
+  block5_cta call-to-action — all populated by LLM.
+
+### Files touched (v1.19.0)
+- `backend/agents/onboarding.py` — schema v2 + PROFESSIONS x14 + INSIGHTS x5 + 5-block reply
+- `backend/server.py` — `OnboardingProfileRequest` v2 fields
+- `frontend/src/components/OnboardingFlow.jsx` — full rewrite (≈600 lines)
+- `frontend/src/components/views/HomeView.jsx` — `<TestCTA>` hero section
+- `frontend/src/i18n/translations.js` — EN + RU onboarding keys + home.test_cta.*
+
+### Still open from prior audits (not blocking onboarding)
+- Tariff IDs mismatch (manifests vs Stripe plans)
+- API contract drift in `/api/graph/v2/run` (`task` vs `message`)
+- ROI dashboard fantom `human_escalation` cost ($14.58/h)
+- `escalation_rate` 49% — pipeline-hook thresholds too aggressive
+- Data Access Guard not enforced in code
+- Real Approval Gate (`db.pending_approvals` + executor + UI)
+- Hermes OS Cycle 22s — close to Cloudflare 30s timeout
+- 5.8% silent mock-leakage from LLM provider wobbles
+- 4-Layer Memory M2/M3/M4/M6 (chat→memories, client_profile auto-create, cross-device search, KG from chat)
+

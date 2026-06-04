@@ -421,7 +421,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
   // ---------- RENDER ----------
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm"
+      className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm"
       data-testid="onboarding-modal"
     >
       <div className="relative w-full sm:w-[640px] sm:max-h-[88vh] h-[100dvh] sm:h-auto sm:rounded-3xl bg-brand-dark border border-white/10 overflow-y-auto">
