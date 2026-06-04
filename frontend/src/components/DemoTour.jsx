@@ -332,11 +332,11 @@ export default function DemoTour() {
 
 function buildShareUrl(shareId) {
   if (typeof window === "undefined") return "";
-  // Use the production-friendly origin verbatim. Anyone opening the link
-  // hits the same page — the marketing landing — with a ?ref=<id> so we
-  // can attribute opens & conversions to this share.
+  // Use the SSR endpoint so Telegram/WhatsApp/Twitter crawlers can scrape
+  // the dynamic Open Graph meta tags. Browsers get redirected to the SPA
+  // landing with ?ref=<id> for attribution.
   const origin = window.location.origin.replace(/\/$/, "");
-  return `${origin}/?ref=${encodeURIComponent(shareId)}`;
+  return `${origin}/api/s/${encodeURIComponent(shareId)}`;
 }
 
 function buildShareText() {

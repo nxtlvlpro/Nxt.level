@@ -2805,6 +2805,116 @@ async def share_og(share_id: str) -> Response:
     )
 
 
+@api.get("/s/{share_id}")
+async def share_ssr(share_id: str, request: Request) -> Response:
+    """SSR HTML wrapper that exposes Open Graph meta tags to messenger
+    crawlers (Telegram / WhatsApp / Twitter / Slack) and redirects real
+    browsers to the SPA with `?ref=<share_id>` for attribution.
+
+    Crawlers don't run JS — they just scrape the static `<head>` for
+    `og:image`/`og:title`/`og:description`. Browsers also see the head,
+    then the meta-refresh + JS redirect lands them on the landing page.
+    """
+    from core import share as _sh
+    rec = await _sh.get_share(share_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="share_not_found")
+
+    # Record open in the background (best effort).
+    try:
+        ua = request.headers.get("user-agent", "")
+        await _sh.record_open(share_id, ref="ssr", user_agent=ua)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("share ssr open record failed: %s", e)
+
+    base = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
+    # Fall back to the request's scheme+host so previews work even before
+    # PUBLIC_BASE_URL is set on a new env (preview pods, etc.).
+    if not base:
+        base = f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
+
+    og_image = f"{base}/api/share/{share_id}/og.png"
+    canonical = f"{base}/api/s/{share_id}"
+    spa_landing = f"{base}/?ref={share_id}"
+
+    headline = (rec.get("headline") or "Я попробовал NXT8 — AI-команда для бизнеса")
+    description = (
+        "NXT8 — AI-команда из 8 агентов, которая берёт операционку компании "
+        "на себя: Hermes CEO, HR, бухгалтерия, маркетинг, аналитика. "
+        "Посмотри сам — бесплатный Test Drive 3 минуты."
+    )
+
+    # Escape minimal HTML in user-controlled strings.
+    def _esc(s: str) -> str:
+        return (
+            s.replace("&", "&amp;")
+             .replace("<", "&lt;")
+             .replace(">", "&gt;")
+             .replace('"', "&quot;")
+        )
+
+    h = _esc(headline)
+    d = _esc(description)
+    html = f"""<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>{h} — NXT8</title>
+<meta name="description" content="{d}">
+<link rel="canonical" href="{canonical}">
+
+<meta property="og:type"        content="website">
+<meta property="og:site_name"   content="NXT8">
+<meta property="og:url"         content="{canonical}">
+<meta property="og:title"       content="{h}">
+<meta property="og:description" content="{d}">
+<meta property="og:image"       content="{og_image}">
+<meta property="og:image:type"  content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale"      content="ru_RU">
+
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="{h}">
+<meta name="twitter:description" content="{d}">
+<meta name="twitter:image"       content="{og_image}">
+
+<meta http-equiv="refresh" content="0; url={spa_landing}">
+<style>
+  body {{ background:#0a0a0b; color:#e5e7eb; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin:0; padding:0; display:flex; align-items:center; justify-content:center; min-height:100vh; }}
+  .wrap {{ max-width: 640px; padding: 32px; text-align: center; }}
+  .badge {{ display:inline-block; font-size:11px; letter-spacing:2px; padding:4px 10px; background:rgba(56,189,248,.12); color:#7dd3fc; border:1px solid rgba(56,189,248,.4); border-radius:9999px; }}
+  h1 {{ font-size: 28px; margin: 18px 0 12px; line-height:1.2; }}
+  p  {{ color:#9ca3af; line-height:1.5; }}
+  a  {{ color:#7dd3fc; text-decoration:none; }}
+  img {{ max-width: 100%; border-radius: 16px; border:1px solid rgba(255,255,255,.08); margin-top: 24px; }}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="badge">NXT8 · SHARED JOURNEY</span>
+  <h1>{h}</h1>
+  <p>{d}</p>
+  <p><a href="{spa_landing}">Открыть NXT8 →</a></p>
+  <img src="{og_image}" alt="NXT8 — shared journey card" loading="eager">
+</div>
+<script>
+  // Belt-and-suspenders: in case meta-refresh is blocked, JS-redirect after a tick.
+  setTimeout(function () {{ window.location.replace({spa_landing!r}); }}, 80);
+</script>
+</body>
+</html>"""
+
+    return Response(
+        content=html,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
+            "X-Robots-Tag": "noindex",
+        },
+    )
+
+
 @api.post("/share/conversion")
 async def share_conversion(req: ShareConversionRequest) -> Dict[str, Any]:
     from core import share as _sh
