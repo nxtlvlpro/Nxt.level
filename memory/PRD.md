@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.11.1-voice-hd (additive over v1.11.0-channels)
+**Current version:** v1.11.2-voice-gpt4o-tts (additive over v1.11.1-voice-hd)
 **Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -96,6 +96,11 @@ The following parts of the codebase are **explicitly frozen by the product owner
     - **`/api/voice/converse` and `/api/voice/converse/stream`** — now pass the detected STT `language` as `lang` into `synthesize()` so the style instructions are auto-localised (RU prompt for RU speech, EN prompt for EN speech).
     - **Current production reality on Emergent platform:** confirmed via support ticket that the Emergent LLM proxy currently exposes only `tts-1` and `tts-1-hd`. The user's voice today therefore runs on **`tts-1-hd` automatically** (warmer + clearer than the previous `tts-1`) via the fallback. To unlock the full `gpt-4o-mini-tts` + style-instructions experience, add `OPENAI_API_KEY` to `backend/.env` — the native SDK path activates immediately, no other code changes needed.
     - **Verified** with 3 curl scenarios: EN + RU + explicit tts-1-hd — all return HTTP 200 with valid MP3 payloads (22–70 KB depending on text length).
+
+16. **v1.11.2 Voice fully live — `gpt-4o-mini-tts` activated (2026-06-04):**
+    - User provided their own `OPENAI_API_KEY`, written to `backend/.env`. On restart, `voice.py` log line confirmed `voice: native OpenAI SDK (key=OPENAI_API_KEY)` — the Emergent proxy fallback is no longer in use.
+    - The voice on the landing now runs on **OpenAI `gpt-4o-mini-tts` + onyx + auto style-instructions** (RU/EN switched by Whisper-detected language). Verified with 2 curl scenarios: 161 KB MP3 for ~155 EN chars, 171 KB for ~135 RU chars (HD-rate output with natural intonation pauses baked in).
+    - STT (Whisper-1) and rest of LLM stack (DeepSeek-V3 via OpenRouter) untouched. Only TTS billing now routes to the user's OpenAI account.
 
 ## Architecture (as built)
 
