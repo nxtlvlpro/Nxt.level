@@ -567,3 +567,24 @@ These were not bundled into this step on purpose — the OS UI on its own is a m
 - **Known limitation**: Stripe retrieve via the emergent proxy returns "No such checkout.session" — the polling endpoint degrades gracefully and the webhook reconciles the final state. This is acceptable for dev / test-mode; in production a real Stripe key would make retrieve work directly.
 - The user only needs to send their origin (`window.location.origin`); amounts are NEVER accepted from the client.
 
+
+---
+
+## v1.16.6 — HermesOSView connector lines (2026-02-06)
+
+Added thin SVG connector lines between the 10 nodes in `HermesOSView.jsx`.
+
+- **9 edges** drawn between consecutive nodes (Observe → Context → … → Evolve). Edge geometry is computed from each node's `getBoundingClientRect()` relative to the grid container, so the layout follows the responsive `grid-cols-2 / md:3 / xl:5` wrap automatically (horizontal lines within a row, diagonal exits across row breaks). Recomputed on mount, on `resize`, and after every `nodeState/activeNode` change.
+- **Three edge states** with distinct styling:
+  - `idle`: 1px dashed slate, dimmed arrow head.
+  - `active` (target node currently running): 2px solid turquoise with `drop-shadow` glow + `@keyframes os-dash-flow` (`stroke-dashoffset: -20` over 0.8s linear infinite) — the dashes literally crawl along the line, showing direction of flow.
+  - `done` (both endpoints completed): emerald, no dash, brighter arrow head.
+- Three SVG `<marker>` definitions wire arrow heads to each kind. The SVG sits in a `pointer-events-none z-0` layer behind the cards (which are on `z-10`).
+- `NodeCard` is now a `React.forwardRef` so the parent can attach refs for geometry queries without spreading additional props.
+- Animation keyframes added to `App.css` (`@keyframes os-dash-flow`).
+
+### Verified
+Browser test: 9 `os-edge-*` elements present with valid coordinates (Route→Execute correctly diagonal: `x1=1228, x2=131, y1=62, y2=74`). During a live run the kinds array transitions correctly:
+`[done, done, active, idle, idle, idle, idle, idle, idle]` (Hermes on Reason) →
+`[done, done, done, done, done, done, done, done, done]` (cycle complete).
+

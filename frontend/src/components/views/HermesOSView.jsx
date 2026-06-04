@@ -105,7 +105,10 @@ function statusBadge(status) {
   return <span className="text-slate-500">idle</span>;
 }
 
-function NodeCard({ node, state, slice, isActive }) {
+const NodeCard = React.forwardRef(function NodeCard(
+  { node, state, slice, isActive },
+  ref
+) {
   const Icon = node.icon;
   const border =
     state === "active"
@@ -125,6 +128,7 @@ function NodeCard({ node, state, slice, isActive }) {
           : "text-slate-500";
   return (
     <div
+      ref={ref}
       className={`relative rounded-xl border ${border} bg-brand-dark/60 backdrop-blur-md p-3 transition-all ${
         isActive ? "scale-[1.02]" : ""
       }`}
@@ -159,7 +163,7 @@ function NodeCard({ node, state, slice, isActive }) {
       )}
     </div>
   );
-}
+});
 
 function extractSliceText(nodeId, slice) {
   if (!slice || typeof slice !== "object") return "";
@@ -306,6 +310,70 @@ export default function HermesOSView() {
   const [lessons, setLessons] = useState([]);
   const [stats, setStats] = useState(null);
   const inflightRef = useRef(false);
+  // Node refs for SVG connector positioning. Index matches NODES[i].
+  const nodeRefs = useRef(NODES.map(() => React.createRef()));
+  const gridRef = useRef(null);
+  const [connectors, setConnectors] = useState([]); // [{x1,y1,x2,y2}]
+
+  // Recompute connector geometry from node bounding rects, relative to
+  // the grid container so the SVG aligns with the cards across viewport
+  // sizes and CSS-grid wraps (5 cols xl → 3 md → 2 sm).
+  const recomputeConnectors = () => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const gridRect = grid.getBoundingClientRect();
+    const pts = nodeRefs.current.map((r) => {
+      const el = r?.current;
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      return {
+        cx: b.left + b.width / 2 - gridRect.left,
+        cy: b.top + b.height / 2 - gridRect.top,
+        w:  b.width,
+        h:  b.height,
+        l:  b.left - gridRect.left,
+        r:  b.right - gridRect.left,
+        t:  b.top - gridRect.top,
+        bo: b.bottom - gridRect.top,
+      };
+    });
+    const edges = [];
+    for (let i = 0; i < pts.length - 1; i += 1) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      if (!a || !b) continue;
+      // Same row → exit right of A, enter left of B.
+      // Wrap row    → exit bottom of A, enter top of B.
+      const sameRow = Math.abs(a.cy - b.cy) < 8;
+      if (sameRow) {
+        edges.push({ x1: a.r, y1: a.cy, x2: b.l, y2: b.cy });
+      } else {
+        edges.push({ x1: a.cx, y1: a.bo, x2: b.cx, y2: b.t });
+      }
+    }
+    setConnectors(edges);
+  };
+
+  useEffect(() => {
+    recomputeConnectors();
+    // Recompute on resize.
+    const onResize = () => recomputeConnectors();
+    window.addEventListener("resize", onResize);
+    // Also on font/icon load timing — schedule a second pass.
+    const tid = setTimeout(recomputeConnectors, 200);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      clearTimeout(tid);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cards scale slightly when active — recompute when state changes so
+  // the lines hug the cards perfectly even during the animation.
+  useEffect(() => {
+    recomputeConnectors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeState, activeNode]);
 
   const refreshAll = async () => {
     try {
@@ -480,20 +548,115 @@ export default function HermesOSView() {
         )}
       </section>
 
-      {/* 10-node graph */}
-      <section
-        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3"
-        data-testid="os-node-grid"
-      >
-        {NODES.map((n) => (
-          <NodeCard
-            key={n.id}
-            node={n}
-            state={nodeState[n.id] || "idle"}
-            slice={nodeSlice[n.id] || ""}
-            isActive={activeNode === n.id}
-          />
-        ))}
+      {/* 10-node graph with connector lines */}
+      <section className="relative" data-testid="os-node-grid">
+        {/* SVG connector overlay — drawn behind cards via z-index */}
+        <svg
+          className="absolute inset-0 pointer-events-none z-0"
+          width="100%"
+          height="100%"
+          aria-hidden="true"
+        >
+          <defs>
+            <marker
+              id="os-arrow-idle"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(148,163,184,0.35)" />
+            </marker>
+            <marker
+              id="os-arrow-done"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(52,211,153,0.7)" />
+            </marker>
+            <marker
+              id="os-arrow-active"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--brand-turquoise)" />
+            </marker>
+          </defs>
+          {connectors.map((e, i) => {
+            const fromState = nodeState[NODES[i].id] || "idle";
+            const toState = nodeState[NODES[i + 1].id] || "idle";
+            // Edge classification:
+            // - active: target node is currently active (=transition in flight)
+            // - done:   both endpoints completed
+            // - idle:   anything else
+            let edgeKind = "idle";
+            if (toState === "active") edgeKind = "active";
+            else if (fromState === "done" && toState === "done") edgeKind = "done";
+            const stroke =
+              edgeKind === "active"
+                ? "var(--brand-turquoise)"
+                : edgeKind === "done"
+                  ? "rgba(52,211,153,0.55)"
+                  : "rgba(148,163,184,0.22)";
+            const width = edgeKind === "active" ? 2 : 1;
+            const dash = edgeKind === "active" ? "6 4" : edgeKind === "done" ? "0" : "3 3";
+            const marker =
+              edgeKind === "active"
+                ? "url(#os-arrow-active)"
+                : edgeKind === "done"
+                  ? "url(#os-arrow-done)"
+                  : "url(#os-arrow-idle)";
+            return (
+              <line
+                key={i}
+                x1={e.x1}
+                y1={e.y1}
+                x2={e.x2}
+                y2={e.y2}
+                stroke={stroke}
+                strokeWidth={width}
+                strokeDasharray={dash}
+                markerEnd={marker}
+                style={
+                  edgeKind === "active"
+                    ? {
+                        filter: "drop-shadow(0 0 4px var(--brand-turquoise))",
+                        animation: "os-dash-flow 0.8s linear infinite",
+                      }
+                    : undefined
+                }
+                data-testid={`os-edge-${NODES[i].id}-${NODES[i + 1].id}`}
+                data-kind={edgeKind}
+              />
+            );
+          })}
+        </svg>
+
+        <div
+          ref={gridRef}
+          className="relative z-10 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3"
+        >
+          {NODES.map((n, i) => (
+            <NodeCard
+              key={n.id}
+              ref={nodeRefs.current[i]}
+              node={n}
+              state={nodeState[n.id] || "idle"}
+              slice={nodeSlice[n.id] || ""}
+              isActive={activeNode === n.id}
+            />
+          ))}
+        </div>
       </section>
 
       {/* Memory stats strip */}

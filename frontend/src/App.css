@@ -3,3 +3,8 @@
   width: 100%;
   min-height: 100vh;
 }
+
+/* Hermes OS — animated dash flow for the active edge in the 10-node graph */
+@keyframes os-dash-flow {
+  to { stroke-dashoffset: -20; }
+}
