@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.13.0-graph-v2 (additive over v1.12.0-onboarding)
+**Current version:** v1.13.1-deepseek-direct (additive over v1.13.0-graph-v2)
 **Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -153,6 +153,13 @@ The following parts of the codebase are **explicitly frozen by the product owner
       2. **DENIED malicious task** — graph short-circuits at hermes_check in 3 hops with `error.code=denied` and a clear reason. No plan, no execution, no leak.
       3. **Cloudflare 100s timing test** — 3-step plan completes in 42 s through the preview URL.
     - **What this unlocks** — every future Hermes feature can opt into the constitutional graph for stronger guarantees (audit log, policy gate, fix loop) WITHOUT touching the legacy supervisor flow. When the v2 graph proves itself, the legacy `nxt8_langgraph_ultra.py` can be retired and v2 becomes the canonical Hermes runtime.
+
+19. **v1.13.1 DeepSeek direct API as primary LLM provider (2026-06-04):**
+    - User supplied a paid DeepSeek API key (`sk-16a498275dc148f4b0566477a4a3149b`) and asked to switch the LLM stack from OpenRouter's free tier to direct DeepSeek.
+    - **`backend/.env`** now carries `DEEPSEEK_API_KEY` alongside the existing `OPENROUTER_API_KEY`.
+    - **`core/deepseek.py:_DeepSeekClient.__init__`** — provider order reversed: direct DeepSeek (`api.deepseek.com/v1`, model `deepseek-chat`) is now FIRST in the chain; OpenRouter (`openrouter.ai/api/v1`, `deepseek/deepseek-chat-v3-0324`) remains the automatic fallback if the direct API ever errors or hits a quota.
+    - **`/api/health`** confirms the active provider after restart: `{deepseek.model: "deepseek-chat", mock_mode: false, active_provider: "deepseek_direct"}`.
+    - **Latency win** — observed Hermes chat round-trip dropped from 8-15 s (OpenRouter `:free` rate-limited) to ~2.5 s on the direct API. Quality of the V3 model is identical.
 
 ## Architecture (as built)
 

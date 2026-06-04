@@ -55,6 +55,19 @@ class DeepSeekClient:
     def __init__(self) -> None:
         providers: List[_Provider] = []
 
+        # Primary: direct DeepSeek API (api.deepseek.com) — when both keys are
+        # configured, the direct provider goes first. OpenRouter remains the
+        # automatic fallback if the direct API is unreachable / quota-exhausted.
+        ds_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+        if _is_real(ds_key):
+            providers.append(_Provider(
+                name="deepseek_direct",
+                api_key=ds_key,
+                base_url=os.environ.get("DEEPSEEK_API_URL", "https://api.deepseek.com/v1"),
+                model=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
+                supports_logprobs=True,
+            ))
+
         or_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
         if _is_real(or_key):
             providers.append(_Provider(
@@ -67,16 +80,6 @@ class DeepSeekClient:
                     "HTTP-Referer": os.environ.get("OPENROUTER_REFERRER", "https://nxt8.local"),
                     "X-Title": "NXT8",
                 },
-            ))
-
-        ds_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
-        if _is_real(ds_key):
-            providers.append(_Provider(
-                name="deepseek_direct",
-                api_key=ds_key,
-                base_url=os.environ.get("DEEPSEEK_API_URL", "https://api.deepseek.com/v1"),
-                model=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
-                supports_logprobs=True,
             ))
 
         self.providers: List[_Provider] = providers
