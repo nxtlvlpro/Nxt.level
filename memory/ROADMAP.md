@@ -2,6 +2,15 @@
 
 **Текущая версия:** v1.7.0-approval-gate (2026-06-04)
 
+## ✅ Done — Demo Tour (2026-06-04)
+- `core/tour.py` + endpoints `/api/tour/{catalogue,events,funnel}`
+- `DemoTour.jsx` плавающий чек-лист с 5 сценариями
+- Auto-detection: «Спроси Hermes» (на отправку), «Открой команду агентов» (на view=agents),
+  Inter-Agent диалоги и Approval Gate (IntersectionObserver на карточки)
+- Анонимная аналитика по `client_id` в localStorage; voronka via `/tour/funnel`
+- 4 регрессионных теста: catalogue, валидация, persist, funnel rate
+- 88/88 backend tests passing
+
 ## ✅ Done — Plan & ROI Sync (2026-06-04)
 - Canonical Stripe IDs (personal/team/operations/headquarters) теперь — единая истина
 - Legacy basic/simple/pro/enterprise → aliases, backwards-compat

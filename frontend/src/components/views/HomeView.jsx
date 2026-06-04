@@ -1135,6 +1135,18 @@ function HermesChat({ t, lang }) {
     setSending(true);
     setError("");
 
+    // Demo Tour — mark "Спроси Hermes" complete when the user sends
+    // their first real message to Hermes from the home view.
+    if (typeof window !== "undefined" && (text || readyAttachments.length > 0)) {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("nxt8:tour-complete", {
+            detail: { step_id: "ask_hermes" },
+          })
+        );
+      } catch { /* ignore */ }
+    }
+
     // ── Talk-mode: streamed LLM + streamed TTS via /api/hermes/talk ────
     // First sentence audio plays in ~3.5s (vs ~8s end-to-end), text fills
     // the bubble token-by-token, audio queue plays sentences in order.

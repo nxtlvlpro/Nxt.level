@@ -146,6 +146,16 @@ export const api = {
       .get(`/approvals/stats?window_hours=${window_hours}`)
       .then((r) => r.data),
 
+  // Demo Tour — landing-page "Test Drive" checklist + funnel analytics
+  tourCatalogue: () => http.get("/tour/catalogue").then((r) => r.data),
+  tourEvent: (client_id, event, step_id, metadata) =>
+    http
+      .post("/tour/events", { client_id, event, step_id, metadata })
+      .then((r) => r.data)
+      .catch(() => ({ ok: false })),  // analytics must never break UX
+  tourFunnel: (window_hours = 168) =>
+    http.get(`/tour/funnel?window_hours=${window_hours}`).then((r) => r.data),
+
   // Documents (Compliance persona)
   documentsList: (company_id, limit = 50) =>
     http

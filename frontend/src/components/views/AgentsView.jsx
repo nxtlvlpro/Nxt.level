@@ -461,6 +461,30 @@ function InterAgentDialoguesCard() {
   const [open, setOpen] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+  const cardRef = React.useRef(null);
+
+  // Demo Tour — mark "open_dialogues" complete when the card scrolls into view
+  useEffect(() => {
+    if (typeof window === "undefined" || !cardRef.current) return undefined;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            try {
+              window.dispatchEvent(new CustomEvent("nxt8:tour-complete", {
+                detail: { step_id: "open_dialogues" },
+              }));
+            } catch { /* ignore */ }
+            obs.disconnect();
+            break;
+          }
+        }
+      },
+      { threshold: 0.3 }
+    );
+    obs.observe(cardRef.current);
+    return () => obs.disconnect();
+  }, []);
 
   const refresh = () => {
     setLoading(true);
@@ -478,7 +502,7 @@ function InterAgentDialoguesCard() {
   }, []);
 
   return (
-    <>
+    <div ref={cardRef}>
       <CollapsibleCard
         storageKey="agents-dialogues"
         testId="agents-dialogues-card"
@@ -522,7 +546,7 @@ function InterAgentDialoguesCard() {
       </CollapsibleCard>
 
       <DialogueModal d={open} onClose={() => setOpen(null)} />
-    </>
+    </div>
   );
 }
 
@@ -608,6 +632,30 @@ function PendingApprovalsCard() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [err, setErr] = useState(null);
+  const cardRef = React.useRef(null);
+
+  // Demo Tour — mark "open_approvals" complete on first visibility
+  useEffect(() => {
+    if (typeof window === "undefined" || !cardRef.current) return undefined;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            try {
+              window.dispatchEvent(new CustomEvent("nxt8:tour-complete", {
+                detail: { step_id: "open_approvals" },
+              }));
+            } catch { /* ignore */ }
+            obs.disconnect();
+            break;
+          }
+        }
+      },
+      { threshold: 0.3 }
+    );
+    obs.observe(cardRef.current);
+    return () => obs.disconnect();
+  }, []);
 
   const refresh = () => {
     setLoading(true);
@@ -642,6 +690,7 @@ function PendingApprovalsCard() {
   };
 
   return (
+    <div ref={cardRef}>
     <CollapsibleCard
       storageKey="agents-pending-approvals"
       testId="agents-pending-approvals-card"
@@ -702,5 +751,6 @@ function PendingApprovalsCard() {
         ))}
       </div>
     </CollapsibleCard>
+    </div>
   );
 }

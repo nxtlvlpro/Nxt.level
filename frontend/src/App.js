@@ -16,6 +16,7 @@ import HermesOSView from "./components/views/HermesOSView";
 import PaymentReturnView from "./components/views/PaymentReturnView";
 import { PrivacyView, TermsView } from "./components/views/LegalViews";
 import CookieBanner from "./components/CookieBanner";
+import DemoTour from "./components/DemoTour";
 import api from "./lib/api";
 import { useT } from "./i18n/LanguageContext";
 import { HEADER_LOCKED } from "./config/header.locked";
@@ -34,6 +35,18 @@ function App() {
   const [view, setView] = useState("home");
   const [alertCount, setAlertCount] = useState(0);
   const [seedStatus, setSeedStatus] = useState("idle");
+
+  // Demo Tour — auto-complete the "open_agents" step as soon as the
+  // visitor lands on the Agents view (no matter how they got there).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (view !== "agents") return;
+    try {
+      window.dispatchEvent(
+        new CustomEvent("nxt8:tour-complete", { detail: { step_id: "open_agents" } })
+      );
+    } catch { /* ignore */ }
+  }, [view]);
 
   useEffect(() => {
     // Auto-seed on first load (idempotent on backend side)
@@ -158,6 +171,7 @@ function App() {
         <BottomNav active={view} onChange={setView} alertCount={alertCount} />
       </div>
       <CookieBanner />
+      <DemoTour />
         </>
       )}
     </div>

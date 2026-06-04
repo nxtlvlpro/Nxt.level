@@ -87,6 +87,12 @@ async def _roi_scheduler() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await ensure_indexes()
+    # Tour analytics indexes (best effort — never block startup).
+    try:
+        from core import tour as _tour
+        await _tour.ensure_indexes()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("tour ensure_indexes failed: %s", e)
     # Seed default onboarding access code(s) — currently a single pilot code.
     try:
         from agents import onboarding as _onb
@@ -2241,11 +2247,6 @@ async def agent_manifest(agent_id: str) -> Dict[str, Any]:
     }
 
 
-# =====================================================================
-# Approval Gate — high-impact agent actions wait for Hermes/human review
-# =====================================================================
-
-
 class ApprovalDecision(BaseModel):
     decided_by: str = "hermes"
     reason: Optional[str] = None
@@ -2662,6 +2663,44 @@ async def list_agent_escalations(limit: int = 50, status: Optional[str] = None):
     from agents.inter_agent import list_escalations
     items = await list_escalations(limit=limit, status=status)
     return {"ok": True, "count": len(items), "items": items}
+
+
+# =====================================================================
+# Demo Tour — landing page "Test Drive" checklist + funnel analytics
+# =====================================================================
+
+
+class TourEventRequest(BaseModel):
+    client_id: str
+    event: str
+    step_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+@api.get("/tour/catalogue")
+async def tour_catalogue() -> Dict[str, Any]:
+    from core import tour as _t
+    return _t.catalogue()
+
+
+@api.post("/tour/events")
+async def tour_event_create(req: TourEventRequest) -> Dict[str, Any]:
+    from core import tour as _t
+    try:
+        return await _t.record_event(
+            client_id=req.client_id,
+            step_id=req.step_id,
+            event=req.event,
+            metadata=req.metadata,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api.get("/tour/funnel")
+async def tour_funnel(window_hours: int = 168) -> Dict[str, Any]:
+    from core import tour as _t
+    return await _t.funnel(window_hours=max(1, min(window_hours, 24 * 90)))
 
 
 # =====================================================================
