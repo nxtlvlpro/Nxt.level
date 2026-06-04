@@ -1753,6 +1753,42 @@ async def personas_list(plan_id: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+@api.get("/agents/manifests")
+async def agents_manifests() -> Dict[str, Any]:
+    """Return constitutional manifests for ALL agents (personas + graph nodes).
+
+    Each manifest is the agent's passport: specialty, expertise, functions,
+    must-not, data access matrix, chain of command, decision authority.
+    The frontend agent-passport modal reads from this endpoint.
+    """
+    from agents import manifests as _m
+    return {
+        "count":     len(_m.list_all_manifests()),
+        "manifests": _m.list_all_manifests(),
+        "high_impact_actions": sorted(_m.HIGH_IMPACT_ACTIONS),
+        "low_impact_actions":  sorted(_m.LOW_IMPACT_ACTIONS),
+        "authority_levels": [
+            _m.AUTHORITY_ADVISORY,
+            _m.AUTHORITY_WITH_APPROVAL,
+            _m.AUTHORITY_AUTONOMOUS,
+        ],
+    }
+
+
+@api.get("/agents/{agent_id}/manifest")
+async def agent_manifest(agent_id: str) -> Dict[str, Any]:
+    """Return one agent's full manifest + the prompt-ready render of it."""
+    from agents import manifests as _m
+    manifest = _m.get_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"manifest not found: {agent_id}")
+    return {
+        "id":       agent_id,
+        "manifest": manifest,
+        "prompt_block": _m.render_manifest_for_prompt(agent_id),
+    }
+
+
 @api.post("/personas/{persona_id}/chat")
 async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, Any]:
     """Chat with a specific persona. Enforces tariff gate."""

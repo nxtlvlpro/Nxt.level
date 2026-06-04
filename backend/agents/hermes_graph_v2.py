@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from core.deepseek import get_deepseek
+from agents.manifests import render_manifest_for_prompt
 
 logger = logging.getLogger("nxt8.graph_v2")
 
@@ -139,15 +140,22 @@ async def _llm_role_call(
     max_tokens: int = 500,
     temperature: float = 0.3,
     force_model: Optional[str] = None,
+    role_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Single DeepSeek call returning a JSON object. Strips accidental
     code fences and falls back to {} on any parse error so the caller can
     decide policy. NEVER raises into the graph runtime.
 
     `force_model` lets a node lock itself onto a specific model
-    (e.g. planner → reasoner). When None, the cheap default is used."""
+    (e.g. planner → reasoner). When None, the cheap default is used.
+    `role_id` injects the role's manifest into the system prompt so the
+    LLM literally knows its identity / authority / chain of command."""
     try:
         ds = get_deepseek()
+        if role_id:
+            manifest_block = render_manifest_for_prompt(role_id)
+            if manifest_block:
+                system_prompt = f"{system_prompt}\n\n{manifest_block}"
         kwargs = dict(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -214,6 +222,7 @@ async def hermes_check_node(state: Dict[str, Any]) -> Dict[str, Any]:
         },
         max_tokens=300,
         temperature=0.0,
+        role_id="hermes_check",
     )
     status = (verdict.get("status") or "allowed").lower()
     if status not in ("allowed", "restricted", "denied"):
@@ -355,6 +364,7 @@ async def executor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         },
         max_tokens=600,
         temperature=0.4,
+        role_id="executor",
     )
     if not result.get("output"):
         result = {
@@ -410,6 +420,7 @@ async def reviewer_node(state: Dict[str, Any]) -> Dict[str, Any]:
         },
         max_tokens=400,
         temperature=0.0,
+        role_id="reviewer",
     )
     verdict = (review.get("verdict") or "PASS").upper()
     if verdict not in ("PASS", "FAIL"):
@@ -478,6 +489,7 @@ async def fixer_node(state: Dict[str, Any]) -> Dict[str, Any]:
         },
         max_tokens=700,
         temperature=0.3,
+        role_id="fixer",
     )
     if corrected.get("output"):
         # Replace the last execution step with the corrected one.
@@ -530,6 +542,7 @@ async def hermes_validation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         },
         max_tokens=300,
         temperature=0.0,
+        role_id="hermes_validation",
     )
     verdict = (judgement.get("verdict") or "approve").lower()
     if verdict not in ("approve", "reject"):

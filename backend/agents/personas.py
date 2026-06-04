@@ -33,6 +33,7 @@ from agents import memory as memory_agent
 from agents import mentor as mentor_agent
 from agents import roi as roi_agent
 from agents.hermes_max_tools_and_coo import HERMES_TOOLS
+from agents.manifests import render_manifest_for_prompt
 from core.db import get_db
 from core.deepseek import get_deepseek
 
@@ -544,9 +545,13 @@ async def run_persona(
             except Exception as e:  # noqa: BLE001
                 logger.warning("fetcher %s failed: %s", fetcher, e)
 
-    # 2. System prompt
+    # 2. System prompt — manifest injection makes the agent literally
+    #    self-aware of its specialty, data access, chain of command and
+    #    decision authority. This is the "constitutional" layer.
+    manifest_block = render_manifest_for_prompt(persona_id)
     sys_prompt = (
         f"{cfg['system_prompt']}\n\n"
+        f"{manifest_block}\n\n"
         f"## Доступные инструменты\n{_tools_doc(cfg['allowed_tools'])}\n\n"
         "Если нужен инструмент — вызови его строго в формате fenced-JSON:\n"
         "```json\n"

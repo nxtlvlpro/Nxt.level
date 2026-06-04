@@ -1,7 +1,7 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.13.3-graph-ui (additive over v1.13.2-model-router)
-**Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
+**Current version:** v1.14.0-agent-constitution (additive over v1.13.3-graph-ui)
+**Last updated:** 2026-02-06 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
 
@@ -198,6 +198,30 @@ The following parts of the codebase are **explicitly frozen by the product owner
     - **Navigation wiring** — added `GitBranch` icon `GRAPH` item to BOTH `SideNav.jsx` (desktop) and `BottomNav.jsx` (mobile). `App.js` view-switch gains a `case "graph": return <GraphView />`.
     - **Verified end-to-end** on the live preview: clicked GRAPH in the side nav → ran demo task #0 ("Подскажи 3 действия чтобы увеличить конверсию...") → graph traversed 8 hops, status went `done`, Hermes verdict `approve`, plan-steps 1, retries 0 — all rendered correctly with staggered animation. Final output box landed with rich markdown answer.
     - **What this unlocks commercially** — competitor AI products usually show only the *answer*. NXT8 now shows *how the answer was reasoned*, *who reviewed it*, and *that Hermes approved it before it left the system*. This is a strong differentiator for enterprise/CTO buyers and a literal demo crowd-pleaser.
+
+22. **v1.14.0 Agent Constitution v1.0 — Manifests + Self-introspection (2026-02-06):**
+    - **Motivation** — пользователь: "важно чтобы вся система слаженно работала, агенты четко понимали свою задачу. ключевые решения агентов должны обязательно проходить проверку перед внедрением".
+    - **`agents/manifests.py`** (new, 450+ LOC) — единый источник истины для **15 паспортов** (8 персон + 7 системных нод графа + JOKER). Каждый паспорт содержит:
+      - `specialty` — узкая специализация одной строкой
+      - `expertise` — список конкретных методологий (Bloom's taxonomy для HR, LTV/CAC для Bookkeeper, GDPR/AI Act/152-ФЗ для Compliance, RACI/OKR/CPM для Project Coord, и т.д.)
+      - `functions` / `must_not` — должностная и boundaries
+      - `data_access` — read/write матрица по коллекциям MongoDB (`*` = wildcard для Hermes)
+      - `reports_to` — иерархия подчинения (терминируется на `human_operator`)
+      - `can_delegate_to` — кому можно делегировать (только Hermes имеет non-empty список — все остальные делегируют через него)
+      - `escalates_when` — условия эскалации (ROI < -0.2 для Bookkeeper, severity=CRITICAL для Compliance, etc.)
+      - `decision_authority` — `advisory` / `execute_with_approval` / `execute_autonomous`
+    - **Approval Gate principle** — high-impact actions (`create_task`, `update_task`, `create_cross_department_bridge`, `mempalace_store`, `delegate_to`) автоматически требуют approval от Hermes для всех агентов кроме самого Hermes (`AUTHORITY_AUTONOMOUS`). Логика в `manifests.requires_approval()`.
+    - **Self-introspection injection** — `render_manifest_for_prompt(agent_id)` рендерит компактный prompt-блок "## КТО ТЫ ЕСТЬ" со всеми разделами манифеста и инжектится в system_prompt каждой персоны (`personas.py:run_persona`) и каждой роли Constitutional Graph (`hermes_graph_v2.py:_llm_role_call(role_id=...)`). Агент **буквально читает свой паспорт** перед каждым ответом.
+    - **Новые endpoints** в `server.py`:
+      - `GET /api/agents/manifests` — все 15 манифестов + список high/low-impact actions + 3 уровня authority.
+      - `GET /api/agents/{agent_id}/manifest` — один манифест + render_manifest_for_prompt() для отладки.
+    - **`backend/tests/test_manifests.py`** (new) — 42 теста: required fields, валидный data_access, отсутствие циклов в reports_to, "только Hermes делегирует", "только Hermes автономен", requires_approval logic, can_read/can_write helpers, prompt-block содержит "КТО ТЫ ЕСТЬ" + "Approval Gate". **42/42 PASS**.
+    - **Verified end-to-end** живыми LLM-запросами через `/api/personas/{id}/chat`:
+      - Bookkeeper ("кому ты подчиняешься?") → корректно: "Подчиняюсь Hermes (COO-агент). Фреймворки: LTV/CAC/Payback, Cost decomposition, Hourly ROI… Нет права писать в roi_history".
+      - HR-Mentor → корректно: "Bloom's taxonomy, 70-20-10, Lominger… не могу создавать задачи — только предлагаю".
+      - Compliance → корректно: read-only, write только в `audit_log`, перечисляет GDPR/152-ФЗ/CCPA/AI Act/SOC 2.
+      - Constitutional Graph v2 run после изменений: 8 hops, Hermes verdict=approve, final output coherent. Регрессии нет.
+    - **What this unlocks** — каждый агент теперь "корпоративный сотрудник" с настоящей должностной, узкой экспертизой и понятным местом в иерархии. Это устраняет "галлюцинации компетенций" (когда LLM пытается ответить вне своей зоны) и **создаёт основу для следующего этапа** — реального Approval Gate (Этап 4: chain of command + delegation tool) и enforcement матрицы доступа в коде (Этап 3: access_guard).
 
 ## Architecture (as built)
 
