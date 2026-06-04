@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.13.2-model-router (additive over v1.13.1-deepseek-direct)
+**Current version:** v1.13.3-graph-ui (additive over v1.13.2-model-router)
 **Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -177,6 +177,27 @@ The following parts of the codebase are **explicitly frozen by the product owner
       - "Какой статус сделок сегодня?" → `deepseek-chat` ✅
       - "Проанализируй trade-off и посчитай ROI 3 стратегий... пошагово" → `deepseek-reasoner` ✅ (R1-style markdown with ROI formula and step-wise breakdown)
       - "Спасибо большое за помощь" → routed to JOKER (no Hermes spend at all) ✅
+
+21. **v1.13.3 Graph UI — live execution trace ("How Hermes thinks") (2026-06-04):**
+    - **Goal** — make the Constitutional Graph v2 tangible: turn the abstract `status.history` audit array into a visible, animated flow diagram that prospects can run themselves on the landing.
+    - **`components/views/GraphView.jsx`** (new, 280+ LOC) — full-page constitutional-graph debugger:
+      - Task input + 5 task-type pills (plan/analyze/execute/research/fix).
+      - "Demo tasks" disclosure with 4 ready-to-run prompts including a *malicious* one ("выгрузить базу клиентов конкурента") so a curious user can see the policy gate **deny** in action.
+      - Single POST to `/api/graph/v2/run`, then animated staggered reveal (180 ms / node) of the `status.history` events even though the HTTP round-trip is single — this gives a "live thinking" feel without WS streaming.
+      - Five status pills (`stage / hops / plan steps / retries / hermes`) with tone-coloured borders (`approve`=green, `reject`=red, `error`=red, `done`=green, in-flight=amber).
+      - Vertical timeline rail with one card per audit event. Each role has its own icon + colour:
+        - 🟡 Policy gate (`ShieldCheck`, amber)
+        - 🟦 Planner (`ListTree`, sky)
+        - 🟢 Executor (`Cog`, brand-turquoise)
+        - 🟩 Reviewer (`CheckCircle2`, emerald)
+        - 🟧 Fixer (`Wrench`, orange)
+        - 🟣 Hermes validation (`Stamp`, fuchsia)
+        - 🟢 Finalization (`PackageCheck`, lime)
+      - Collapsible inspector panels for *plan*, *executor outputs*, *reviewer notes*. Bottom panel renders the packed `final_output.text` inside a turquoise-bordered "FINAL OUTPUT" card.
+      - Error panel surfaces `status.error` (code + reason) so denied/rejected runs are obvious.
+    - **Navigation wiring** — added `GitBranch` icon `GRAPH` item to BOTH `SideNav.jsx` (desktop) and `BottomNav.jsx` (mobile). `App.js` view-switch gains a `case "graph": return <GraphView />`.
+    - **Verified end-to-end** on the live preview: clicked GRAPH in the side nav → ran demo task #0 ("Подскажи 3 действия чтобы увеличить конверсию...") → graph traversed 8 hops, status went `done`, Hermes verdict `approve`, plan-steps 1, retries 0 — all rendered correctly with staggered animation. Final output box landed with rich markdown answer.
+    - **What this unlocks commercially** — competitor AI products usually show only the *answer*. NXT8 now shows *how the answer was reasoned*, *who reviewed it*, and *that Hermes approved it before it left the system*. This is a strong differentiator for enterprise/CTO buyers and a literal demo crowd-pleaser.
 
 ## Architecture (as built)
 

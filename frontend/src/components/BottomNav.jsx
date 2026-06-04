@@ -7,12 +7,14 @@ import {
   Bell,
   Mic,
   LayoutGrid,
+  GitBranch,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { id: "home", label: "HOME", icon: Home },
   { id: "cmd", label: "CMD", icon: Terminal },
   { id: "ops", label: "OPS", icon: LayoutGrid },
+  { id: "graph", label: "GRAPH", icon: GitBranch },
   { id: "agents", label: "AGENTS", icon: Users },
   { id: "map", label: "MAP", icon: Map },
   { id: "alerts", label: "ALERTS", icon: Bell, badge: true },

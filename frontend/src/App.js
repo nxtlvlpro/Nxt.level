@@ -11,6 +11,7 @@ import MapView from "./components/views/MapView";
 import AlertsView from "./components/views/AlertsView";
 import MicView from "./components/views/MicView";
 import OpsView from "./components/views/OpsView";
+import GraphView from "./components/views/GraphView";
 import api from "./lib/api";
 import { useT } from "./i18n/LanguageContext";
 import { HEADER_LOCKED } from "./config/header.locked";
@@ -63,6 +64,8 @@ function App() {
         return <MicView />;
       case "ops":
         return <OpsView />;
+      case "graph":
+        return <GraphView />;
       case "home":
       default:
         return <HomeView />;
