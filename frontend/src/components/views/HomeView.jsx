@@ -514,7 +514,7 @@ function AgentsSwipe({ t }) {
       >
         {cards.map((_, i) => (
           <button
-            key={i}
+            key={`dot-${i}`}
             type="button"
             onClick={() => {
               scrollToIdx(i);
@@ -1109,6 +1109,7 @@ function HermesChat({ t, lang }) {
     const readyAttachments = attachments.filter((a) => a.status === "ready");
     if ((!text && readyAttachments.length === 0) || sending) return;
     const userBubble = {
+      id: `m_${Date.now()}_u`,
       role: "user",
       content: text || (readyAttachments.length > 0
         ? `📎 ${readyAttachments.map((a) => a.name).join(", ")}`
@@ -1134,8 +1135,11 @@ function HermesChat({ t, lang }) {
     if (talkMode && text) {
       try { talkCtlRef.current?.stop(); } catch { /* ignore */ }
       // Add an empty assistant bubble we'll fill from the stream.
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-      const myIdx = next.length; // index of the bubble we just appended
+      const streamingBubbleId = `m_${Date.now()}_a_stream`;
+      setMessages((prev) => [
+        ...prev,
+        { id: streamingBubbleId, role: "assistant", content: "" },
+      ]);
       const ctl = hermesTalk({
         backendUrl: process.env.REACT_APP_BACKEND_URL,
         message: text,
@@ -1146,8 +1150,10 @@ function HermesChat({ t, lang }) {
       talkCtlRef.current = ctl;
       ctl.onText((delta) => {
         if (cancelledRef.current) return;
-        setMessages((prev) => prev.map((m, i) =>
-          i === myIdx ? { ...m, content: (m.content || "") + delta } : m
+        setMessages((prev) => prev.map((m) =>
+          m.id === streamingBubbleId
+            ? { ...m, content: (m.content || "") + delta }
+            : m
         ));
       });
       ctl.onDone(() => {
@@ -1186,7 +1192,10 @@ function HermesChat({ t, lang }) {
       if (cancelledRef.current) return;
       const reply =
         (res && (res.content || res.text)) || t("home.hermes.empty_reply");
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: `m_${Date.now()}_a`, role: "assistant", content: reply },
+      ]);
     } catch (e) {
       if (!cancelledRef.current) {
         setError(t("home.hermes.error"));
@@ -1249,7 +1258,7 @@ function HermesChat({ t, lang }) {
         >
           {messages.map((m, i) => (
             <div
-              key={i}
+              key={m.id || `msg-${i}`}
               className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               data-testid={`home-msg-${m.role}`}
             >
@@ -1459,7 +1468,7 @@ function TariffCard({ tariff, t }) {
       <ul className="space-y-2 mb-5 flex-1">
         {tariff.featureKeys.map((fk, i) => (
           <li
-            key={i}
+            key={`${tariff.id}-feat-${fk}-${i}`}
             className="flex items-start gap-2 text-[12.5px] text-slate-300"
           >
             <span className={`${tariff.accent} mt-0.5`}>›</span>
@@ -1516,7 +1525,7 @@ function CarouselTariffCard({ tariff, idx, t }) {
       <ul className="space-y-2 mb-4 flex-1">
         {tariff.featureKeys.map((fk, i) => (
           <li
-            key={i}
+            key={`${tariff.id}-feat-c-${fk}-${i}`}
             className="flex items-start gap-2 text-[12px] text-slate-300 tracking-tight"
           >
             <span className={`${tariff.accent} mt-0.5`}>›</span>

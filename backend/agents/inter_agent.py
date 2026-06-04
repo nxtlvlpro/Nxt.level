@@ -209,6 +209,11 @@ async def escalate_to_hermes(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.warning("escalations insert failed: %s", e)
 
     # Synchronously ask Hermes for a verdict.
+    # NOTE: lazy import is intentional — `inter_agent` is imported by
+    # `agents.hermes` at module load, so importing `hermes_chat` at the
+    # top of this file would create a circular dependency. The lazy
+    # import is the canonical way to break that cycle without a
+    # standalone "core" module.
     from agents.hermes import hermes_chat
     hermes_prompt_parts = [
         f"## ЭСКАЛАЦИЯ от `{from_agent}`",

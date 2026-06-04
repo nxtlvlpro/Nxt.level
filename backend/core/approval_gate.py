@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from core.db import get_db
@@ -242,7 +242,7 @@ async def stats(window_hours: int = 24) -> Dict[str, Any]:
     """Lightweight counters for an Ops dashboard widget."""
     db = get_db()
     cutoff_iso = (
-        datetime.now(timezone.utc) - __import__("datetime").timedelta(hours=window_hours)
+        datetime.now(timezone.utc) - timedelta(hours=window_hours)
     ).isoformat()
     pipeline = [
         {"$match": {"created_at": {"$gte": cutoff_iso}}},
