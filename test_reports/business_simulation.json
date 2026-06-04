@@ -1,0 +1,164 @@
+[
+  {
+    "id": "S1.1",
+    "status": "ok",
+    "ms": 6458,
+    "details": "Новый клиент пишет в чат (general inquiry)"
+  },
+  {
+    "id": "S1.2",
+    "status": "ok",
+    "ms": 7298,
+    "details": "Клиент задаёт техвопрос с интентом support"
+  },
+  {
+    "id": "S1.3",
+    "status": "ok",
+    "ms": 5438,
+    "details": "Клиент озвучивает обещание апгрейда (upsell signal)"
+  },
+  {
+    "id": "S1.4",
+    "status": "ok",
+    "ms": 125,
+    "details": "Получаем session history"
+  },
+  {
+    "id": "S2.1",
+    "status": "ok",
+    "ms": 22319,
+    "details": "Triggеr Hermes OS cycle (new channel message)"
+  },
+  {
+    "id": "S2.2",
+    "status": "ok",
+    "ms": 137,
+    "details": "Список OS cycles"
+  },
+  {
+    "id": "S2.3",
+    "status": "ok",
+    "ms": 114,
+    "details": "Проверяем 4-layer memory stats после цикла"
+  },
+  {
+    "id": "S2.4",
+    "status": "ok",
+    "ms": 120,
+    "details": "Knowledge graph entries"
+  },
+  {
+    "id": "S2.5",
+    "status": "ok",
+    "ms": 127,
+    "details": "Institutional memory (lessons)"
+  },
+  {
+    "id": "S3.1",
+    "status": "ok",
+    "ms": 173,
+    "details": "Graph v2 run — финансовая задача"
+  },
+  {
+    "id": "S3.2",
+    "status": "ok",
+    "ms": 153,
+    "details": "Graph v2 run — compliance task (договор)"
+  },
+  {
+    "id": "S4.1",
+    "status": "ok",
+    "ms": 157,
+    "details": "Список агентов и манифестов"
+  },
+  {
+    "id": "S4.2",
+    "status": "ok",
+    "ms": 5600,
+    "details": "Bookkeeper отвечает финансовую задачу"
+  },
+  {
+    "id": "S4.3",
+    "status": "ok",
+    "ms": 4528,
+    "details": "Analyst — диагностика"
+  },
+  {
+    "id": "S4.4",
+    "status": "ok",
+    "ms": 4933,
+    "details": "Compliance — попытка write в чужую коллекцию (Data Access Guard test)"
+  },
+  {
+    "id": "S5.1",
+    "status": "ok",
+    "ms": 144,
+    "details": "ROI dashboard"
+  },
+  {
+    "id": "S5.2",
+    "status": "ok",
+    "ms": 155,
+    "details": "Diagnostics summary"
+  },
+  {
+    "id": "S5.3",
+    "status": "ok",
+    "ms": 124,
+    "details": "Diagnostics contradictions"
+  },
+  {
+    "id": "S5.4",
+    "status": "ok",
+    "ms": 108,
+    "details": "Alerts feed"
+  },
+  {
+    "id": "S6.1",
+    "status": "ok",
+    "ms": 1110,
+    "details": "MemPalace health"
+  },
+  {
+    "id": "S6.2",
+    "status": "ok",
+    "ms": 122,
+    "details": "Search memories: SSO"
+  },
+  {
+    "id": "S7.1",
+    "status": "ok",
+    "ms": 124,
+    "details": "Список тарифов"
+  },
+  {
+    "id": "S7.2",
+    "status": "ok",
+    "ms": 114,
+    "details": "Создание checkout сессии"
+  },
+  {
+    "id": "S8.1",
+    "status": "ok",
+    "ms": 116,
+    "details": "Список каналов"
+  },
+  {
+    "id": "S9.1",
+    "status": "ok",
+    "ms": 107,
+    "details": "Cross-department coordinate"
+  },
+  {
+    "id": "S10.1",
+    "status": "ok",
+    "ms": 119,
+    "details": "Hermes self-assessment"
+  },
+  {
+    "id": "S10.2",
+    "status": "ok",
+    "ms": 214,
+    "details": "Hermes evolution roadmap"
+  }
+]
