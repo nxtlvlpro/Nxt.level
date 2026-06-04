@@ -136,15 +136,13 @@ async def get_status(*, session_id: str, host_url: str) -> Dict[str, Any]:
     We bypass the emergentintegrations wrapper here because its
     `CheckoutStatusResponse` model fails to coerce Stripe's
     `StripeObject` metadata into a plain dict. We call the stripe SDK
-    directly but mirror the library's emergent-proxy routing so the
-    `sk_test_emergent` placeholder key still works.
+    directly. For the legacy `sk_test_emergent` placeholder key we
+    still mirror the library's emergent-proxy routing, but for real
+    `sk_test_...` keys the SDK talks to Stripe directly.
 
-    Note: the Emergent Stripe proxy currently only forwards CREATE
-    requests; retrieve calls answer with "No such checkout.session".
-    In that case we degrade gracefully to whatever row state we have
-    locally so the UI doesn't break. The Stripe webhook (POST
-    `/api/webhook/stripe`) remains the source of truth for the final
-    payment state.
+    Falls back to the local snapshot only on real network failures —
+    with a real Stripe key, retrieve answers correctly and the
+    fallback path is never triggered.
     """
     import stripe
     api_key = _stripe_key()
@@ -185,12 +183,24 @@ async def get_status(*, session_id: str, host_url: str) -> Dict[str, Any]:
     amount_total    = int(getattr(sess, "amount_total", 0) or 0)
     currency        = getattr(sess, "currency", "usd") or "usd"
     meta_raw        = getattr(sess, "metadata", None) or {}
-    # Normalise StripeObject → plain dict.
+    # Normalise StripeObject → plain dict. StripeObject empty-cases break
+    # plain dict() on some SDK versions, so use to_dict_recursive() when
+    # available and fall back to safe key iteration otherwise.
     metadata: Dict[str, str] = {}
     try:
-        metadata = {str(k): str(v) for k, v in dict(meta_raw).items()}
+        if hasattr(meta_raw, "to_dict_recursive"):
+            metadata = {str(k): str(v) for k, v in meta_raw.to_dict_recursive().items()}
+        elif hasattr(meta_raw, "keys"):
+            metadata = {str(k): str(meta_raw[k]) for k in list(meta_raw.keys())}
+        else:
+            metadata = {str(k): str(v) for k, v in dict(meta_raw).items()}
     except Exception:
         metadata = {}
+
+    # Merge: prefer values from Stripe, fall back to whatever we already
+    # have locally (so the UI can still surface plan_name even if Stripe
+    # responds with an empty metadata bag).
+    merged_metadata = {**(existing.get("metadata") if existing else {} or {}), **metadata}
 
     if existing and existing.get("payment_status") != "paid":
         # Only update once — never flip a paid row backwards.
@@ -201,7 +211,7 @@ async def get_status(*, session_id: str, host_url: str) -> Dict[str, Any]:
                 "payment_status": payment_status,
                 "amount_total":   amount_total,
                 "updated_at":     _now(),
-                "metadata":       {**(existing.get("metadata") or {}), **metadata},
+                "metadata":       merged_metadata,
             }},
         )
 
@@ -211,7 +221,7 @@ async def get_status(*, session_id: str, host_url: str) -> Dict[str, Any]:
         "payment_status": payment_status,
         "amount_total":   amount_total,
         "currency":       currency,
-        "metadata":       metadata,
+        "metadata":       merged_metadata,
     }
 
 

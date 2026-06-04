@@ -588,3 +588,18 @@ Browser test: 9 `os-edge-*` elements present with valid coordinates (Route→Exe
 `[done, done, active, idle, idle, idle, idle, idle, idle]` (Hermes on Reason) →
 `[done, done, done, done, done, done, done, done, done]` (cycle complete).
 
+
+---
+
+## v1.16.7 — Stripe direct key (no proxy), 2026-02-06
+
+User supplied a real Stripe **test secret key** `sk_test_51TeSzT...`. Replaced `sk_test_emergent` in `/app/backend/.env`.
+
+- **What changed in code:** none of the routing logic — `payments.get_status` only mirrors `stripe.api_base` to the emergent proxy when the key literally contains `sk_test_emergent`. With a real key it now hits Stripe directly.
+- **Metadata handling hardened:** Stripe SDK's `StripeObject` for the `metadata` field can break a naive `dict(meta_raw)` call. Now we try `to_dict_recursive()` first, then iterate `.keys()`, then fall back to `dict()`. Also we **merge** the freshly-returned Stripe metadata with the one we stored locally at create-time, so the UI sees full `plan_id / plan_name / quantity / user_id / company_id / source` even if Stripe happens to return an empty bag on the first retrieve.
+- **Docstring updated:** the graceful-degradation path is now documented as a true network-failure fallback, not a workaround for the emergent proxy.
+
+### Verified
+- `POST /api/payments/checkout/session` for `operations × 4` → `cs_test_a1vSTv6...` URL on real `checkout.stripe.com`, amount $76.
+- `GET /api/payments/checkout/status/{sid}` returned `status=open / payment_status=unpaid / amount_total=7600 (cents)` with **full** metadata block (`plan_id, plan_name, quantity, user_id, company_id, source`). **No `fallback` field** — direct Stripe path is live.
+
