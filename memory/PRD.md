@@ -444,3 +444,24 @@ End-to-end curl run on a real LLM cycle:
 - **Phase 4 (P1):** `HermesOSView.jsx` — graph viz, cycle stream, KG explorer (consume the new `/memory/*` endpoints).
 - Plus the earlier P0/P1 backlog (Data Access Guard, Real Approval Gate, SSE for GraphView, real Stripe checkout, Agent Passport UI).
 
+
+---
+
+## v1.16.2 — Hermes OS Live Mode (SSE streaming, 2026-02-06)
+
+### What ships
+- **`run_os_cycle(..., on_node=...)`** — the runtime now accepts an optional async callback that fires after every node. The callback receives `(node_name, state)` and may be sync or async; exceptions inside it are swallowed so streaming consumers can never break a cycle.
+- **`POST /api/hermes/os/cycle/stream`** — new SSE endpoint. Returns `text/event-stream` with proxy-safe headers (`X-Accel-Buffering: no`, `Cache-Control: no-cache, no-transform`).
+  - One `event: start` line at cycle entry.
+  - One `event: <node_name>` line per completed node containing **only that node's slice** of state + `routing` info — not the full 30 KB state. Frontend can paint each node as it "lights up".
+  - One terminal `event: done` line with `{cycle_id, stage, hops, error, finished_at}`.
+- Implementation detail: an `asyncio.Queue` decouples the cycle task from the response generator; if the client disconnects mid-stream, the cycle task is cancelled in the `finally` block.
+
+### Verified
+End-to-end curl `-N -s -X POST .../hermes/os/cycle/stream` on a real Russian client inquiry → received **12 SSE events** (`start`, 10 nodes, `done`) over ~21 s, each carrying genuine DeepSeek output for that stage. The `learning` node saved 3 lessons + 10 KG edges visible in the stream payload. Final `done` event reported `stage=done, hops=10, error=null`.
+
+### Pending next phases
+- **Phase 3 (P0):** auto-trigger the cycle from channel webhook / document upload / task creation hooks.
+- **Phase 4 (P1):** `HermesOSView.jsx` — frontend that consumes `/cycle/stream` and animates the 10-node graph live.
+- Plus the earlier P0/P1 backlog (Data Access Guard, Real Approval Gate, real Stripe, Agent Passport UI, SSE for legacy `GraphView`).
+

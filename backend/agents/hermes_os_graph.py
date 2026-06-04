@@ -746,18 +746,37 @@ async def _run_node(name: str, state: Dict[str, Any]) -> Dict[str, Any]:
     return (await fn(state)) or state
 
 
+async def _emit(callback: Callable[[str, Dict[str, Any]], Any],
+                node_name: str, state: Dict[str, Any]) -> None:
+    """Invoke the streaming callback safely (swallow errors)."""
+    try:
+        import inspect
+        res = callback(node_name, state)
+        if inspect.isawaitable(res):
+            await res
+    except Exception as e:  # noqa: BLE001
+        logger.warning("hermes_os on_node callback failed at %s: %s", node_name, e)
+
+
 async def run_os_cycle(
     event: Dict[str, Any],
     *,
     persist: bool = True,
+    on_node: Optional[Callable[[str, Dict[str, Any]], Any]] = None,
 ) -> Dict[str, Any]:
     """Run one full Observe→Evolve cycle on the given event.
 
     Returns the final state dict.  When `persist=True`, the final state
     is also written to `db.hermes_os_cycles` keyed by `cycle_id`.
+
+    `on_node`, if provided, is invoked after every node with
+    `(node_name, state)` so callers can stream progress (e.g. SSE).
+    It can be a sync or async callable; exceptions in it are swallowed.
     """
     state = _initial_state(event or {})
     _trace(state, "graph", "cycle start")
+    if on_node is not None:
+        await _emit(on_node, "start", state)
 
     hops = 0
     while True:
@@ -773,6 +792,8 @@ async def run_os_cycle(
             break
         try:
             state = await _run_node(nxt, state)
+            if on_node is not None:
+                await _emit(on_node, nxt, state)
         except Exception as e:  # noqa: BLE001
             logger.exception("hermes_os node %s crashed: %s", nxt, e)
             state["status"]["stage"] = "error"
@@ -780,6 +801,8 @@ async def run_os_cycle(
                                         "node": nxt, "reason": str(e)}
             state["routing"] = {"current": nxt, "next": "end",
                                 "reason": "node crashed"}
+            if on_node is not None:
+                await _emit(on_node, nxt, state)
         hops += 1
 
     state["finished_at"] = _now()
@@ -824,6 +847,9 @@ async def run_os_cycle(
             })
         except Exception as e:  # noqa: BLE001
             logger.warning("hermes_os persistence failed: %s", e)
+
+    if on_node is not None:
+        await _emit(on_node, "done", state)
 
     return state
 

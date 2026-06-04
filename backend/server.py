@@ -1457,6 +1457,94 @@ async def hermes_os_cycle(req: HermesOSCycleRequest) -> Dict[str, Any]:
     return state
 
 
+@api.post("/hermes/os/cycle/stream")
+async def hermes_os_cycle_stream(req: HermesOSCycleRequest) -> StreamingResponse:
+    """Live mode: stream one OS cycle as Server-Sent Events.
+
+    Emits one `event: node` line per completed node containing the
+    fresh slice of state, plus a final `event: done` with the full
+    cycle. Frontend can render the 10 nodes lighting up in real time.
+    """
+    from agents import hermes_os_graph as _os
+    event = {
+        "source":     req.source,
+        "kind":       req.kind,
+        "payload":    req.payload or {},
+        "user_id":    req.user_id,
+        "company_id": req.company_id,
+        "lang":       req.lang or "ru",
+    }
+
+    queue: asyncio.Queue = asyncio.Queue()
+    SENTINEL = object()
+
+    # Per-node payload extractor: send ONLY that node's slice + meta,
+    # not the entire 30 KB state, on every tick.
+    NODE_SLICE_KEY = {
+        "observation":             "observation",
+        "context_assembly":        "context",
+        "constitution_validation": "validation",
+        "reasoning":               "reasoning",
+        "agent_routing":           "routing_plan",
+        "execution":               "execution",
+        "monitoring":              "monitoring",
+        "learning":                "learning",
+        "improvement":             "improvement",
+        "evolution":               "evolution",
+    }
+
+    async def on_node(node_name: str, state: Dict[str, Any]) -> None:
+        if node_name == "done":
+            await queue.put(("done", {
+                "cycle_id":    state.get("cycle_id"),
+                "stage":       state.get("status", {}).get("stage"),
+                "hops":        state.get("hops"),
+                "error":       state.get("status", {}).get("error"),
+                "finished_at": state.get("finished_at"),
+            }))
+            await queue.put(SENTINEL)
+            return
+        payload = {
+            "node":     node_name,
+            "cycle_id": state.get("cycle_id"),
+            "stage":    state.get("status", {}).get("stage"),
+            "routing":  state.get("routing"),
+            "slice":    state.get(NODE_SLICE_KEY.get(node_name, ""), {}),
+        }
+        await queue.put((node_name, payload))
+
+    async def runner() -> None:
+        try:
+            await _os.run_os_cycle(event, persist=req.persist, on_node=on_node)
+        except Exception as e:  # noqa: BLE001
+            await queue.put(("error", {"reason": str(e)}))
+            await queue.put(SENTINEL)
+
+    async def generator():
+        task = asyncio.create_task(runner())
+        try:
+            while True:
+                item = await queue.get()
+                if item is SENTINEL:
+                    break
+                event_name, payload = item
+                yield (f"event: {event_name}\n"
+                       f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n")
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 @api.get("/hermes/os/cycle/{cycle_id}")
 async def hermes_os_cycle_get(cycle_id: str) -> Dict[str, Any]:
     """Fetch a persisted cycle by id."""
