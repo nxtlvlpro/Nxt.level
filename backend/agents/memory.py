@@ -50,16 +50,27 @@ class MemoryEngine:
 
     # ---------- short-term ----------
 
-    async def append_message(self, session_id: str, role: str, content: str) -> None:
+    async def append_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        user_id: Optional[str] = None,
+    ) -> None:
         db = get_db()
         msg = {"role": role, "content": content, "ts": _now()}
+        update: Dict[str, Any] = {
+            "$push": {"messages": msg},
+            "$set": {"updated_at": _now()},
+            "$setOnInsert": {"created_at": _now()},
+        }
+        # Bind a stable per-browser user_id to the session so cross-session
+        # continuity (M1) and ttl-exemption for known users (M5) work.
+        if user_id and not user_id.lower().startswith(("anon", "home_visitor")):
+            update["$set"]["user_id"] = user_id
         await db.sessions.update_one(
             {"session_id": session_id},
-            {
-                "$push": {"messages": msg},
-                "$set": {"updated_at": _now()},
-                "$setOnInsert": {"created_at": _now()},
-            },
+            update,
             upsert=True,
         )
 
@@ -229,7 +240,16 @@ class MemoryEngine:
     async def cleanup_expired_sessions(self) -> int:
         db = get_db()
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=self.short_term_ttl_hours)).isoformat()
-        res = await db.sessions.delete_many({"updated_at": {"$lt": cutoff}})
+        # M5: only purge anonymous sessions. Known users (with a stable
+        # browser user_id) keep their full history forever.
+        res = await db.sessions.delete_many({
+            "updated_at": {"$lt": cutoff},
+            "$or": [
+                {"user_id": {"$exists": False}},
+                {"user_id": None},
+                {"user_id": ""},
+            ],
+        })
         return res.deleted_count
 
 

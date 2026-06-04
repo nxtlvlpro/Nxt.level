@@ -653,3 +653,67 @@ ES separately verified with full home-page screenshot ("Sistema de IA operativa 
 - Helper scripts kept under `/app/scripts/` for re-runs when new keys are added.
 - Arabic and Hindi intentionally skipped — RTL/Devanagari work is its own project.
 
+
+---
+
+## v1.18.0 — Memory Continuity (M1+M5) — 2026-06-04
+
+### What was wrong (found via business simulation audit `/app/test_reports/business_simulation_audit.md`)
+
+The 27-step real B2B simulation revealed memory was effectively broken for repeat visitors:
+- Frontend hardcoded `user_id: "home_visitor"` for **all** visitors → system couldn't tell users apart.
+- `HermesChatRequest` (the main chat endpoint used by the frontend) **silently ignored** the client's `session_id` and generated a fresh `sid = f"hermes_{uuid4()...}"` on every call. Sessions never accumulated.
+- `db.sessions` had a 24h TTL purge that deleted **every** session indiscriminately.
+- Result: any returning customer was treated as brand new — terrible for B2B demos.
+
+### Fixes shipped (~1.5h)
+
+**M1 — Persistent per-browser visitor identity**
+- Frontend: `getOrCreateUserId()` in `HomeView.jsx` generates and stores `u_<base36-timestamp><rand>` in `localStorage["nxt8.user_id"]`. Used for all three call sites (`hermesChat`, `voiceConverseStream`, `attachmentUpload`). Pre-warmed in `useEffect` so it exists before the first action.
+- Backend: `memory.append_message(session_id, role, content, user_id=...)` now stores `user_id` on the `db.sessions` document.
+- Wired through `orchestrator.route`, `/api/chat/stream`, `/api/voice/converse`, `/api/voice/converse_stream`, `/api/hermes/chat`, `/api/hermes/ultra`.
+
+**M5 — TTL exemption for known users**
+- `cleanup_expired_sessions` now purges **only** sessions without a `user_id` field. Authenticated/persistent users keep their full chat history forever.
+
+**Bonus fix — critical baseline bug**
+- `HermesChatRequest` now accepts `session_id` (previously ignored). `/api/hermes/chat` honours it instead of generating a throw-away id, and echoes `session_id` in the response so the client can re-use it.
+- This single change is what makes the rest of memory actually work end-to-end.
+
+### Verification
+
+- `db.sessions` document for `home_mpz3c08lgym9av` now contains both messages and `user_id: u_mpz3c09tsi6xc7ck`.
+- Cross-turn continuity tested via curl: 2nd turn correctly references "Иван, Acme, SSO Okta, 50 пользователей, к пятнице" from turn 1.
+- TTL cleanup test: 1 known-user session marked 48h old survived, 2 anonymous sessions of the same age were purged.
+
+### What's still NOT done (M2/M3/M4/M6 deferred at user's request)
+
+- Auto-extract facts from chat into `db.memories` (TF-IDF search currently only finds seed data).
+- Auto-create `db.client_profiles` from first chat contact.
+- Cross-device memory pull: `memory.search(user_id=X)` is not yet injected into `get_optimal_context`.
+- Knowledge-graph edges still only written from Hermes OS Cycle, not from regular chat.
+
+### Other findings from the audit (still open, prioritised for next pass)
+
+P0 (production blockers):
+- Tariff IDs mismatch: `manifests.py` uses `basic/simple/pro/enterprise`, `/api/payments/plans` returns `personal/team/operations/headquarters`. Tier-gating is broken.
+- API contract drift: `/api/graph/v2/run` requires `task` (frontend sends `message`), `/api/payments/checkout/session` requires `origin`, `/api/cross-dept/coordinate` requires `query`. All return 422 silently.
+- ROI dashboard hallucinates: fantom `human_escalation` cost of $14.58/h makes every hour show -100% ROI.
+- `escalation_rate = 48.6%` (target 20%): pipeline-hooks thresholds in `_pipeline_hooks.py` are too aggressive — 100% of `knowledge`/`roi`/`mentor` intents get auto-escalated even at confidence > 0.8.
+- Data Access Guard is **not enforced in code** (only in LLM-level manifest reading). Real middleware on `core/access_guard.py` still pending.
+- Real Approval Gate (`db.pending_approvals` + executor + UI) still pending. `evolution_journal` has 21 proposed → 3 approved → 0 done.
+
+P1:
+- Hermes OS Cycle takes ~22s for a 10-node cycle (close to Cloudflare 30s timeout).
+- 5.8% `mock_rate`: silent placeholder leaks into prod when DeepSeek/OpenRouter wobble. Should hard-fail to 503 instead.
+- Alert dedup: 3 identical "warning: hourly ROI -100%" within 30s. Needs state-based dedup.
+- Stripe webhook signature verification not audited.
+
+### Files touched (M1+M5)
+- `backend/agents/memory.py` — `append_message(user_id=...)`, `cleanup_expired_sessions` user_id-aware
+- `backend/agents/orchestrator.py` — propagate user_id to append_message
+- `backend/server.py` — `HermesChatRequest.session_id`, `/api/hermes/chat` reuses sid, propagate user_id everywhere
+- `frontend/src/components/views/HomeView.jsx` — `getOrCreateUserId()`, pre-warm in useEffect, replace 3× hardcoded "home_visitor"
+- `scripts/simulate_business.sh` — 27-step business simulation harness
+- `test_reports/business_simulation_audit.md` — full audit report
+

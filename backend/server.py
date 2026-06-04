@@ -727,9 +727,9 @@ async def voice_converse(
     # Persist to short-term memory (best effort)
     try:
         mem = memory_agent.get_memory()
-        await mem.append_message(sid, "user", user_text)
+        await mem.append_message(sid, "user", user_text, user_id=user_id)
         if reply_text:
-            await mem.append_message(sid, "assistant", reply_text)
+            await mem.append_message(sid, "assistant", reply_text, user_id=user_id)
     except Exception as mem_err:  # noqa: BLE001
         logger.warning("voice memory append failed: %s", mem_err)
 
@@ -901,9 +901,9 @@ async def voice_converse_stream(
         # Persist memory.
         try:
             mem = memory_agent.get_memory()
-            await mem.append_message(sid, "user", user_text)
+            await mem.append_message(sid, "user", user_text, user_id=user_id)
             if reply_text:
-                await mem.append_message(sid, "assistant", reply_text)
+                await mem.append_message(sid, "assistant", reply_text, user_id=user_id)
         except Exception as mem_err:  # noqa: BLE001
             logger.warning("voice_stream memory append failed: %s", mem_err)
 
@@ -993,7 +993,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
         mem = memory_agent.get_memory()
 
         try:
-            await mem.append_message(session_id, "user", req.message)
+            await mem.append_message(session_id, "user", req.message, user_id=req.user_id)
             ctx = await mem.get_optimal_context(req.message, session_id, max_chars=6000)
 
             # Quick intent classify via fast model call (small max_tokens)
@@ -1032,7 +1032,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                 yield f"event: delta\ndata: {_json.dumps({'text': delta})}\n\n"
 
             full = "".join(full_chunks)
-            await mem.append_message(session_id, "assistant", full)
+            await mem.append_message(session_id, "assistant", full, user_id=req.user_id)
 
             # Long-term memory: store the user/assistant exchange in MemPalace
             # under chats/{session_id}. Fire-and-forget; never blocks streaming.
@@ -1245,6 +1245,7 @@ class HermesChatRequest(BaseModel):
     messages: List[Dict[str, Any]] = Field(default_factory=list)
     company_id: Optional[str] = None
     user_id: Optional[str] = None
+    session_id: Optional[str] = None
     mode: str = "operational"
     temperature: float = 0.3
     model: Optional[str] = None
@@ -1783,6 +1784,11 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
     import time as _time
     t0 = _time.time()
 
+    # M1: stable session_id from the client (browser localStorage) so the
+    # 4-layer memory + short-term history actually accumulate across turns.
+    # Fallback to a generated id only when the client doesn't supply one.
+    sid = req.session_id or f"hermes_{uuid.uuid4().hex[:10]}"
+
     # If the caller passed attachment_ids, hydrate them and inject a
     # short system block describing each attachment so Hermes can refer
     # to it in its reply.
@@ -1815,6 +1821,7 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
         result["request_id"] = f"joker_{uuid.uuid4().hex[:10]}"
         result["confidence_level"] = "sandbox"
         result["should_escalate"] = False
+        result["session_id"] = sid
         return result
 
     # Universal pipeline hook
@@ -1823,9 +1830,21 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
         if isinstance(m, dict) and m.get("role") == "user":
             last_user_msg = m.get("content") or ""
             break
+
+    # M1: persist this turn into short-term memory bound to user_id
+    # so cross-session continuity works.
+    try:
+        mem = memory_agent.get_memory()
+        if last_user_msg:
+            await mem.append_message(sid, "user", last_user_msg, user_id=req.user_id)
+        reply_text = result.get("content") or ""
+        if reply_text:
+            await mem.append_message(sid, "assistant", reply_text, user_id=req.user_id)
+    except Exception as mem_err:  # noqa: BLE001
+        logger.warning("hermes_chat memory append failed: %s", mem_err)
+
     usage = (result.get("usage") or {}) if isinstance(result.get("usage"), dict) else {}
     tokens_total = int(result.get("tokens_total") or usage.get("total_tokens") or 0)
-    sid = f"hermes_{uuid.uuid4().hex[:10]}"
     hook_res = await finalize_llm_turn(
         channel="hermes_chat",
         agent="hermes_coo",
@@ -1845,6 +1864,7 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
     result["request_id"] = hook_res.get("request_id")
     result["confidence_level"] = hook_res.get("confidence_level")
     result["should_escalate"] = hook_res.get("should_escalate", False)
+    result["session_id"] = sid
     return result
 
 
@@ -1907,9 +1927,9 @@ async def hermes_ultra_endpoint(req: HermesUltraRequest) -> Dict[str, Any]:
     # Persist user + assistant turns into short-term memory (best effort)
     try:
         mem = memory_agent.get_memory()
-        await mem.append_message(session_id, "user", req.message)
+        await mem.append_message(session_id, "user", req.message, user_id=req.user_id)
         if result.get("content"):
-            await mem.append_message(session_id, "assistant", result["content"])
+            await mem.append_message(session_id, "assistant", result["content"], user_id=req.user_id)
     except Exception as mem_err:  # noqa: BLE001
         logger.warning("memory append failed: %s", mem_err)
 

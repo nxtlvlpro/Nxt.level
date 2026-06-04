@@ -66,7 +66,7 @@ async def route(
     request_id = str(uuid.uuid4())
 
     # 1. record user message in short-term memory
-    await mem.append_message(session_id, "user", message)
+    await mem.append_message(session_id, "user", message, user_id=user_id)
 
     # 2. build context (short + long term)
     ctx = await mem.get_optimal_context(message, session_id, max_chars=6000)
@@ -128,7 +128,7 @@ async def route(
         })
 
     # 7. record assistant message in short-term memory
-    await mem.append_message(session_id, "assistant", answer.get("content", ""))
+    await mem.append_message(session_id, "assistant", answer.get("content", ""), user_id=user_id)
 
     latency_ms = int((time.time() - t0) * 1000)
 

@@ -536,6 +536,25 @@ function AgentsSwipe({ t }) {
 // ============================================================
 
 const HERMES_STORAGE_KEY = "nxt8.home.hermes";
+const NXT8_USER_ID_KEY = "nxt8.user_id";
+
+// Persistent per-browser visitor id. Anonymous-but-stable: lets the agent
+// recognise the same person across sessions, devices that share storage,
+// and weeks apart. When real auth lands, this value can be overwritten
+// with the authenticated user's id.
+function getOrCreateUserId() {
+  if (typeof window === "undefined") return "anon";
+  try {
+    let uid = window.localStorage.getItem(NXT8_USER_ID_KEY);
+    if (!uid) {
+      uid = `u_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      window.localStorage.setItem(NXT8_USER_ID_KEY, uid);
+    }
+    return uid;
+  } catch {
+    return "anon";
+  }
+}
 
 function loadHermesState() {
   if (typeof window === "undefined") return null;
@@ -732,7 +751,7 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
             blob,
             {
               session_id: sessionId,
-              user_id: "home_visitor",
+              user_id: getOrCreateUserId(),
               language: lang,
             },
             (frame) => {
@@ -986,7 +1005,7 @@ function HermesChat({ t, lang }) {
       api
         .attachmentUpload(file, {
           company_id: "default",
-          user_id: "home_visitor",
+          user_id: getOrCreateUserId(),
           session_id: sessionId,
         })
         .then((rec) => {
@@ -1030,6 +1049,9 @@ function HermesChat({ t, lang }) {
 
   useEffect(() => {
     cancelledRef.current = false;
+    // Pre-warm a persistent visitor id so cross-session memory (M1) starts
+    // accumulating from the very first interaction.
+    getOrCreateUserId();
     return () => {
       cancelledRef.current = true;
     };
@@ -1083,7 +1105,7 @@ function HermesChat({ t, lang }) {
       const res = await api.hermesChat({
         messages: payloadMessages,
         company_id: "default",
-        user_id: "home_visitor",
+        user_id: getOrCreateUserId(),
         session_id: sessionId,
         mode: "operational",
         temperature: 0.3,
