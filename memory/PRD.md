@@ -968,3 +968,62 @@ Applies automatically to every TTS call across all 4 voice endpoints.
 - `backend/agents/hermes.py` — gated pre-route block
 - `backend/agents/manifests.py` — `all_persona_ids()` + `list_all_manifests()` filter
 
+
+---
+
+## v1.23.0 — Hermes Team Grounding (антигаллюцинация) — 2026-06-04
+
+### Problem found
+Hermes отвечал «Bookkeeper умеет: record_transaction, record_invoice,
+reconcile_account, generate_tax_summary…» (16 функций). Реально в манифесте
+Bookkeeper'а — **4 функции** (cost/revenue/ROI телеметрия AI), ничего из
+бухгалтерского учёта нет. На допросе клиента про любого агента Hermes
+**галлюцинировал реалистично, но неверно**. Это критичный риск доверия
+на онбординге: клиент получит план "Подключим Bookkeeper для счетов" → в
+продукте этого нет → пилот провалится.
+
+### Root cause
+В системном промпте Hermes был ТОЛЬКО его собственный manifest.
+Манифесты остальных 7 агентов в контексте отсутствовали — Hermes отвечал
+по общему здравому смыслу ("обычно агент с именем Bookkeeper делает X").
+
+### What shipped
+
+**1. `render_team_for_prompt()` в `agents/manifests.py`**
+- Компактная сводка всех 8 агентов: name + role + specialty + 4-5 реальных
+  функций + до 6 имён реальных инструментов + read/write коллекции +
+  подчинение + authority level + tariff_tier.
+- ~5 КБ / ~1.2 K токенов — пренебрежимо мало.
+- Жирная инструкция в начале: «используй ТОЛЬКО этот блок, не выдумывай».
+
+**2. Системный промпт Hermes — `agents/hermes.py`**
+- `_system_prompt()` теперь включает `render_team_for_prompt('hermes', include_self=False)`
+  после собственного manifest. Hermes видит все 7 коллег с реальными
+  спеками каждый раз.
+
+**3. Grounded onboarding — `agents/onboarding.py`**
+- `generate_hermes_reply()` теперь передаёт team-roster как **второй**
+  system message перед user_blob с инструкцией: "используй эти манифесты
+  как единственный источник правды для block2_team — не выдумывай
+  новых агентов или функций".
+- Теперь `block2_team` в персональном Hermes-ответе использует **реальные
+  имена** агентов (`client_manager`, `project_coord` и т.д.) с задачами,
+  привязанными к их фактическим функциям, а не абстрактные роли.
+
+### Verification (after fix)
+- "Какие функции у Bookkeeper?" → **точно 4 функции** из манифеста
+  (cost/revenue/ROI, разбивка cost, отрицательный ROI, сводка). Длина
+  ответа упала с 4570 → 252 chars (нет воды).
+- "К каким коллекциям имеет доступ Compliance?" → точные **read**:
+  documents, memories, contradictions, alerts, requests, audit_log;
+  **write**: только audit_log. 100% совпадает с манифестом.
+- Онбординг RU edu-сегмент: `block2_team` теперь содержит
+  «Менеджер по клиентам (client_manager)» и «Координатор проектов
+  (project_coord)» — реальные id из MANIFESTS, не абстрактные роли.
+
+### Files touched
+- `backend/agents/manifests.py` — `render_team_for_prompt()` (~60 строк)
+- `backend/agents/hermes.py` — `_system_prompt()` подключает team-roster
+- `backend/agents/onboarding.py` — `generate_hermes_reply()` 2-й system
+  message с team-grounding инструкцией
+

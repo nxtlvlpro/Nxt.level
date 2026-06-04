@@ -492,6 +492,72 @@ def list_all_manifests() -> List[Dict[str, Any]]:
     return out
 
 
+def render_team_for_prompt(viewer_id: str = "hermes", include_self: bool = True) -> str:
+    """Compact team roster for Hermes' system prompt — REAL manifests only.
+
+    Built so Hermes never has to guess what a colleague can do. Each entry:
+    name + role + specialty + 3-5 real functions + real tool count + tariff
+    tier. ~3 KB total for 8 personas — negligible context overhead.
+
+    Use this in every persona's system prompt that needs to talk ABOUT
+    other agents (Hermes, Compliance, Analyst, ...).
+    """
+    import os as _os
+    joker_enabled = (_os.environ.get("JOKER_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
+
+    lines: List[str] = []
+    lines.append("## КОМАНДА NXT8 — реальные манифесты\n")
+    lines.append(
+        "Это твои коллеги-агенты. Когда говоришь о них, ОПИРАЙСЯ ТОЛЬКО на этот "
+        "блок — НЕ выдумывай функции или инструменты, которых здесь нет.\n"
+    )
+    for aid, m in MANIFESTS.items():
+        if aid == "joker" and not joker_enabled:
+            continue
+        if not include_self and aid == viewer_id:
+            continue
+        lines.append(f"### {m.get('name','?')} — `{aid}`")
+        if m.get("role"):
+            lines.append(f"- Роль: {m['role']}")
+        if m.get("specialty"):
+            lines.append(f"- Специализация: {m['specialty']}")
+        fns = m.get("functions") or []
+        if fns:
+            lines.append(f"- Что делает ({len(fns)} функций):")
+            for f in fns[:5]:
+                lines.append(f"    • {f}")
+        tools = m.get("tools") or []
+        tool_names: List[str] = []
+        for t in tools:
+            if isinstance(t, dict):
+                n = t.get("name")
+                if n:
+                    tool_names.append(str(n))
+            elif isinstance(t, str):
+                tool_names.append(t)
+        if tool_names:
+            shown = ", ".join(tool_names[:6])
+            extra = f" (+{len(tool_names) - 6})" if len(tool_names) > 6 else ""
+            lines.append(f"- Инструменты ({len(tool_names)}): {shown}{extra}")
+        elif "*" in [t if isinstance(t, str) else "" for t in tools]:
+            lines.append("- Инструменты: полный доступ (Hermes — root)")
+        da = m.get("data_access") or {}
+        rd = ", ".join(da.get("read") or [])
+        wr = ", ".join(da.get("write") or []) or "— (read-only)"
+        if rd or wr:
+            lines.append(f"- Данные: read=[{rd}] write=[{wr}]")
+        if m.get("reports_to"):
+            lines.append(f"- Подчиняется: {m['reports_to']}")
+        auth = m.get("decision_authority")
+        if auth:
+            lines.append(f"- Уровень: {auth}")
+        tier = m.get("tariff_tier")
+        if tier:
+            lines.append(f"- Тариф: {tier}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def render_manifest_for_prompt(agent_id: str) -> str:
     """Compact, prompt-friendly self-introduction block injected into LLM context.
 

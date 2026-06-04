@@ -706,6 +706,24 @@ async def generate_hermes_reply(
 ) -> Dict[str, Any]:
     lang_key = "ru" if (lang or "").lower().startswith("ru") else "en"
     sys = _system_prompt_for_reply(lang_key)
+
+    # Grounded onboarding: inject REAL manifests of the NXT8 team so Hermes
+    # never invents functions/tools the agents don't actually have. The
+    # `block2_team` reply must use these manifests as the single source of
+    # truth — no hallucinated bookkeeping, no fake invoice agents, etc.
+    from agents.manifests import render_team_for_prompt
+    team_grounding = render_team_for_prompt("hermes", include_self=True)
+    grounding_msg = (
+        "Реальная команда NXT8 (используй ТОЛЬКО эти манифесты для block2_team — "
+        "не выдумывай новых агентов, функций или инструментов которых тут нет):\n\n"
+        + team_grounding
+        if lang_key == "ru"
+        else
+        "The REAL NXT8 team (use these manifests as the ONLY source of truth "
+        "for block2_team — do NOT invent extra agents, functions or tools that "
+        "are not listed here):\n\n" + team_grounding
+    )
+
     # Compact, structured user message — the LLM doesn't need the full document.
     user_blob = {
         "name":         profile.get("name"),
@@ -728,6 +746,7 @@ async def generate_hermes_reply(
         resp = await ds.chat(
             messages=[
                 {"role": "system", "content": sys},
+                {"role": "system", "content": grounding_msg},
                 {"role": "user",   "content": json.dumps(user_blob, ensure_ascii=False)},
             ],
             temperature=0.5,
