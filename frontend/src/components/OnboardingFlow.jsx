@@ -196,7 +196,7 @@ function OptionPill({ active, onClick, label, testId, multi }) {
       type="button"
       onClick={onClick}
       data-testid={testId}
-      className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all border ${
+      className={`w-full flex items-center gap-3 rounded-2xl px-4 py-2.5 text-left transition-all border ${
         active
           ? "border-brand-turquoise bg-brand-turquoise/10 text-white"
           : "border-white/10 bg-brand-dark/40 hover:border-brand-turquoise/50 text-slate-200"
@@ -323,6 +323,20 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
         setInsightLoading(false);
       }
     }
+
+    // Auto-advance for single-choice questions so the user doesn't have
+    // to hunt for the "Next" button below the fold. Short delay lets them
+    // see their pick highlighted + the Hermes insight before sliding.
+    if (q.type === "single" && qIndex < total - 1) {
+      const idAtPick = qIndex;
+      setTimeout(() => {
+        // Only advance if the user is still on the same question (no manual
+        // navigation in the meantime).
+        setQIndex((cur) => (cur === idAtPick ? cur + 1 : cur));
+        setSlideDir("right");
+        setInsight("");
+      }, 700);
+    }
   };
 
   const goNext = () => {
@@ -424,11 +438,11 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
       className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm"
       data-testid="onboarding-modal"
     >
-      <div className="relative w-full sm:w-[640px] sm:max-h-[88vh] h-[100dvh] sm:h-auto sm:rounded-3xl bg-brand-dark border border-white/10 overflow-y-auto">
+      <div className="relative w-full sm:w-[600px] sm:max-h-[78vh] h-[100dvh] sm:h-auto sm:rounded-3xl bg-brand-dark border border-white/10 overflow-y-auto">
         <button
           type="button"
           onClick={close}
-          className="absolute right-4 top-4 z-10 rounded-full p-2 bg-brand-dark/60 border border-white/10 hover:border-brand-turquoise/60 transition-colors"
+          className="absolute right-3 top-3 z-10 rounded-full p-1.5 bg-brand-dark/60 border border-white/10 hover:border-brand-turquoise/60 transition-colors"
           aria-label="close"
           data-testid="onb-close"
         >
@@ -440,15 +454,15 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
         )}
 
         {step === "q" && (
-          <div className="p-5 sm:p-8 space-y-5">
-            <div className="pr-10">
+          <div className="p-4 sm:p-6 space-y-3">
+            <div className="pr-8">
               <ProgressBar current={qIndex} total={total} />
             </div>
 
             {/* Carousel slide */}
             <div
               key={qIndex}
-              className={`space-y-5 ${
+              className={`space-y-3 ${
                 slideDir === "right"
                   ? "animate-[slideInRight_0.32s_cubic-bezier(.22,.61,.36,1)]"
                   : "animate-[slideInLeft_0.32s_cubic-bezier(.22,.61,.36,1)]"
@@ -459,7 +473,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
                 {t(`onb.block.${currentQ.block}`)}
               </p>
               <h2
-                className="text-xl sm:text-2xl font-semibold text-white leading-tight"
+                className="text-lg sm:text-xl font-semibold text-white leading-snug"
                 data-testid="onb-question-title"
               >
                 {t(`onb.q.${currentQ.id}.title`)}
@@ -485,7 +499,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
               )}
             </div>
 
-            <div className="pt-2 flex items-center justify-between gap-3">
+            <div className="pt-1 flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={goBack}
@@ -499,7 +513,7 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
                 type="button"
                 onClick={goNext}
                 disabled={nextDisabled}
-                className="rounded-full bg-brand-turquoise text-brand-dark px-6 py-3 text-sm font-semibold flex items-center gap-2 disabled:opacity-40 hover:shadow-[0_0_24px_var(--brand-turquoise)] transition-all"
+                className="rounded-full bg-brand-turquoise text-brand-dark px-5 py-2.5 text-sm font-semibold flex items-center gap-2 disabled:opacity-40 hover:shadow-[0_0_24px_var(--brand-turquoise)] transition-all"
                 data-testid={qIndex < total - 1 ? "onb-next" : "onb-submit"}
               >
                 {qIndex < total - 1 ? t("onb.next") : t("onb.submit")}
