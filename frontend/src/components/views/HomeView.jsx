@@ -20,6 +20,7 @@ import { useT } from "../../i18n/LanguageContext";
 import Waveform from "../Waveform";
 import OnboardingFlow from "../OnboardingFlow";
 import { playStreamedTts } from "../../lib/playStreamedTts";
+import { hermesTalk } from "../../lib/hermesTalk";
 
 // ============================================================
 // Static content keys (texts come from i18n dictionary)
@@ -1095,11 +1096,18 @@ function HermesChat({ t, lang }) {
     setMessages((prev) => [...prev, { role, content }]);
   };
 
+  const speakingIdx_unused_warn_silencer = speakingIdx; void speakingIdx_unused_warn_silencer;
+  const [talkMode, setTalkMode] = useState(false);
+  const talkCtlRef = useRef(null);
+
+  useEffect(() => () => {
+    try { talkCtlRef.current?.stop(); } catch { /* ignore */ }
+  }, []);
+
   const send = async () => {
     const text = input.trim();
     const readyAttachments = attachments.filter((a) => a.status === "ready");
     if ((!text && readyAttachments.length === 0) || sending) return;
-    // Build a user bubble that surfaces filenames when there's no typed text.
     const userBubble = {
       role: "user",
       content: text || (readyAttachments.length > 0
@@ -1116,10 +1124,44 @@ function HermesChat({ t, lang }) {
     const next = [...messages, userBubble];
     setMessages(next);
     setInput("");
-    // Clear the chips locally — they're already sent to backend.
     setAttachments([]);
     setSending(true);
     setError("");
+
+    // ── Talk-mode: streamed LLM + streamed TTS via /api/hermes/talk ────
+    // First sentence audio plays in ~3.5s (vs ~8s end-to-end), text fills
+    // the bubble token-by-token, audio queue plays sentences in order.
+    if (talkMode && text) {
+      try { talkCtlRef.current?.stop(); } catch { /* ignore */ }
+      // Add an empty assistant bubble we'll fill from the stream.
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      const myIdx = next.length; // index of the bubble we just appended
+      const ctl = hermesTalk({
+        backendUrl: process.env.REACT_APP_BACKEND_URL,
+        message: text,
+        userId: getOrCreateUserId(),
+        sessionId,
+        lang,
+      });
+      talkCtlRef.current = ctl;
+      ctl.onText((delta) => {
+        if (cancelledRef.current) return;
+        setMessages((prev) => prev.map((m, i) =>
+          i === myIdx ? { ...m, content: (m.content || "") + delta } : m
+        ));
+      });
+      ctl.onDone(() => {
+        if (!cancelledRef.current) setSending(false);
+      });
+      ctl.onError(() => {
+        if (!cancelledRef.current) {
+          setError(t("home.hermes.error"));
+          setSending(false);
+        }
+      });
+      return;
+    }
+
     const sysHint =
       lang === "en"
         ? "Reply in English regardless of the user's language."
@@ -1346,6 +1388,21 @@ function HermesChat({ t, lang }) {
               >
                 <Send className="w-3.5 h-3.5" />
                 {t("home.hermes.send")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTalkMode((v) => !v)}
+                aria-pressed={talkMode}
+                title={t("home.hermes.talk.tooltip")}
+                data-testid="home-chat-talk-toggle"
+                className={`rounded-full px-3 py-2.5 text-[11px] uppercase tracking-widest flex items-center gap-1.5 border transition-colors ${
+                  talkMode
+                    ? "border-brand-turquoise text-brand-dark bg-brand-turquoise"
+                    : "border-white/10 text-slate-300 hover:border-brand-turquoise/60 hover:text-brand-turquoise"
+                }`}
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+                {t("home.hermes.talk.button")}
               </button>
             </div>
           </div>

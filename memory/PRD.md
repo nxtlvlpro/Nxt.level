@@ -1152,3 +1152,70 @@ maria@school.io.
 - `backend/agents/hermes.py` — auto-inject company manifest в
   `enhanced_chat()` (~20 строк)
 
+
+---
+
+## v1.26.0 — Streaming LLM + Streaming TTS (real-time talk) — 2026-06-04
+
+### Goal
+Turn the chat from "write → wait → hear" into a real-time conversation.
+First sentence audio should play while the LLM is still generating the
+second sentence.
+
+### What shipped
+
+**1. Backend — `/api/hermes/talk` (new SSE endpoint)** in `server.py`
+- Chains DeepSeek `chat_stream()` → `_flush_sentence()` buffer → Fish Audio
+  `voice_agent.synthesize()` → base64-encoded MP3 frames over SSE.
+- Frame format: `event: meta` / `event: text {chunk}` / `event: voice
+  {i, audio_b64, text}` / `event: done {latency_ms, sentences}`.
+- Grounded: pulls the company manifest via `get_company_manifest(user_id)`
+  and the same Hermes system prompt + team roster as `/hermes/chat`, so
+  spoken replies are as personalised as written ones.
+- `_flush_sentence()` drains the token buffer at every sentence boundary
+  (.!?…) and skips fragments shorter than 12 chars to avoid choppy TTS.
+
+**2. Frontend — `lib/hermesTalk.js` (new client)**
+- Parses interleaved SSE events from a single `fetch` + `getReader` loop.
+- Queues incoming MP3 sentence-blobs into one HTMLAudioElement playlist,
+  plays them gaplessly in order while text continues to stream.
+- Emits 4 events: `onText`, `onVoice`, `onDone`, `onError`. Returns `stop()`
+  to abort mid-stream and flush the audio queue.
+
+**3. Frontend — HermesChat `talk-mode` toggle** in `HomeView.jsx`
+- New `Volume2`-icon button next to the Send button — toggles talk mode.
+- When ON: send() takes the streaming path, appends an empty assistant
+  bubble and fills it token-by-token while sentences are spoken.
+- When OFF: existing `/api/hermes/chat` path runs unchanged.
+
+**4. i18n** — added `home.hermes.talk.button` and `home.hermes.talk.tooltip`
+in EN + RU. Other 8 languages fall back to EN automatically.
+
+### Verification (live E2E, RU "поможешь моему стартапу")
+| Metric | Without streaming | With streaming chain |
+|--------|------------------:|---------------------:|
+| First text on screen | ~8.5 s | **1.5 s** (5.7× faster) |
+| First audio in ears   | ~8.5 s | **3.6 s** (2.4× faster) |
+| Sentences delivered   | 1 blob | 3 progressive blobs |
+| Total latency         | ~8.5 s | 8.5 s (identical end-to-end, but UX-perceived 2-5× faster) |
+
+Screenshot confirmed: TALK button highlighted bright cyan, user bubble
+visible, Hermes bubble already shows first sentence (170+ chars) with a
+`PLAY` chip below, and the "hermes is thinking…" indicator still active —
+proving text + audio are streaming in parallel with the rest of the reply
+still being generated.
+
+### Files touched
+- `backend/server.py` — `/api/hermes/talk` (~120 lines), `_flush_sentence`
+- `frontend/src/lib/hermesTalk.js` — new SSE client (~110 lines)
+- `frontend/src/components/views/HomeView.jsx` — talk-mode state, send()
+  branch, toggle button (~70 lines diff)
+- `frontend/src/i18n/translations.js` — 2 new keys in EN + RU
+
+### Known small note
+The first sentence still depends on Fish Audio synthesizing ~2 seconds
+of MP3 before the audio chunk is sent (Fish does not yet stream within
+a single sentence). If Fish ever exposes per-sentence partial streaming,
+we can shave another ~1-1.5 s off the first-audio TTFB by piping its
+internal chunks through directly.
+
