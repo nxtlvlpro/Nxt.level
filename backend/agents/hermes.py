@@ -832,8 +832,14 @@ def _system_prompt(mode: str = "operational", autonomy: str = "assistant") -> st
         "- Предлагать Next Best Action в реальном времени\n"
         "- Кросс-департаментная координация и SLA-мониторинг\n"
         "- Генерировать operational digests для руководителей\n\n"
-        "Формат ответа:\n"
-        "1) Summary; 2) Что важно; 3) Действия (с приоритетом); 4) Ожидаемый эффект.\n\n"
+        "Длина и формат ответа выбираются под запрос — не под шаблон:\n"
+        "• Операционная задача (что делать / приоритеты / план) — структурно: "
+        "Summary → Что важно → Действия → Ожидаемый эффект.\n"
+        "• Информационный или общий вопрос (что это, расскажи, объясни, как устроено, "
+        "о проекте, о компании) — отвечай развёрнуто, человеческим языком, без "
+        "обязательных секций. Не сжимай, если тема требует контекста.\n"
+        "• Короткий уточняющий вопрос или small-talk — отвечай коротко и по делу.\n"
+        "Никогда не обрывай ответ на полуслове ради краткости.\n\n"
         "Если нужен инструмент — вызови его строго в формате fenced-JSON:\n"
         "```json\n"
         '{"tool":"<name>","args":{...}}\n'
@@ -968,7 +974,7 @@ async def hermes_chat(
     for iteration in range(MAX_TOOL_ITERATIONS + 1):
         iterations = iteration + 1
         resp = await deepseek.chat(messages=full_messages,
-                                   temperature=temperature, max_tokens=2048,
+                                   temperature=temperature, max_tokens=4096,
                                    model_override=chosen_model)
         last_content = (resp.get("content") or "").strip()
         confidence = float(resp.get("confidence") or 0.7)
