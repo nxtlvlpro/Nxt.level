@@ -1027,3 +1027,57 @@ Bookkeeper'а — **4 функции** (cost/revenue/ROI телеметрия AI
 - `backend/agents/onboarding.py` — `generate_hermes_reply()` 2-й system
   message с team-grounding инструкцией
 
+
+---
+
+## v1.24.0 — Streaming TTS на фронте + расширенный голосовой лимит — 2026-06-04
+
+### User asks
+1. Подключить `/api/voice/tts/stream` к фронту через MediaSource.
+2. Поднять голосовой лимит с 220→500 chars / 4 предложений.
+
+### What shipped
+
+**Backend — `server.py`**
+- `VOICE_REPLY_MAX_CHARS`: 220 → **500**
+- `VOICE_REPLY_MAX_SENTENCES`: 2 → **4**
+- `VOICE_SYSTEM_HINT` переписан: вместо «максимум 2-3 предложения» теперь
+  «по умолчанию 3-4 предложения, но если требует развёрнутого пояснения —
+  отвечай столько, сколько нужно, не обрывай на полуслове».
+
+**Frontend — новый `lib/playStreamedTts.js`**
+- Прогрессивное воспроизведение через **MediaSource API**:
+  fetch → `ReadableStream` → SourceBuffer chunks → `<audio>`. Звук
+  начинается сразу после первого 4 KB-чанка Fish Audio (~87 ms TTFB
+  в проде против ~1.6 s для полного MP3).
+- Fallback на полный Blob → `<audio>` для браузеров без поддержки
+  `audio/mpeg` в MediaSource (Firefox / старые билды).
+- Возвращает контроллер с `stop()` для прерывания на середине.
+
+**Frontend — `HomeView.jsx` HermesChat**
+- Импорт `playStreamedTts`.
+- Новые state: `speakingIdx` (индекс озвучиваемого сообщения),
+  `speakCtlRef` (контроллер для остановки).
+- Кнопка `🔊 play / ⏹ stop` под каждым assistant-сообщением
+  (`data-testid="home-msg-speak-{i}"`). Toggle между play/stop.
+- Cleanup при unmount компонента.
+
+**i18n — EN+RU**
+- `home.hermes.speak` = "play" / "озвучить"
+- `home.hermes.speaking` = "stop" / "стоп"
+- Остальные 8 языков fall-back на EN.
+
+### Verification
+- Backend: `VOICE_REPLY_MAX_CHARS=500`, `VOICE_REPLY_MAX_SENTENCES=4` подтверждено.
+- Streaming endpoint: HTTP 200, **TTFB 87 ms**, content-type=audio/mpeg, 142 KB total.
+- Frontend smoke: после ответа Hermes появляется `home-msg-speak-N`,
+  клик переключает label `play` → `stop`, аудио играет, второй клик
+  останавливает.
+- ESLint clean, Python lint clean.
+
+### Files touched
+- `backend/server.py` — голосовые константы + VOICE_SYSTEM_HINT
+- `frontend/src/lib/playStreamedTts.js` — новый модуль (~115 строк)
+- `frontend/src/components/views/HomeView.jsx` — speak-button + state
+- `frontend/src/i18n/translations.js` — 2 новых ключа в EN + RU
+

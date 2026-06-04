@@ -161,6 +161,8 @@ export const TRANSLATIONS = {
     "home.hermes.placeholder": "Write to Hermes…",
     "home.hermes.attach": "Attach files",
     "home.hermes.thinking": "hermes is thinking…",
+    "home.hermes.speak": "play",
+    "home.hermes.speaking": "stop",
     "home.hermes.error": "Hermes is unavailable right now. Try again in a minute.",
     "home.hermes.welcome":
       "Hi! I'm Hermes — the main NXT8 coordinator. Ask me anything about your team, or have me help you plan the day.",
@@ -620,6 +622,8 @@ export const TRANSLATIONS = {
     "home.hermes.placeholder": "Напишите Hermes…",
     "home.hermes.attach": "Прикрепить файлы",
     "home.hermes.thinking": "hermes думает…",
+    "home.hermes.speak": "озвучить",
+    "home.hermes.speaking": "стоп",
     "home.hermes.error": "Сейчас Hermes недоступен. Попробуйте через минуту.",
     "home.hermes.welcome":
       "Привет! Я Hermes — главный координатор NXT8. Спросите что-нибудь о вашей команде, или попросите помочь спланировать день.",

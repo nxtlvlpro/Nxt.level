@@ -19,6 +19,7 @@ import api from "../../lib/api";
 import { useT } from "../../i18n/LanguageContext";
 import Waveform from "../Waveform";
 import OnboardingFlow from "../OnboardingFlow";
+import { playStreamedTts } from "../../lib/playStreamedTts";
 
 // ============================================================
 // Static content keys (texts come from i18n dictionary)
@@ -972,6 +973,32 @@ function HermesChat({ t, lang }) {
   // Voice synthesis phase — "synthesizing" between assistant text arrival and
   // the first TTS audio chunk; cleared when audio starts/ends.
   const [voicePhase, setVoicePhase] = useState("idle");
+  // Index of the message currently being narrated via streamed TTS (Brad
+  // Pitt voice). null = nothing playing. Controller stored in a ref so we
+  // can stop mid-stream.
+  const [speakingIdx, setSpeakingIdx] = useState(null);
+  const speakCtlRef = useRef(null);
+
+  const stopSpeaking = () => {
+    try { speakCtlRef.current?.stop(); } catch { /* ignore */ }
+    speakCtlRef.current = null;
+    setSpeakingIdx(null);
+  };
+
+  const speakMessage = (idx, text) => {
+    // Toggle off if already speaking this message.
+    if (speakingIdx === idx) { stopSpeaking(); return; }
+    stopSpeaking();
+    const backendUrl = process.env.REACT_APP_BACKEND_URL;
+    setSpeakingIdx(idx);
+    speakCtlRef.current = playStreamedTts(text, {
+      backendUrl,
+      onEnd: () => { speakCtlRef.current = null; setSpeakingIdx(null); },
+      onError: () => { speakCtlRef.current = null; setSpeakingIdx(null); },
+    });
+  };
+
+  useEffect(() => () => stopSpeaking(), []);
   // Attachments: array of { local_id, file, name, kind, size, status:"uploading"|"ready"|"error", record? }
   const [attachments, setAttachments] = useState([]);
   const fileInputRef = useRef(null);
@@ -1200,6 +1227,31 @@ function HermesChat({ t, lang }) {
                   <div className="whitespace-pre-wrap break-words">
                     {m.content}
                   </div>
+                )}
+                {m.role === "assistant" && m.content && (
+                  <button
+                    type="button"
+                    onClick={() => speakMessage(i, m.content)}
+                    aria-label={speakingIdx === i ? "stop" : "speak"}
+                    data-testid={`home-msg-speak-${i}`}
+                    className={`mt-1.5 inline-flex items-center gap-1 text-[10px] uppercase tracking-widest transition-colors ${
+                      speakingIdx === i
+                        ? "text-brand-turquoise"
+                        : "text-slate-500 hover:text-brand-turquoise"
+                    }`}
+                  >
+                    {speakingIdx === i ? (
+                      <>
+                        <Square className="w-3 h-3" />
+                        {t("home.hermes.speaking")}
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="w-3 h-3" />
+                        {t("home.hermes.speak")}
+                      </>
+                    )}
+                  </button>
                 )}
               </div>
             </div>
