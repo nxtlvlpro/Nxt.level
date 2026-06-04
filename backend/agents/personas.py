@@ -271,37 +271,71 @@ for _pid, _cfg in PERSONAS.items():
 
 # =====================================================================
 # Tariff plans
+#
+# Canonical ids MUST match the Stripe catalogue (agents.payments.PLANS):
+#   personal · team · operations · headquarters
+#
+# Legacy ids (basic / simple / pro / enterprise) are kept as aliases so
+# older clients, manifests and tests do not break. New code should use
+# the canonical ids only.
 # =====================================================================
 
-PLANS: Dict[str, Dict[str, Any]] = {
-    "basic": {
-        "name": "Basic",
+_CANONICAL_PLANS: Dict[str, Dict[str, Any]] = {
+    "personal": {
+        "name": "Personal",
         "price_usd": 9,
         "personas": ["hermes"],
     },
-    "simple": {
-        "name": "Simple",
+    "team": {
+        "name": "Team",
         "price_usd": 14,
         "personas": ["hermes", "hr_mentor", "client_manager"],
     },
-    "pro": {
-        "name": "Pro",
+    "operations": {
+        "name": "Operations",
         "price_usd": 19,
-        "personas": ["hermes", "hr_mentor", "client_manager", "bookkeeper", "marketer", "compliance"],
+        "personas": [
+            "hermes", "hr_mentor", "client_manager",
+            "bookkeeper", "marketer", "compliance",
+        ],
     },
-    "enterprise": {
-        "name": "Enterprise",
+    "headquarters": {
+        "name": "Headquarters",
         "price_usd": 24,
-        "personas": list(PERSONAS.keys()),  # all 8
+        "personas": list(PERSONAS.keys()),  # all 8 (including project_coord, analyst)
     },
+}
+
+# Legacy → canonical alias map. Surface alias for "default fallback".
+PLAN_ALIASES: Dict[str, str] = {
+    "basic": "personal",
+    "simple": "team",
+    "pro": "operations",
+    "enterprise": "headquarters",
+    "hq": "headquarters",
+    "pilot": "personal",
+}
+
+
+def _canonicalize_plan_id(plan_id: Optional[str]) -> str:
+    pid = (plan_id or "headquarters").lower()
+    pid = PLAN_ALIASES.get(pid, pid)
+    if pid not in _CANONICAL_PLANS:
+        pid = "headquarters"
+    return pid
+
+
+# Public mapping — exposes BOTH canonical and legacy keys so older
+# call-sites (`PLANS["basic"]`, `PLANS["pro"]`, …) keep working.
+PLANS: Dict[str, Dict[str, Any]] = {
+    **_CANONICAL_PLANS,
+    **{alias: _CANONICAL_PLANS[canon] for alias, canon in PLAN_ALIASES.items()},
 }
 
 
 def get_plan(plan_id: Optional[str]) -> Dict[str, Any]:
-    pid = (plan_id or "enterprise").lower()
-    if pid not in PLANS:
-        pid = "enterprise"
-    return {"id": pid, **PLANS[pid]}
+    pid = _canonicalize_plan_id(plan_id)
+    return {"id": pid, **_CANONICAL_PLANS[pid]}
 
 
 # =====================================================================
@@ -536,12 +570,12 @@ def list_personas(plan_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def _min_plan_for(persona_id: str) -> str:
-    """Cheapest plan that includes the persona."""
-    order = ["basic", "simple", "pro", "enterprise"]
+    """Cheapest plan that includes the persona (canonical id)."""
+    order = ["personal", "team", "operations", "headquarters"]
     for p in order:
-        if persona_id in PLANS[p]["personas"]:
+        if persona_id in _CANONICAL_PLANS[p]["personas"]:
             return p
-    return "enterprise"
+    return "headquarters"
 
 
 async def run_persona(

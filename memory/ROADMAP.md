@@ -2,6 +2,14 @@
 
 **Текущая версия:** v1.7.0-approval-gate (2026-06-04)
 
+## ✅ Done — Plan & ROI Sync (2026-06-04)
+- Canonical Stripe IDs (personal/team/operations/headquarters) теперь — единая истина
+- Legacy basic/simple/pro/enterprise → aliases, backwards-compat
+- Manifests tariff_tier синхронизированы с Stripe
+- ROI phantom escalation cost: $186.67 в 64 записях вычищены
+- ROI dashboard: фаза `pilot` вместо ложного -100% alert (266 false alerts удалено)
+- 96 регрессионных тестов всё ещё passing (12 новых: plan_unification + roi_sanity)
+
 ## ✅ Done — Approval Gate (2026-06-04)
 - core/approval_gate.py + REST endpoints
 - Frontend pending-approvals card в AgentsView

@@ -47,9 +47,35 @@ async def record_compute_cost(agent: str, cpu_seconds: float) -> Dict[str, Any]:
     return await _record_cost("compute", agent, amount, cpu_seconds, "cpu_seconds", {})
 
 
-async def record_escalation_cost(agent: str, minutes: float = 5.0) -> Dict[str, Any]:
-    amount = minutes * ESCALATION_USD_PER_MIN
-    return await _record_cost("human_escalation", agent, amount, minutes, "minutes", {})
+async def record_escalation_cost(
+    agent: str,
+    minutes: float = 5.0,
+    *,
+    human_handled: bool = False,
+    escalation_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Record a human-escalation cost.
+
+    NB: in the original ТЗ this fired every time the reliability layer
+    flagged `should_escalate=True`. That produced ~$2.92 of phantom cost
+    per call even when no human ever touched the conversation, and the
+    dashboard showed −100% ROI on every hour.
+
+    Now we only count the cost when the escalation is actually picked up
+    by a human (`human_handled=True`). Auto-only escalations register a
+    *signal* (cost=0, metadata.flag=auto_escalation_signal) so the
+    dashboard still sees the event but it does not pollute ROI.
+    """
+    amount = (minutes * ESCALATION_USD_PER_MIN) if human_handled else 0.0
+    metadata: Dict[str, Any] = {
+        "human_handled": bool(human_handled),
+        "escalation_id": escalation_id,
+    }
+    if not human_handled:
+        metadata["flag"] = "auto_escalation_signal"
+    return await _record_cost(
+        "human_escalation", agent, amount, minutes, "minutes", metadata
+    )
 
 
 async def _record_cost(
@@ -201,25 +227,47 @@ async def calculate_hourly_roi() -> Dict[str, Any]:
     revenue = await _sum_revenue_since(start.isoformat())
     total_cost = costs["total"]
     total_revenue = revenue["total"]
-    if total_cost > 0:
-        roi = (total_revenue - total_cost) / total_cost
+
+    # Determine the phase so the UI knows how to render this number.
+    #
+    #   "no_activity"   — nothing happened this hour (no costs, no revenue)
+    #   "pilot"         — there are costs but no attributed revenue yet
+    #                     (e.g. company hasn't recorded any closed deals).
+    #                     ROI is mathematically -100% but operationally
+    #                     meaningless — surface as "pilot" instead of alert.
+    #   "live"          — costs > 0 AND revenue > 0 → real ROI signal.
+    if total_cost == 0 and total_revenue == 0:
+        phase = "no_activity"
+        roi: Optional[float] = None
+    elif total_revenue == 0:
+        phase = "pilot"
+        roi = None     # don't surface a misleading −100% in this phase
     else:
-        roi = None
+        phase = "live"
+        roi = (total_revenue - total_cost) / total_cost
 
     alert = None
-    if roi is not None and roi < -0.1:
+    # Alert only when we have a real ROI signal AND it's below threshold.
+    if phase == "live" and roi is not None and roi < -0.1:
         alert = f"warning: hourly ROI {roi:.2%} below -10%"
 
     by_agent: Dict[str, Optional[float]] = {}
-    for agent, agent_cost in costs["by_agent"].items():
-        agent_rev = revenue["by_agent"].get(agent, 0.0)
-        by_agent[agent] = (
-            round((agent_rev - agent_cost) / agent_cost, 4) if agent_cost > 0 else None
-        )
+    if phase == "live":
+        for agent, agent_cost in costs["by_agent"].items():
+            agent_rev = revenue["by_agent"].get(agent, 0.0)
+            by_agent[agent] = (
+                round((agent_rev - agent_cost) / agent_cost, 4)
+                if agent_cost > 0 else None
+            )
+    else:
+        # Suppress per-agent ROI rows during pilot/no_activity — they
+        # would all read −100% and clutter the dashboard.
+        by_agent = {a: None for a in costs["by_agent"].keys()}
 
     snapshot = {
         "hour_start": start.isoformat(),
         "hour_end": end.isoformat(),
+        "phase": phase,
         "roi": round(roi, 4) if roi is not None else None,
         "total_cost": total_cost,
         "total_revenue": total_revenue,

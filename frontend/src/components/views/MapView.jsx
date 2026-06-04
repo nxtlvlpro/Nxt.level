@@ -56,7 +56,13 @@ export default function MapView() {
         }
         titleRight={
           <span className="text-slate-500 text-[10px] uppercase tracking-widest">
-            {snap?.alert ? t("map.alert") : t("map.stable")}
+            {snap?.alert
+              ? t("map.alert")
+              : snap?.phase === "pilot"
+                ? "PILOT"
+                : snap?.phase === "no_activity"
+                  ? "IDLE"
+                  : t("map.stable")}
           </span>
         }
       >

@@ -86,7 +86,7 @@ const AGENTS = [
     name: "ANALYTICS",
     roleKey: "home.agent.analytics.role",
     planKey: "home.agent.analytics.plan",
-    planId: "hq",
+    planId: "headquarters",
     descKey: "home.agent.analytics.desc",
     accent: "text-sky-400",
   },
@@ -186,6 +186,12 @@ const PLAN_ID_MAP = {
   headquarters: "headquarters",
   // Pilot plan = lightest tier
   pilot:        "personal",
+  // Legacy aliases (kept for backward-compat with any existing CTAs/i18n)
+  basic:        "personal",
+  simple:       "team",
+  pro:          "operations",
+  enterprise:   "headquarters",
+  hq:           "headquarters",
 };
 
 function goToCheckout(planId) {
