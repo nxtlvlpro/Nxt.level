@@ -1,7 +1,14 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.16.0-hermes-ceo (additive over v1.15.0-hermes-evolution)
-**Last updated:** 2026-02-06 by Главный Системный Архитектор (E1)
+**Current version:** v1.17.0-telegram-channel (additive over v1.16.0-hermes-ceo)
+**Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
+
+## What's new — v1.17 (2026-06-04)
+
+**Telegram-канал в 1 клик.** Клиенты привязывают свой Telegram к NXT8
+deep-link'ом через бота `@nxt8ceo_bot` и управляют Hermes из мессенджера:
+двусторонний чат, inline-кнопки Approve/Reject на pending-approvals,
+push-уведомления о новых одобрениях. Подробности → `CHANGELOG.md` v1.10.0-telegram-channel.
 
 ## 🔒 LOCKED COMPONENTS
 

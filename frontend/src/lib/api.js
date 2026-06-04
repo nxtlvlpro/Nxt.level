@@ -173,6 +173,20 @@ export const api = {
   shareStats: (window_hours = 24 * 30) =>
     http.get(`/share/stats?window_hours=${window_hours}`).then((r) => r.data),
 
+  // Telegram channel — 1-click bot link for clients
+  telegramStatus: (client_id) =>
+    http
+      .get(`/telegram/status?client_id=${encodeURIComponent(client_id)}`)
+      .then((r) => r.data),
+  telegramConnect: (client_id) =>
+    http
+      .post("/telegram/connect", { client_id })
+      .then((r) => r.data),
+  telegramDisconnect: (client_id) =>
+    http
+      .post("/telegram/disconnect", { client_id })
+      .then((r) => r.data),
+
   // Documents (Compliance persona)
   documentsList: (company_id, limit = 50) =>
     http

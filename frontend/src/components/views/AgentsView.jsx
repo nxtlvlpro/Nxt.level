@@ -22,6 +22,7 @@ import {
 import CollapsibleCard from "../CollapsibleCard";
 import api from "../../lib/api";
 import { useT } from "../../i18n/LanguageContext";
+import TelegramConnectCard from "./TelegramConnectCard";
 
 const ICON_MAP = {
   Crown,
@@ -359,6 +360,8 @@ export default function AgentsView() {
       )}
 
       <PendingApprovalsCard />
+
+      <TelegramConnectCard />
 
       <InterAgentDialoguesCard />
     </div>

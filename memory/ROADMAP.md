@@ -1,6 +1,16 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.7.0-approval-gate (2026-06-04)
+**Текущая версия:** v1.10.0-telegram-channel (2026-06-04)
+
+## ✅ Done — Telegram Channel (2026-06-04)
+- `core/telegram_bot.py` — единый мост: webhook → handler → Hermes → reply
+- Endpoints: `/api/telegram/{connect,status,disconnect,webhook/{secret},install-webhook}`
+- `views/TelegramConnectCard.jsx` — UI с 1-click deep-link и polling статуса
+- Inline-кнопки Approve/Reject из push-карточек напрямую в Telegram
+- Free-text → Hermes (с typing-индикатором)
+- Команды `/help`, `/approvals`, `/disconnect`
+- 11 регрессионных тестов passing (mint/bind/unbind/free-text/buttons/push)
+- Бот: `@nxt8ceo_bot`
 
 ## ✅ Done — Share My Journey / Viral Channel (2026-06-04)
 - `core/share.py` — mint share_id, persist headline+steps, open/conversion counters

@@ -99,6 +99,18 @@ async def lifespan(_app: FastAPI):
         await _share.ensure_indexes()
     except Exception as e:  # noqa: BLE001
         logger.warning("share ensure_indexes failed: %s", e)
+    # Telegram channel — indexes + auto-install webhook (only if token set).
+    try:
+        from core import telegram_bot as _tg
+        await _tg.ensure_indexes()
+        if _tg.is_enabled():
+            base_url = (os.environ.get("PUBLIC_BASE_URL") or "").strip()
+            if base_url:
+                res = await _tg.install_webhook(base_url)
+                logger.info("telegram webhook install: %s", res.get("ok"))
+            await _tg.get_bot_info(force=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("telegram bootstrap failed: %s", e)
     # Seed default onboarding access code(s) — currently a single pilot code.
     try:
         from agents import onboarding as _onb
@@ -2800,6 +2812,95 @@ async def share_conversion(req: ShareConversionRequest) -> Dict[str, Any]:
     if not res.get("ok"):
         raise HTTPException(status_code=404, detail=res.get("error") or "share_not_found")
     return res
+
+
+# =====================================================================
+# Telegram Channel — 1-click bot link for clients
+# =====================================================================
+
+
+class TelegramConnectRequest(BaseModel):
+    client_id: str
+
+
+class TelegramDisconnectRequest(BaseModel):
+    client_id: str
+
+
+@api.post("/telegram/connect")
+async def telegram_connect(req: TelegramConnectRequest) -> Dict[str, Any]:
+    """Mint a one-time Telegram deep-link for this client."""
+    from core import telegram_bot as _tg
+    if not _tg.is_enabled():
+        raise HTTPException(status_code=503, detail="telegram_disabled")
+    if not (req.client_id or "").strip():
+        raise HTTPException(status_code=400, detail="client_id required")
+    res = await _tg.mint_link_token(req.client_id.strip())
+    if not res.get("ok"):
+        raise HTTPException(status_code=502, detail=res.get("error") or "mint_failed")
+    return res
+
+
+@api.get("/telegram/status")
+async def telegram_status(client_id: str) -> Dict[str, Any]:
+    from core import telegram_bot as _tg
+    info = await _tg.get_bot_info()
+    chat = await _tg.get_chat_for_client(client_id)
+    return {
+        "ok": True,
+        "enabled": _tg.is_enabled(),
+        "bot_username": info.get("username"),
+        "connected": bool(chat),
+        "chat": (
+            {
+                "first_name": chat.get("first_name"),
+                "username": chat.get("username"),
+                "bound_at": chat.get("bound_at"),
+            }
+            if chat
+            else None
+        ),
+    }
+
+
+@api.post("/telegram/disconnect")
+async def telegram_disconnect(req: TelegramDisconnectRequest) -> Dict[str, Any]:
+    from core import telegram_bot as _tg
+    if not (req.client_id or "").strip():
+        raise HTTPException(status_code=400, detail="client_id required")
+    return await _tg.unbind(req.client_id.strip())
+
+
+@api.post("/telegram/webhook/{secret}")
+async def telegram_webhook(secret: str, request: Request) -> Dict[str, Any]:
+    """Inbound updates from Telegram (set via setWebhook)."""
+    from core import telegram_bot as _tg
+    if not _tg.is_enabled():
+        raise HTTPException(status_code=503, detail="telegram_disabled")
+    expected = (os.environ.get("TELEGRAM_WEBHOOK_SECRET") or "").strip() or "nxt8"
+    if secret != expected:
+        raise HTTPException(status_code=403, detail="bad_secret")
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001
+        payload = {}
+    # Process in the background — Telegram only needs a quick 200.
+    asyncio.create_task(_tg.handle_update(payload))
+    return {"ok": True}
+
+
+@api.post("/telegram/install-webhook")
+async def telegram_install_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Admin helper: re-register the webhook URL (uses PUBLIC_BASE_URL by default)."""
+    from core import telegram_bot as _tg
+    if not _tg.is_enabled():
+        raise HTTPException(status_code=503, detail="telegram_disabled")
+    base_url = (payload or {}).get("base_url") or (
+        os.environ.get("PUBLIC_BASE_URL") or ""
+    )
+    if not base_url:
+        raise HTTPException(status_code=400, detail="base_url required")
+    return await _tg.install_webhook(base_url)
 
 
 # =====================================================================

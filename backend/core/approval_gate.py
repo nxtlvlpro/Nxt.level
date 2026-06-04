@@ -86,6 +86,15 @@ async def request_approval(
             "ok": False,
             "error": f"approval persistence failed: {e}",
         }
+
+    # Best-effort push to the owner's Telegram, if bound. Never block.
+    try:
+        from core import telegram_bot as _tg
+        if _tg.is_enabled():
+            import asyncio as _asyncio
+            _asyncio.create_task(_tg.notify_pending_approval(doc))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("telegram approval push failed: %s", e)
     return {
         "ok": True,
         "pending": True,

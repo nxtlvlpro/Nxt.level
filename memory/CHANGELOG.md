@@ -1,6 +1,60 @@
 # NXT8 — Release Notes
 
 
+## v1.10.0-telegram-channel — 2026-06-04
+
+**Status:** ✅ Telegram-канал в 1 клик. Полноценный двусторонний чат
+с Hermes из мессенджера. Inline-кнопки Approve/Reject для одобрений
+прямо в Telegram. Бот `@nxt8ceo_bot` (NXT8 CEO).
+
+### Added
+- **`core/telegram_bot.py`** — единый мост: webhook → handler → Hermes → ответ.
+  - `mint_link_token(client_id)` — генерирует одноразовый deep-link
+    `t.me/<bot>?start=<token>` (TTL 30 мин).
+  - `_handle_start` — привязывает `chat_id ↔ client_id` после `/start <token>`.
+  - `_handle_text_to_hermes` — форвардит свободный текст в `agents.hermes.hermes_chat`,
+    реплаит ответом в Telegram (с `typing…` индикатором).
+  - `_handle_callback` — inline-кнопки Approve/Reject через `core.approval_gate`.
+  - `notify_pending_approval(approval)` — пуш-карточка в Telegram, когда
+    `core.approval_gate.request_approval()` создаёт новый pending (best-effort,
+    никогда не блокирует основной flow).
+  - Команды: `/help`, `/approvals`, `/disconnect`.
+- **REST endpoints** (`server.py`):
+  - `POST /api/telegram/connect` — mint deep-link.
+  - `GET  /api/telegram/status?client_id=...` — статус привязки.
+  - `POST /api/telegram/disconnect` — отвязать чат.
+  - `POST /api/telegram/webhook/{secret}` — inbound updates от Telegram.
+  - `POST /api/telegram/install-webhook` — admin re-register.
+  - Webhook автоматически регистрируется на старте приложения
+    через `PUBLIC_BASE_URL` (если задан).
+- **Frontend** (`views/TelegramConnectCard.jsx`) — карточка в `AgentsView`
+  между Approval Gate и Inter-Agent Dialogues:
+  - Кнопка **«Подключить Telegram в 1 клик»** → mint link → открывает в новой
+    вкладке + показывает fallback-ссылку с кнопкой «Копировать».
+  - Polling статуса 2s × 30 → автоматически переходит в состояние CONNECTED.
+  - Connected-панель показывает имя/username и время привязки + кнопку Отвязать.
+- **`backend/tests/test_telegram_bot.py`** — 11 тестов: mint/bind lifecycle,
+  bogus token rejection, free-text → Hermes, inline-buttons → approval gate,
+  push-notification, unbound-chat hint.
+
+### Storage
+- `db.telegram_chats` — `{client_id, chat_id, username, first_name, bound_at, session_id}`
+  (unique on `client_id` и `chat_id`).
+- `db.telegram_link_tokens` — `{token, client_id, expires_at, used}`
+  с TTL индексом на `expires_at`.
+
+### Env
+- `TELEGRAM_BOT_TOKEN` — токен от @BotFather (бот `@nxt8ceo_bot`).
+- `TELEGRAM_WEBHOOK_SECRET` — secret в URL вебхука.
+- `PUBLIC_BASE_URL` — публичный домен для регистрации вебхука
+  (в preview — `REACT_APP_BACKEND_URL`).
+
+### Tests
+- 11 новых тестов прошли. Регрессии нет (42 связанных теста зелёные).
+- E2E проверка через curl: mint → simulate webhook /start → status=connected → disconnect.
+
+
+
 ## v1.7.0-approval-gate — 2026-06-04
 
 **Status:** ✅ Approval Gate live. Каждое high-impact решение подчинённых
