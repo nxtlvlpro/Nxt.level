@@ -1,7 +1,51 @@
 # NXT8 — Release Notes
 
 
-## v1.10.0-telegram-channel — 2026-06-04
+## v1.11.0-share-ssr-and-hermes-tg-button — 2026-06-04
+
+**Status:** ✅ SSR-страница для Share-ссылок + кнопка «В Telegram» прямо
+в окне диалога с Hermes. Telegram-бот теперь привязывается к **тому же
+`nxt8.user_id`**, что и веб-чат — Hermes видит единого юзера на обоих каналах.
+
+### Added — Share SSR (P0)
+- **`GET /api/s/{share_id}`** в `server.py` — отдаёт HTML с правильными
+  `og:image`, `og:title`, `og:description`, `og:url`, `twitter:card`,
+  `og:image:width=1200`, `og:image:height=630`. Telegram/WhatsApp/Twitter
+  crawler'ы теперь подхватывают динамический preview.
+- Browser-юзеры редиректятся на `/?ref=<id>` через `<meta http-equiv=refresh>`
+  + JS fallback (≤80ms). Атрибуция `?ref=` работает как раньше.
+- XSS-санитайз заголовка (`&` `<` `>` `"`).
+- Cache-Control: `public, max-age=300, stale-while-revalidate=86400`.
+- `record_open()` логирует hit-from-SSR с `ref="ssr"`.
+- 3 новых pytest (`tests/test_share_ssr.py`): HTML/OG tags, 404 для bogus,
+  PNG bytes magic-check.
+
+### Added — Hermes ↔ Telegram one-tap button
+- **`views/HermesTelegramButton.jsx`** — компактная pill-кнопка прямо в
+  toolbar Hermes-чата (рядом с TEXT/VOICE). Состояния:
+  - Не подключён: голубая «В Telegram» → mint deep-link → новая вкладка.
+  - Подключён: зелёная «Telegram ✓» → открывает существующий чат с ботом.
+  - Backend сообщил `enabled=false` → кнопка не рендерится.
+- Polling статуса 2s × 30 после mint — без перезагрузки страницы.
+- **Identity unification:** и `HermesTelegramButton`, и
+  `TelegramConnectCard` теперь используют `localStorage["nxt8.user_id"]`
+  (тот же ключ, что и веб-чат через `getOrCreateUserId()`). Hermes
+  получает `user_id` идентичный в обоих каналах → единая память, единая
+  сессия, цельный UX.
+
+### Frontend
+- `views/HomeView.jsx` — импорт `HermesTelegramButton`, вставка в toolbar
+  Hermes-чата левее TEXT/VOICE pillbox.
+- `components/DemoTour.jsx::buildShareUrl()` — теперь генерит
+  `${origin}/api/s/<id>` (вместо `/?ref=<id>`), чтобы превью работали в
+  мессенджерах.
+
+### Tests
+- 14 новых регрессионных тестов (11 telegram + 3 ssr) passing.
+- 45 связанных тестов зелёные (telegram, share, share_ssr, approval_gate,
+  plan_unification, roi_sanity, tour).
+
+
 
 **Status:** ✅ Telegram-канал в 1 клик. Полноценный двусторонний чат
 с Hermes из мессенджера. Inline-кнопки Approve/Reject для одобрений

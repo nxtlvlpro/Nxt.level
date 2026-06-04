@@ -2,6 +2,12 @@
 
 **Текущая версия:** v1.10.0-telegram-channel (2026-06-04)
 
+## ✅ Done — Share SSR + Hermes Telegram Button (2026-06-04)
+- `/api/s/{share_id}` SSR HTML с `og:image`, `twitter:card`, redirect → SPA
+- HermesChat toolbar: pill-кнопка «В Telegram» (active/connected состояния)
+- Унификация identity: и веб-чат, и Telegram-бот используют `nxt8.user_id`
+- 3 новых ssr-теста + 11 telegram-тестов — все зелёные
+
 ## ✅ Done — Telegram Channel (2026-06-04)
 - `core/telegram_bot.py` — единый мост: webhook → handler → Hermes → reply
 - Endpoints: `/api/telegram/{connect,status,disconnect,webhook/{secret},install-webhook}`

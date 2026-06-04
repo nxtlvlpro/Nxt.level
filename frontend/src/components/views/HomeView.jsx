@@ -21,6 +21,7 @@ import Waveform from "../Waveform";
 import OnboardingFlow from "../OnboardingFlow";
 import { playStreamedTts } from "../../lib/playStreamedTts";
 import { hermesTalk } from "../../lib/hermesTalk";
+import HermesTelegramButton from "./HermesTelegramButton";
 
 // ============================================================
 // Static content keys (texts come from i18n dictionary)
@@ -1249,31 +1250,34 @@ function HermesChat({ t, lang }) {
           </p>
         </div>
 
-        <div className="inline-flex rounded-full border border-white/10 bg-brand-dark/60 p-1 backdrop-blur-md shrink-0">
-          <button
-            type="button"
-            onClick={() => setMode("text")}
-            className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors ${
-              mode === "text"
-                ? "bg-brand-turquoise/15 text-brand-turquoise"
-                : "text-slate-500 hover:text-slate-300"
-            }`}
-            data-testid="home-chat-mode-text"
-          >
-            <MessageSquare className="w-3 h-3" /> {t("home.hermes.mode.text")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("voice")}
-            className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors ${
-              mode === "voice"
-                ? "bg-brand-turquoise/15 text-brand-turquoise"
-                : "text-slate-500 hover:text-slate-300"
-            }`}
-            data-testid="home-chat-mode-voice"
-          >
-            <Mic className="w-3 h-3" /> {t("home.hermes.mode.voice")}
-          </button>
+        <div className="inline-flex items-center gap-2 shrink-0">
+          <HermesTelegramButton />
+          <div className="inline-flex rounded-full border border-white/10 bg-brand-dark/60 p-1 backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setMode("text")}
+              className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors ${
+                mode === "text"
+                  ? "bg-brand-turquoise/15 text-brand-turquoise"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+              data-testid="home-chat-mode-text"
+            >
+              <MessageSquare className="w-3 h-3" /> {t("home.hermes.mode.text")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("voice")}
+              className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors ${
+                mode === "voice"
+                  ? "bg-brand-turquoise/15 text-brand-turquoise"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+              data-testid="home-chat-mode-voice"
+            >
+              <Mic className="w-3 h-3" /> {t("home.hermes.mode.voice")}
+            </button>
+          </div>
         </div>
       </div>
 

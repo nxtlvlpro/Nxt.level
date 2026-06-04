@@ -1,6 +1,7 @@
 // TelegramConnectCard — 1-click bind of the user's Telegram chat
-// to their NXT8 client_id. Reuses the anonymous client_id created by
-// DemoTour (localStorage key: "nxt8.tour.client_id").
+// to their NXT8 user_id. Reuses the same anonymous identity that the
+// Hermes web chat uses (localStorage key: "nxt8.user_id"), so binding
+// done here works for the chat toolbar button too.
 //
 // On click → backend mints a one-time deep-link → we open t.me/<bot>?start=<token>
 // in a new tab → user presses Start → webhook binds the chat → we poll
@@ -19,19 +20,17 @@ import {
 import CollapsibleCard from "../CollapsibleCard";
 import api from "../../lib/api";
 
-const CLIENT_ID_KEY = "nxt8.tour.client_id";
+const NXT8_USER_ID_KEY = "nxt8.user_id";
 
 function ensureClientId() {
   if (typeof window === "undefined") return "anon";
   try {
-    let id = localStorage.getItem(CLIENT_ID_KEY);
-    if (!id) {
-      const r = Math.random().toString(36).slice(2, 10);
-      const t = Date.now().toString(36);
-      id = `c_${t}_${r}`;
-      localStorage.setItem(CLIENT_ID_KEY, id);
+    let uid = localStorage.getItem(NXT8_USER_ID_KEY);
+    if (!uid) {
+      uid = `u_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(NXT8_USER_ID_KEY, uid);
     }
-    return id;
+    return uid;
   } catch {
     return "anon";
   }
