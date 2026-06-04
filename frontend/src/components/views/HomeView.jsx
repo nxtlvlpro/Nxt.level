@@ -763,11 +763,15 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
               ? "bg-brand-turquoise/20 border-2 border-brand-turquoise shadow-[0_0_24px_var(--brand-turquoise)]"
               : synthesizing
                 ? "bg-purple-500/15 border-2 border-purple-400/60 shadow-[0_0_20px_rgba(192,132,252,0.35)]"
-                : "bg-brand-dark/60 border-2 border-brand-turquoise/40 hover:border-brand-turquoise"
+                : "bg-brand-dark/60 border-2 voice-mic-breathe hover:border-brand-turquoise"
         } disabled:opacity-60`}
         data-testid="home-voice-btn"
         aria-label={recording ? t("voice.mic.aria.stop") : t("voice.mic.aria.start")}
       >
+        {/* Outer soft halo ring — visible only in idle state to draw attention */}
+        {!recording && !speaking && !synthesizing && !busy && (
+          <span className="voice-mic-halo" aria-hidden="true" />
+        )}
         {busy ? (
           <Loader2 className="w-8 h-8 text-brand-turquoise animate-spin" />
         ) : synthesizing ? (
