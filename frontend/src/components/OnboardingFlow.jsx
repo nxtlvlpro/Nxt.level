@@ -243,7 +243,11 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
     if (q.type === "single") {
       nextAnswers[q.id] = value;
     } else if (q.type === "multi") {
-      const prev = Array.isArray(nextAnswers[q.id]) ? nextAnswers[q.id] : [];
+      // When storeAs is set we use a separate `<q.id>_arr` slot for the
+      // running array so the flat storeAs keys (which collide with q.id)
+      // can be safely mirrored below without trampling the array itself.
+      const arrKey = q.storeAs ? `${q.id}_arr` : q.id;
+      const prev = Array.isArray(nextAnswers[arrKey]) ? nextAnswers[arrKey] : [];
       let updated;
       if (prev.includes(value)) {
         updated = prev.filter((x) => x !== value);
@@ -252,15 +256,21 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
       } else {
         updated = [...prev, value];
       }
-      nextAnswers[q.id] = updated;
-      // Mirror to flat storeAs keys (e.g. pain_primary/pain_secondary).
+      nextAnswers[arrKey] = updated;
       if (q.storeAs) {
+        // Mirror to flat keys for backend payload (pain_primary / pain_secondary).
         q.storeAs.forEach((k, i) => { nextAnswers[k] = updated[i] || ""; });
+      } else {
+        // No storeAs → q.id itself is the array slot for the backend.
+        nextAnswers[q.id] = updated;
       }
     }
     setAnswers(nextAnswers);
     // Fire insight only on single-select OR when first value of a multi-select picked.
-    const insightAnswer = q.type === "single" ? value : (nextAnswers[q.id]?.[0] || value);
+    const arrKey = q.type === "multi" ? (q.storeAs ? `${q.id}_arr` : q.id) : null;
+    const insightAnswer = q.type === "single"
+      ? value
+      : (nextAnswers[arrKey]?.[0] || value);
     if (insightAnswer) {
       try {
         setInsightLoading(true);
@@ -292,14 +302,16 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
     setError("");
     setStep("processing");
     try {
+      const painArr = Array.isArray(answers.pain_primary_arr) ? answers.pain_primary_arr : [];
+      const toolsArr = Array.isArray(answers.tools_current) ? answers.tools_current : [];
       const payload = {
         industry:        answers.industry || "other",
         team_size:       answers.team_size || "solo",
         has_sales_team:  !!answers.has_sales_team,
         has_marketer:    !!answers.has_marketer,
-        pain_primary:    answers.pain_primary || (Array.isArray(answers.pain_primary_arr) ? answers.pain_primary_arr[0] : ""),
-        pain_secondary:  answers.pain_secondary || "",
-        tools_current:   Array.isArray(answers.tools_current) ? answers.tools_current : [],
+        pain_primary:    answers.pain_primary || painArr[0] || "",
+        pain_secondary:  answers.pain_secondary || painArr[1] || "",
+        tools_current:   toolsArr,
         crm_name:        answers.crm_name || "",
         goal_90days:     answers.goal_90days || "",
         urgency:         answers.urgency || "warm",
@@ -362,7 +374,9 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
 
         {step === "q" && (
           <div className="p-5 sm:p-8 space-y-5">
-            <ProgressBar current={qIndex} total={total} />
+            <div className="pr-10">
+              <ProgressBar current={qIndex} total={total} />
+            </div>
             <h2 className="text-xl sm:text-2xl font-semibold text-white leading-tight" data-testid="onb-question-title">
               {t(`onb.q.${currentQ.id}.title`)}
             </h2>
@@ -372,7 +386,11 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
             {currentQ.type === "multi" && (
               <MultiSelect
                 q={currentQ}
-                values={answers[currentQ.id] || []}
+                values={
+                  currentQ.storeAs
+                    ? (answers[`${currentQ.id}_arr`] || [])
+                    : (answers[currentQ.id] || [])
+                }
                 crmName={answers.crm_name || ""}
                 onCrmChange={(v) => setContactField("crm_name", v)}
                 onPick={(v) => commitAnswer(currentQ, v)}
@@ -404,11 +422,16 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
                 onClick={goNext}
                 disabled={
                   (currentQ.type === "single" && !answers[currentQ.id])
-                  || (currentQ.type === "multi" && (!answers[currentQ.id] || answers[currentQ.id].length === 0))
+                  || (currentQ.type === "multi" && (() => {
+                    const arr = currentQ.storeAs
+                      ? (answers[`${currentQ.id}_arr`] || [])
+                      : (answers[currentQ.id] || []);
+                    return !Array.isArray(arr) || arr.length === 0;
+                  })())
                   || (currentQ.type === "contact" && !validateContact())
                 }
                 className="rounded-full bg-brand-turquoise text-brand-dark px-6 py-3 text-sm font-semibold flex items-center gap-2 disabled:opacity-40 hover:shadow-[0_0_24px_var(--brand-turquoise)] transition-all"
-                data-testid="onb-next"
+                data-testid={qIndex < total - 1 ? "onb-next" : "onb-submit"}
               >
                 {qIndex < total - 1 ? t("onb.next") : t("onb.submit")}
                 <ArrowRight className="w-4 h-4" />

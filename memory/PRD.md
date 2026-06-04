@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.11.2-voice-gpt4o-tts (additive over v1.11.1-voice-hd)
+**Current version:** v1.12.0-onboarding (additive over v1.11.2-voice-gpt4o-tts)
 **Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -101,6 +101,40 @@ The following parts of the codebase are **explicitly frozen by the product owner
     - User provided their own `OPENAI_API_KEY`, written to `backend/.env`. On restart, `voice.py` log line confirmed `voice: native OpenAI SDK (key=OPENAI_API_KEY)` — the Emergent proxy fallback is no longer in use.
     - The voice on the landing now runs on **OpenAI `gpt-4o-mini-tts` + onyx + auto style-instructions** (RU/EN switched by Whisper-detected language). Verified with 2 curl scenarios: 161 KB MP3 for ~155 EN chars, 171 KB for ~135 RU chars (HD-rate output with natural intonation pauses baked in).
     - STT (Whisper-1) and rest of LLM stack (DeepSeek-V3 via OpenRouter) untouched. Only TTS billing now routes to the user's OpenAI account.
+
+17. **v1.12 Onboarding survey + Hermes brief (2026-06-04):**
+    - **Goal** — every "Connect / Подключить" tariff CTA now opens a 7-question intake before the user pays. Survey answers are sent to DeepSeek and Hermes responds with a personalised 4-block reply ("what we saw / who'll work with you / what changes in 30 days / next step"). A 3-digit access code (`888`) unlocks free pilot access without payment.
+    - **Backend `agents/onboarding.py`** (new, 350+ LOC) — fully self-contained:
+      - `INDUSTRY_TEMPLATES`, `PROFESSIONS`, `TOOL_INTEGRATIONS`, `URGENCY_CTAS`, `INSIGHTS` static tables (RU+EN).
+      - `get_insight(qid, answer, lang)` — hybrid 4c per user choice: static matrix first, DeepSeek fallback for unmapped combos (max 80 tokens, source flagged as `static`/`llm`/`fallback`).
+      - `build_brief(profile)` — deterministic mapping pain → profession (Sales rep / Operations director / Marketer / Bookkeeper / Legal counsel / Analyst / Coordinator), tools → integration plan, urgency → CTA copy.
+      - `generate_hermes_reply(profile, brief, lang)` — DeepSeek with strict JSON schema (`intro / block1_understood / block2_team[] / block3_in_30_days[] / block4_cta`), schema-validated, with locale-matched fallback when LLM output cannot be parsed.
+      - `verify_access_code` / `consume_access_code` with `db.access_codes` collection seeded at startup with `888` (`Pilot 2026`, max_uses=10 000).
+      - `funnel_stats(days)` aggregating `client_profiles` for an Ops dashboard widget.
+    - **New endpoints** (`server.py`):
+      - `POST /api/onboarding/insight` — per-answer "💡 ДЛЯ ВАС" line.
+      - `POST /api/onboarding/verify-code` — read-only 3-digit code check.
+      - `POST /api/onboarding/profiles` — persist survey + consume code if present, returns `{profile_id, test_access}`.
+      - `GET  /api/onboarding/profiles/{id}` — read for admin / Ops.
+      - `POST /api/onboarding/brief/{id}` — build brief + generate Hermes 4-block reply, persisted back into the profile.
+      - `GET  /api/onboarding/funnel?days=30` — counters for Ops.
+    - **New collections** in `db.py`:
+      - `client_profiles` — indexes on `(created_at)`, `(urgency, created_at)`, `phone`, `telegram`.
+      - `access_codes` — unique index on `code`.
+    - **Frontend `components/OnboardingFlow.jsx`** (new, 480+ LOC) — full-screen modal on mobile, centered card on desktop, state-machine `intro → q1..q7 → processing → reply`:
+      - Single-select questions (industry, team_size, goal, urgency) with radio-like OptionPills.
+      - Multi-select with `q.max` cap (pain primary+secondary, tools_current) — internal array stored under `<q.id>_arr` to avoid colliding with the flat `pain_primary` / `pain_secondary` keys that mirror it for the backend payload.
+      - Yes/No "extras" pills (has_sales_team, has_marketer).
+      - Contact form (name, phone, telegram) + 3-digit access-code input with live validation (green / red border + `CODE ACCEPTED · Pilot 2026` mark).
+      - Processing screen with 4-step animated checklist (700 ms each) covering DeepSeek brief time.
+      - Hermes reply screen renders all 4 blocks plus team-card grid (2-up on desktop, 1-up on mobile) and a CTA that switches to "Start free test" when `test_access === true`.
+      - `localStorage` (`nxt8.onboarding.v1`) persists step/qIndex/answers — page reload mid-flow restores progress.
+    - **HomeView wiring** — added module-level `goToCheckout()` redirect: instead of opening checkout directly it dispatches `CustomEvent('nxt8:open-onboarding', { detail: { planId } })`. The default export listens for this event and renders `<OnboardingFlow>`. Every existing tariff "Connect" button on the page (3D carousel cards, tariff cards section, pilot CTA) now flows through the survey without touching their individual props.
+    - **i18n** — 70+ new keys under `onb.*` namespace, full EN + RU coverage of question titles, options, intro, processing checklist, reply block labels, error states.
+    - **Verified** end-to-end:
+      - Backend: 13/13 pytest checks (insights static + LLM RU fallback, code 888/123/ab, profile save with/without code, missing-field 400, brief generation in ~7-12 s, 404 on unknown profile).
+      - Frontend: full happy-path through Q1-Q7 + screenshot confirms processing → reply with personalised DeepSeek output ("Alex, I hear you loud and clear — losing leads in ecommerce is like watching money walk out the door."), 2 team cards, 3×30d items, free-test CTA when code 888 supplied.
+    - **What this unlocks commercially** — every paid tier now ships with an automatic qualification step that doubles as a delight moment. Hot leads (urgency=hot + code=888) bypass payment for the pilot, warm leads land in checkout with context already captured, cold leads still see a personalised brief which improves retention for the email digest.
 
 ## Architecture (as built)
 
