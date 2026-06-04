@@ -9,15 +9,37 @@ const LanguageContext = createContext({
   t: (key) => key,
 });
 
-function readStored() {
+// Inferring the user's preferred UI language on a fresh visit:
+// 1. Honour a stored override (set via the burger menu).
+// 2. Otherwise read the browser's `navigator.languages` / `navigator.language`
+//    and pick the first supported match (BCP-47 → 2-letter code).
+// 3. Fall back to DEFAULT_LANG.
+function detectLang() {
   if (typeof window === "undefined") return DEFAULT_LANG;
   try {
-    const v = window.localStorage.getItem(STORAGE_KEY);
-    if (v && SUPPORTED_LANGS.includes(v)) return v;
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored && SUPPORTED_LANGS.includes(stored)) return stored;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const cands =
+      (typeof navigator !== "undefined" && navigator.languages) ||
+      (typeof navigator !== "undefined" && navigator.language && [navigator.language]) ||
+      [];
+    for (const raw of cands) {
+      if (!raw) continue;
+      const code = String(raw).toLowerCase().split(/[-_]/)[0];
+      if (SUPPORTED_LANGS.includes(code)) return code;
+    }
   } catch {
     /* ignore */
   }
   return DEFAULT_LANG;
+}
+
+function readStored() {
+  return detectLang();
 }
 
 function writeStored(lang) {

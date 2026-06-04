@@ -100,8 +100,16 @@ function AuthBlock({ t }) {
 
 function LangBlock({ t, lang, setLang }) {
   const OPTIONS = [
-    { code: "en", labelKey: "menu.lang.english", native: "English" },
-    { code: "ru", labelKey: "menu.lang.russian", native: "Русский" },
+    { code: "en", labelKey: "menu.lang.english",    native: "English" },
+    { code: "ru", labelKey: "menu.lang.russian",    native: "Русский" },
+    { code: "es", labelKey: "menu.lang.spanish",    native: "Español" },
+    { code: "fr", labelKey: "menu.lang.french",     native: "Français" },
+    { code: "de", labelKey: "menu.lang.german",     native: "Deutsch" },
+    { code: "pt", labelKey: "menu.lang.portuguese", native: "Português" },
+    { code: "it", labelKey: "menu.lang.italian",    native: "Italiano" },
+    { code: "zh", labelKey: "menu.lang.chinese",    native: "中文" },
+    { code: "ja", labelKey: "menu.lang.japanese",   native: "日本語" },
+    { code: "tr", labelKey: "menu.lang.turkish",    native: "Türkçe" },
   ];
   return (
     <SectionShell title={t("menu.lang")}>

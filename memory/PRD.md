@@ -603,3 +603,53 @@ User supplied a real Stripe **test secret key** `sk_test_51TeSzT...`. Replaced `
 - `POST /api/payments/checkout/session` for `operations × 4` → `cs_test_a1vSTv6...` URL on real `checkout.stripe.com`, amount $76.
 - `GET /api/payments/checkout/status/{sid}` returned `status=open / payment_status=unpaid / amount_total=7600 (cents)` with **full** metadata block (`plan_id, plan_name, quantity, user_id, company_id, source`). **No `fallback` field** — direct Stripe path is live.
 
+
+---
+
+## v1.17.0 — i18n: 10 languages + auto-detect + cookie banner (2026-02-06)
+
+### Languages
+Added 8 new locales to NXT8: **ES, FR, DE, PT, IT, ZH, JA, TR**. Total now: EN, RU + 8 = **10 languages**, ~340 keys per language ≈ 3.4k translated strings.
+
+- **Translation method**: bulk-translated EN dictionary via DeepSeek (`/app/scripts/translate_i18n.py` + `merge_translations.py`) in batches of 40 keys with strict rules ("preserve {variables}", "keep NXT8/Hermes/AI/ROI/KPI/MemPalace verbatim", "match length & professional tone"). For UPPERCASE nav labels we asked for short uppercase equivalents in target language (e.g. ja "送信", de "SENDEN").
+- **`translations.js`** grew from 800 lines to ~5100 lines, ~180 KB. Lint-clean.
+- **`SUPPORTED_LANGS`** extended to all 10 codes.
+- **`BurgerMenu` language switcher** lists all 10 with native names (English, Русский, Español, Français, Deutsch, Português, Italiano, 中文, 日本語, Türkçe).
+
+### Auto-detect by browser locale
+`LanguageContext.detectLang()` now:
+1. honours stored override from `localStorage.nxt8.lang` (set when user manually picks a language);
+2. otherwise walks `navigator.languages` (or `navigator.language`), takes BCP-47 → 2-letter code, returns the first match in `SUPPORTED_LANGS`;
+3. falls back to `DEFAULT_LANG = "en"`.
+
+Verified end-to-end via Playwright with `navigator.language` mocked to `es-ES, fr-FR, de-DE, ja-JP, zh-CN, tr-TR, it-IT, pt-BR`. Every locale rendered the full home view, chat welcome message, Send button, and cookie banner in the correct language without manual switching.
+
+### Cookie banner
+- **`components/CookieBanner.jsx`** — thin bottom plaque, non-blocking, two buttons: "Necessary only" / "Accept". Saves consent under `localStorage.nxt8.cookie-consent` with timestamp; never re-appears for that visitor. Forward-compatible — once you add analytics later, the `analytics` flag in stored consent is already there.
+- **`components/views/LegalViews.jsx`** — standalone `/privacy` and `/terms` pages (no app shell). 5 privacy paragraphs + 4 ToS paragraphs, all `t()`-keyed for the 10 languages. Reference: GDPR, UK DPA, 152-ФЗ, mention Stripe / OpenAI / DeepSeek processors, privacy@nxt8.pro contact.
+- New translation keys: `cookies.{body,policy_link,accept,necessary}`, `legal.{back,last_updated}`, `legal.privacy.{title,p1..p5}`, `legal.terms.{title,p1..p4}` — translated to all 10 languages via DeepSeek (`/app/scripts/add_cookies_legal_keys.py`).
+- **App.js routing**: added `isPrivacyPage = startsWith("/privacy")`, `isTermsPage = startsWith("/terms")`, all rendered standalone (no header/sidenav).
+
+### Voice
+Voice already receives `language: lang` in `voiceConverseStream` / `hermesChat` calls. Whisper STT auto-handles all 10 added languages; OpenAI TTS voice ("alloy") speaks the response in the same language. No code change required — existing pipeline picks up the new `lang` value automatically.
+
+### Verified (Playwright, 7 of 8 new languages)
+For each locale, fresh browser context with localStorage cleared and `navigator.language` mocked to its BCP-47 code:
+
+| Locale | Chat opener | Send button | Cookie banner |
+|---|---|---|---|
+| ja | こんにちは！私はHermes — NXT8のメインコーディネーターです | 送信 | アプリの動作維持に必要な機能ストレージ… |
+| zh | 您好！我是 Hermes — NXT8 主协调员 | 发送 | 我们使用功能性存储来维持应用运行… |
+| de | Hallo! Ich bin Hermes — der Hauptkoordinator von NXT8 | SENDEN | Wir verwenden funktionale Speicherung… |
+| tr | Merhaba! Ben Hermes — ana NXT8 koordinatörü | GÖNDER | Uygulamanın çalışmasını sağlamak… |
+| fr | Bonjour ! Je suis Hermes — le coordinateur principal de NXT8 | ENVOYER | Nous utilisons un stockage fonctionnel… |
+| it | Ciao! Sono Hermes — il coordinatore principale di NXT8 | INVIA | Utilizziamo storage funzionale… |
+| pt | Olá! Sou Hermes — o coordenador principal do NXT8 | ENVIAR | Usamos armazenamento funcional… |
+
+ES separately verified with full home-page screenshot ("Sistema de IA operativa para la empresa moderna" + chat opener + cookie banner in Spanish).
+
+### Notes
+- Translations stored in `/tmp/translations_batch.json` (one-off, can be deleted).
+- Helper scripts kept under `/app/scripts/` for re-runs when new keys are added.
+- Arabic and Hindi intentionally skipped — RTL/Devanagari work is its own project.
+

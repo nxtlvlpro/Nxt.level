@@ -14,6 +14,8 @@ import OpsView from "./components/views/OpsView";
 import GraphView from "./components/views/GraphView";
 import HermesOSView from "./components/views/HermesOSView";
 import PaymentReturnView from "./components/views/PaymentReturnView";
+import { PrivacyView, TermsView } from "./components/views/LegalViews";
+import CookieBanner from "./components/CookieBanner";
 import api from "./lib/api";
 import { useT } from "./i18n/LanguageContext";
 import { HEADER_LOCKED } from "./config/header.locked";
@@ -25,6 +27,9 @@ function App() {
   const pathname =
     typeof window !== "undefined" ? window.location.pathname : "/";
   const isPaymentReturn = pathname.startsWith("/payment/return");
+  const isPrivacyPage = pathname.startsWith("/privacy");
+  const isTermsPage = pathname.startsWith("/terms");
+  const isStandalonePage = isPaymentReturn || isPrivacyPage || isTermsPage;
 
   const [view, setView] = useState("home");
   const [alertCount, setAlertCount] = useState(0);
@@ -87,12 +92,18 @@ function App() {
       className="App led-matrix h-screen flex flex-col relative overflow-hidden"
       data-testid="app-root"
     >
-      {isPaymentReturn ? (
-        <PaymentReturnView />
+      {isStandalonePage ? (
+        isPaymentReturn ? (
+          <PaymentReturnView />
+        ) : isPrivacyPage ? (
+          <PrivacyView />
+        ) : (
+          <TermsView />
+        )
       ) : (
         <></>
       )}
-      {isPaymentReturn ? null : (
+      {isStandalonePage ? null : (
         <>
       <div className="fixed inset-0 led-matrix pointer-events-none -z-10"></div>
 
@@ -146,6 +157,7 @@ function App() {
       >
         <BottomNav active={view} onChange={setView} alertCount={alertCount} />
       </div>
+      <CookieBanner />
         </>
       )}
     </div>
