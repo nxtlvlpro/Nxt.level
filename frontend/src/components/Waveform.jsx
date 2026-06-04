@@ -28,8 +28,11 @@ export default function Waveform({
   const dataRef = useRef(new Uint8Array(FFT_SIZE / 2));
 
   // Lazy create / resume the shared AudioContext.
+  // Recovers from StrictMode cleanup (which closes the previous context)
+  // by detecting the "closed" state and minting a fresh one.
   const ensureCtx = () => {
-    if (!ctxRef.current) {
+    const existing = ctxRef.current;
+    if (!existing || existing.state === "closed") {
       const AC = window.AudioContext || window.webkitAudioContext;
       ctxRef.current = new AC();
     }
@@ -118,7 +121,9 @@ export default function Waveform({
     };
   }, [height]);
 
-  // Close the AudioContext on unmount to free resources.
+  // Close the AudioContext on unmount to free resources. Also null the
+  // ref so a re-mount (e.g. React 18 StrictMode double-invoke) doesn't
+  // accidentally reuse the now-closed context.
   useEffect(
     () => () => {
       try {
@@ -126,6 +131,7 @@ export default function Waveform({
       } catch {
         /* ignore */
       }
+      ctxRef.current = null;
     },
     []
   );
