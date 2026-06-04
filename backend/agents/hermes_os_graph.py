@@ -43,6 +43,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from core.deepseek import get_deepseek
 from core.db import get_db
+from core import hermes_memory as hmem
 from agents.agent_charter import CHARTER
 
 logger = logging.getLogger("nxt8.hermes_os")
@@ -200,82 +201,31 @@ async def observation_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def context_assembly_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Pull related context from the operational memory layer (Mongo).
-
-    Phase 1 implementation reads from a small set of well-known
-    collections (client_profiles, tasks, requests). Knowledge graph
-    enrichment lands in Phase 2.
+    """Pull related context from all 4 memory layers in parallel:
+    Short-Term (in-process LRU), Operational (Mongo facade), Knowledge
+    Graph (entity neighbours), Institutional (lessons learned).
     """
-    _trace(state, "context_assembly", "building working context")
+    _trace(state, "context_assembly", "building 4-layer working context")
     state["status"]["stage"] = "context_assembly"
 
-    db = get_db()
-    obs = state["observation"]
-    entities = obs.get("entities") or []
-    user_id = state["event"].get("user_id")
-    company_id = state["event"].get("company_id")
-
-    bundle: Dict[str, Any] = {
-        "related_clients":  [],
-        "related_tasks":    [],
-        "recent_requests":  [],
-        "kg_neighbors":     [],
+    bundle = await hmem.assemble_context(
+        event=state["event"],
+        observation=state["observation"],
+        ops_limit=5,
+        kg_limit=15,
+        inst_limit=5,
+    )
+    state["context"] = bundle
+    totals = bundle.get("totals", {})
+    state["routing"] = {
+        "current": "context_assembly",
+        "next":    "constitution_validation",
+        "reason":  (f"stm={totals.get('stm_cycles',0)} "
+                    f"ops={totals.get('ops_records',0)} "
+                    f"kg={totals.get('kg_edges',0)} "
+                    f"inst={totals.get('inst_lessons',0)}"),
     }
-
-    # Best-effort lookups; never raise into the cycle.
-    try:
-        if user_id:
-            bundle["related_clients"] = await db.client_profiles.find(
-                {"$or": [{"user_id": user_id}, {"telegram": user_id}, {"phone": user_id}]}
-            ).limit(3).to_list(length=3)
-        if company_id:
-            bundle["related_tasks"] = await db.tasks.find(
-                {"company_id": company_id, "status": {"$ne": "done"}}
-            ).sort("created_at", -1).limit(5).to_list(length=5)
-        # Knowledge-graph neighbours by entity value
-        if entities:
-            values = [e.get("value") for e in entities if e.get("value")]
-            if values:
-                bundle["kg_neighbors"] = await db.knowledge_graph.find(
-                    {"$or": [{"source": {"$in": values}}, {"target": {"$in": values}}]}
-                ).limit(10).to_list(length=10)
-        # Recent requests for this session
-        sid = state["event"].get("payload", {}).get("session_id") or user_id
-        if sid:
-            bundle["recent_requests"] = await db.requests.find(
-                {"session_id": sid}
-            ).sort("created_at", -1).limit(3).to_list(length=3)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("context_assembly lookups failed: %s", e)
-
-    # Normalise ObjectIds for JSON-friendliness in the saved state.
-    for k, v in bundle.items():
-        bundle[k] = _scrub_mongo(v)
-
-    state["context"] = {
-        **bundle,
-        "assembled_at": _now(),
-    }
-    state["routing"] = {"current": "context_assembly", "next": "constitution_validation",
-                        "reason": f"{sum(len(v) for v in bundle.values())} related records found"}
     return state
-
-
-def _scrub_mongo(value: Any) -> Any:
-    """Recursively convert Mongo ObjectIds / datetimes to strings for JSON."""
-    if isinstance(value, list):
-        return [_scrub_mongo(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _scrub_mongo(v) for k, v in value.items()}
-    if isinstance(value, datetime):
-        return value.isoformat()
-    try:
-        from bson import ObjectId  # type: ignore
-        if isinstance(value, ObjectId):
-            return str(value)
-    except ImportError:
-        pass
-    return value
 
 
 # =====================================================================
@@ -574,32 +524,54 @@ async def learning_node(state: Dict[str, Any]) -> Dict[str, Any]:
     lessons = list(out.get("lessons") or [])
     kg_edges = list(out.get("kg_edges") or [])
 
-    # Persist lessons + KG edges (best-effort).
-    try:
-        db = get_db()
-        if lessons:
-            await db.institutional_memory.insert_many([{
-                "cycle_id":   state["cycle_id"],
-                "text":       l.get("text", ""),
-                "tags":       list(l.get("tags") or []),
-                "scope":      l.get("scope", "process"),
-                "created_at": _now(),
-            } for l in lessons if l.get("text")])
-        if kg_edges:
-            await db.knowledge_graph.insert_many([{
-                "cycle_id":   state["cycle_id"],
-                "source":     e.get("source", ""),
-                "target":     e.get("target", ""),
-                "relation":   e.get("relation", "related"),
-                "created_at": _now(),
-            } for e in kg_edges if e.get("source") and e.get("target")])
-    except Exception as e:  # noqa: BLE001
-        logger.warning("learning persistence failed: %s", e)
+    # Deterministic fallback: even if the LLM proposes no edges, the
+    # observed entities ARE knowledge worth recording. Wire each entity
+    # to the company_id / user_id with a `mentioned_in_event` relation.
+    company_id = state["event"].get("company_id")
+    user_id    = state["event"].get("user_id")
+    event_kind = state["event"].get("kind") or "event"
+    for ent in (state["observation"].get("entities") or [])[:8]:
+        value = (ent.get("value") or "").strip()
+        if not value:
+            continue
+        if company_id:
+            kg_edges.append({"source": company_id, "target": value,
+                             "relation": f"observed:{event_kind}"})
+        if user_id and value != user_id:
+            kg_edges.append({"source": user_id, "target": value,
+                             "relation": f"mentioned:{event_kind}"})
+
+    # Persist lessons + KG edges via the memory facade (best-effort).
+    saved_inst = 0
+    saved_kg = 0
+    for lesson in lessons:
+        text = (lesson.get("text") or "").strip()
+        if not text:
+            continue
+        rid = await hmem.inst_record(
+            text,
+            tags=list(lesson.get("tags") or []),
+            scope=lesson.get("scope", "process"),
+            cycle_id=state["cycle_id"],
+        )
+        if rid:
+            saved_inst += 1
+    for e in kg_edges:
+        src = (e.get("source") or "").strip()
+        tgt = (e.get("target") or "").strip()
+        if not (src and tgt):
+            continue
+        eid = await hmem.kg_add_edge(src, tgt, e.get("relation") or "related",
+                                     cycle_id=state["cycle_id"])
+        if eid:
+            saved_kg += 1
 
     state["learning"] = {
         "lessons":     lessons,
         "kg_edges":    kg_edges,
-        "saved_count": len(lessons) + len(kg_edges),
+        "saved_inst":  saved_inst,
+        "saved_kg":    saved_kg,
+        "saved_count": saved_inst + saved_kg,
         "learned_at":  _now(),
     }
     state["routing"] = {"current": "learning", "next": "improvement",
@@ -812,6 +784,19 @@ async def run_os_cycle(
 
     state["finished_at"] = _now()
     state["hops"] = hops
+
+    # Cache a compact summary into Short-Term Memory so the NEXT cycle for
+    # the same user/company can see what just happened in O(1).
+    try:
+        hmem.stm_remember_cycle(
+            cycle_id=state["cycle_id"],
+            user_id=state["event"].get("user_id"),
+            company_id=state["event"].get("company_id"),
+            event_kind=state["event"].get("kind", "generic"),
+            summary=state.get("observation", {}).get("summary", ""),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("stm_remember_cycle failed: %s", e)
 
     if persist:
         try:

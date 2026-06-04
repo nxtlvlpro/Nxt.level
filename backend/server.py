@@ -1488,6 +1488,74 @@ async def hermes_os_nodes() -> Dict[str, Any]:
     return {"nodes": _os.list_node_order()}
 
 
+# ---------- Hermes 4-layer memory inspection ----------
+
+@api.get("/hermes/memory/stats")
+async def hermes_memory_stats() -> Dict[str, Any]:
+    """Lightweight counters across all 4 memory layers."""
+    from core import hermes_memory as _hm
+    db = get_db()
+    try:
+        kg_count = await db.knowledge_graph.estimated_document_count()
+    except Exception:  # noqa: BLE001
+        kg_count = 0
+    try:
+        inst_count = await db.institutional_memory.estimated_document_count()
+    except Exception:  # noqa: BLE001
+        inst_count = 0
+    try:
+        cycles_count = await db.hermes_os_cycles.estimated_document_count()
+    except Exception:  # noqa: BLE001
+        cycles_count = 0
+    return {
+        "short_term":      _hm.stm_stats(),
+        "operational":     {"cycles_persisted": cycles_count},
+        "knowledge_graph": {"edges_total": kg_count},
+        "institutional":   {"lessons_total": inst_count},
+    }
+
+
+@api.get("/hermes/memory/short-term")
+async def hermes_memory_short_term(user_id: Optional[str] = None,
+                                    company_id: Optional[str] = None) -> Dict[str, Any]:
+    """Return cached recent cycle summaries for a user/company."""
+    from core import hermes_memory as _hm
+    return {
+        "recent_cycles": _hm.stm_recent_cycles(user_id=user_id, company_id=company_id),
+        "stats": _hm.stm_stats(),
+    }
+
+
+@api.get("/hermes/memory/knowledge-graph")
+async def hermes_memory_kg(entity: Optional[str] = None,
+                            limit: int = 25) -> Dict[str, Any]:
+    """One-hop walk of the company knowledge graph from a given entity.
+    When `entity` is omitted, returns the most recent edges."""
+    from core import hermes_memory as _hm
+    if entity:
+        edges = await _hm.kg_neighbors([entity], limit=limit)
+    else:
+        db = get_db()
+        try:
+            edges = await db.knowledge_graph.find({}, {"_id": 0}) \
+                .sort("created_at", -1).limit(max(1, min(int(limit), 200))) \
+                .to_list(length=limit)
+        except Exception:  # noqa: BLE001
+            edges = []
+    return {"count": len(edges), "edges": edges}
+
+
+@api.get("/hermes/memory/institutional")
+async def hermes_memory_institutional(scope: Optional[str] = None,
+                                       tag: Optional[str] = None,
+                                       limit: int = 25) -> Dict[str, Any]:
+    """List recent institutional lessons, optionally filtered by scope/tag."""
+    from core import hermes_memory as _hm
+    tags = [tag] if tag else None
+    lessons = await _hm.inst_recall(tags=tags, scope=scope, limit=limit)
+    return {"count": len(lessons), "lessons": lessons}
+
+
 # =====================================================================
 # Channel adapters (Wingman-inspired ingress)
 # =====================================================================

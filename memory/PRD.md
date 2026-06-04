@@ -411,3 +411,36 @@ End-to-end curl run on a real LLM cycle:
 - **Phase 3** — wire automatic triggers from channel webhook / document upload / task creation hooks into `run_os_cycle`.
 - **Phase 4** — `HermesOSView.jsx` frontend: 10-node graph visualisation, cycle stream, KG explorer.
 - Plus the earlier P0/P1 backlog (Data Access Guard, Real Approval Gate, SSE for GraphView, real Stripe checkout, Agent Passport UI).
+
+---
+
+## v1.16.1 — Hermes Operating Architecture (Phase 2: 4-layer memory, 2026-02-06)
+
+### What ships in Phase 2
+- **`backend/core/hermes_memory.py`** — new module exposing all 4 layers behind a tiny, async-friendly façade:
+  - **Layer 1 — Short-Term Memory (STM):** in-process `_LRUCache` (1024 items, 1h default TTL). `stm_remember_cycle()` is called at the end of every OS cycle and caches `(cycle_id, event_kind, summary, ts)` under both `recent_cycles:user:<id>` and `recent_cycles:company:<id>` keys (top 5 / top 10 buckets).
+  - **Layer 2 — Operational Memory (OPS):** `ops_lookup(user_id, company_id, session_id)` reads `client_profiles`, `tasks` (`status != done`), `roi_history` and `requests` in parallel (`asyncio.gather`) with per-section best-effort error trapping. ObjectIds / datetimes scrubbed for JSON.
+  - **Layer 3 — Knowledge Graph (KG):** `kg_neighbors(entities)` returns one-hop edges; `kg_add_edge(src, tgt, relation)` is **idempotent** via `update_one(..., upsert=True)` on the `(source, target, relation)` triple — repeated cycles never bloat the graph.
+  - **Layer 4 — Institutional Memory (INST):** `inst_recall(tags, scope)` + `inst_record(text, tags, scope)` over `db.institutional_memory`.
+  - **`assemble_context(event, observation)`** runs OPS + KG + INST in parallel + reads STM synchronously → returns a single normalised bundle with `totals` block.
+- **`agents/hermes_os_graph.py` updates:**
+  - `context_assembly_node` now calls `hmem.assemble_context()`. Its `routing.reason` exposes the layer counters (`stm=… ops=… kg=… inst=…`) — great for the future UI.
+  - `learning_node` writes lessons via `hmem.inst_record()` and edges via `hmem.kg_add_edge()`. Also: **deterministic KG fallback** — even when the LLM returns empty `kg_edges`, every observed entity is wired to `company_id` (`observed:<event_kind>`) and `user_id` (`mentioned:<event_kind>`). The KG always grows on every cycle as long as Observation found at least one entity.
+  - `run_os_cycle` final block calls `stm_remember_cycle()` so the next cycle for the same user/company sees the previous one in STM with zero Mongo hops.
+- **New endpoints (read-only inspection):**
+  - `GET /api/hermes/memory/stats` — counters across all 4 layers.
+  - `GET /api/hermes/memory/short-term?user_id=&company_id=` — cached recent cycle summaries.
+  - `GET /api/hermes/memory/knowledge-graph?entity=&limit=` — one-hop neighbours (or most-recent edges if no entity given).
+  - `GET /api/hermes/memory/institutional?scope=&tag=&limit=` — lessons-learned feed.
+
+### Verified
+- Ran 3 sequential cycles for the same `user_id=client_leroy / company_id=nxt8_demo_corp`.
+- Cycle 3 Context Assembly reported `stm=1 kg=10 inst=0 ops=0` — STM correctly surfaced Cycle 2's summary; KG returned Cycle 2's deterministic edges (`client_leroy → bundled_offer "requested"`, `nxt8_demo_corp → client_leroy "observed:new_client_message"`, …); OPS empty because the test user has no real client_profile / tasks rows yet (façade returns empty slice — graceful degradation working).
+- `GET /api/hermes/memory/stats`: `stm.items=2`, `kg.edges_total=16`, `inst.lessons_total=2`, `ops.cycles_persisted=5`.
+- `GET /api/hermes/memory/institutional` returned two real DeepSeek-extracted lessons with tags (`financial_guardrails`, `upsell`, `client_leroy`) and a Russian-business-context narrative — proof of end-to-end lesson capture.
+
+### Pending next phases
+- **Phase 3 (P0):** wire auto-triggers from `/api/channels/webhook/{channel_id}`, document upload, task creation hooks into `run_os_cycle`.
+- **Phase 4 (P1):** `HermesOSView.jsx` — graph viz, cycle stream, KG explorer (consume the new `/memory/*` endpoints).
+- Plus the earlier P0/P1 backlog (Data Access Guard, Real Approval Gate, SSE for GraphView, real Stripe checkout, Agent Passport UI).
+
