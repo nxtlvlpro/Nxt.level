@@ -1292,9 +1292,17 @@ class OnboardingProfileRequest(BaseModel):
     id: Optional[str] = None
     industry: str
     team_size: str
+    # ── v2 (9-question) fields ──
+    management_structure: str = ""
+    communication_channels: List[str] = []
+    process_system: str = ""
+    knowledge_storage: str = ""
+    pain_points: List[str] = []
+    email: str = ""
+    # ── legacy mirrors kept so older clients keep working ──
     has_sales_team: bool = False
     has_marketer: bool = False
-    pain_primary: str
+    pain_primary: str = ""
     pain_secondary: str = ""
     tools_current: List[str] = []
     crm_name: str = ""

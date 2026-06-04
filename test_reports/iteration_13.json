@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 13 — onboarding reworked to 9-Q carousel + 5-block Hermes reply. Backend: 16/16 pytest tests pass (funnel, insight static + LLM RU fallback, verify-code 888/123/ab, profile save with/without code, missing/empty industry → 400/422, brief+hermes_reply with all 6 keys including block4_potential + block5_cta, profile persists with brief, 404, CTA-by-urgency for warm+cold via brief endpoint, new 9-Q schema acceptance with management_structure / communication_channels / process_system / knowledge_storage / pain_points / email persisting to Mongo). Frontend: 23/23 Playwright checks pass — home 'Test NXT8' CTA visible & opens onboarding-modal → onb-intro → onb-intro-start; progress label '1 / 10' + '10%'; block tag 'BLOCK 1 · ABOUT YOUR BUSINESS' present; all 9 questions answered (industry, team_size, management_structure, communication_channels multi, process_system, knowledge_storage, pain_points multi max=3, goal_90days, urgency=hot); insight banner appears after each single-select; multi-select hint shows '0/3' → '3/3' after 4 clicks (oldest evicted as designed); contact step (name + phone + telegram + email) submit disabled before name+phone/telegram, enabled after; processing screen renders onb-processing + onb-processing-step-0..3; final onb-reply renders all 5 blocks (onb-reply-block1..5), 3 team cards (onb-team-card-0..2), onb-reply-cta text matches HOT urgency = 'Start working with Hermes'. HermesChat user_id wiring (M1+M5) verified by code review at HomeView.jsx lines 539/548/754/1008/1108 — getOrCreateUserId() reads/writes localStorage key 'nxt8.user_id' and passes user_id into every /api/hermes/chat call.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/onboarding/profiles", "issue": "Missing required field (pydantic) returns 422; empty industry='' returns 400 via business validator. Both behaviours accepted by test; minor spec inconsistency, not a blocker."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Onboarding question screen (mid-flow)", "issues": ["Cookie consent banner sits at bottom over the modal area and can overlap the 'next' button on shorter viewports. Test had to dismiss it first via 'Accept'. Consider auto-dismissing the consent or raising modal z-index above the banner."]},
+      {"screen": "Onboarding insights — process_system / knowledge_storage", "issues": ["For values 'sheets' and 'gdrive' the LLM insight came back about Telegram and 'Spreadsheets as makeshift ERPs' — not entirely topical to the chosen answer. Static insights for those two QIDs would be more on-message. Not a blocker, more of a content polish."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_onboarding.py",
+    "/app/test_reports/pytest/iter13_onboarding.xml"
+  ],
+  "action_items": [
+    "(Optional polish) Add static INSIGHTS entries in agents/onboarding.py for process_system and knowledge_storage so the Hermes line is topical instead of an LLM tangent.",
+    "(Optional UX) Auto-dismiss cookie consent once the user opens the onboarding modal — currently the banner overlaps the bottom of the modal on shorter viewports."
+  ],
+  "critical_code_review_comments": [
+    "OnboardingFlow.jsx wires all required testids cleanly: home-test-cta-button, onboarding-modal, onb-intro, onb-intro-start, onb-progress-label/pct, onb-block-tag, onb-question-title, onb-opt-{qid}-{value}, onb-insight, onb-multi-hint, onb-next/back/submit, onb-contact + onb-input-*, onb-processing + onb-processing-step-0..3, onb-reply + onb-reply-block1..5, onb-team-card-*, onb-reply-cta. All previous gaps from iteration_12 are now closed.",
+    "agents/onboarding.py save_profile keeps backward-compat with pain_primary/pain_secondary/tools_current (derived from pain_points + communication_channels). Good migration strategy — old profiles still load, new schema is canonical.",
+    "URGENCY_CTAS now matches the new spec: hot → 'Начать работу с Hermes' / 'Start working with Hermes'; warm → 'Получить персональное демо' / 'Get a personalised demo'; cold → 'Следить за развитием NXT8' / 'Follow NXT8's progress'. Verified via parametrised brief tests."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_onboarding.py (extended for 5-block reply + new 9-Q schema + warm/cold urgency parametrisation)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "none (pilot has no auth; access_code 888 used for test_access funnel)",
+  "seed_data_creation": "Multiple TEST_-prefixed client_profiles created via backend tests (TEST_Alex, TEST_NoCodeUser, TEST_BriefUser, TEST_Urg_warm, TEST_Urg_cold, TEST_NewSchema) plus one TEST_E2E_Alex via UI run. Access-code 888 used_count incremented by ~1 per code-bearing test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend onboarding APIs are stable — rerun /app/backend/tests/test_onboarding.py for regression (16 tests, ~20s). Frontend OnboardingFlow opens via home-test-cta-button → onb-intro → onb-intro-start. Cookie consent banner sits at bottom; dismiss with 'Accept' before testing question 3+ on viewports <900px tall. Actual onboarding values differ from the agent_to_agent context note: management_structure uses (owner_only|few_leads|full_team), process_system uses (head|chats|sheets|notion|trello|asana|crm|other), knowledge_storage uses (employees|gdrive|notion|dropbox|local|other), pain_points multi (leads_lost|low_sales|chaos|owner_overloaded|no_visibility|manual_work|no_numbers|cant_scale|weak_finance_control|documents_overhead). Multi-select cap=3 evicts the oldest pick (FIFO), verified visually.",
+  "rca of the issue": "No outstanding issues — both action items above are minor polish, not bugs. The implementation matches the ТЗ and all testid contracts. Previous iteration_12 gaps (missing onb-submit / onb-processing-step-* / onb-reply* testids) are fully resolved."
+}

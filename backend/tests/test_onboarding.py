@@ -88,12 +88,21 @@ def _profile_payload(**overrides):
     base = {
         "industry": "ecommerce",
         "team_size": "2-5",
+        "management_structure": "flat",
+        "communication_channels": ["whatsapp", "telegram"],
+        "process_system": "spreadsheets",
+        "knowledge_storage": "google_drive",
+        "pain_points": ["leads_lost", "chaos", "no_followups"],
+        # back-compat fields (still used by some tests / older saved profiles)
         "pain_primary": "leads_lost",
         "pain_secondary": "chaos",
         "tools_current": ["whatsapp", "crm"],
         "goal_90days": "grow_sales",
         "urgency": "hot",
         "name": "TEST_Alex",
+        "phone": "+10000000001",
+        "telegram": "@test_alex",
+        "email": "test_alex@example.com",
         "lang": "ru",
         "selected_plan": "simple",
     }
@@ -176,10 +185,15 @@ def test_brief_and_hermes_reply_ru():
     assert brief.get("lang") == "ru"
 
     for k in ("intro", "block1_understood", "block2_team",
-              "block3_in_30_days", "block4_cta"):
+              "block3_in_30_days", "block4_potential", "block5_cta"):
         assert k in reply, f"missing {k} in hermes_reply"
     assert isinstance(reply["block2_team"], list) and reply["block2_team"]
     assert isinstance(reply["block3_in_30_days"], list)
+    assert isinstance(reply["block4_potential"], str) and reply["block4_potential"]
+    assert isinstance(reply["block5_cta"], str) and reply["block5_cta"]
+    # cta label by urgency=hot (RU)
+    cta_label = (brief.get("cta") or {}).get("label") or ""
+    assert "Hermes" in cta_label or "Hermes" in (reply["block5_cta"] or "")
     # Russian content check
     assert CYRILLIC_RE.search(reply["intro"]) or CYRILLIC_RE.search(reply["block1_understood"]), \
         f"expected Russian text; intro={reply['intro']!r}"
@@ -200,3 +214,59 @@ def test_get_profile_not_found():
     r = requests.get(f"{API}/onboarding/profiles/nonexistent-id-xyz",
                      timeout=15)
     assert r.status_code == 404
+
+
+# --- URGENCY CTA mapping (warm + cold) ---
+@pytest.mark.parametrize("urgency,expected_ru_substring", [
+    ("warm", "демо"),
+    ("cold", "Следить"),
+])
+def test_brief_cta_by_urgency(urgency, expected_ru_substring):
+    payload = _profile_payload(name=f"TEST_Urg_{urgency}", urgency=urgency)
+    r = requests.post(f"{API}/onboarding/profiles", json=payload,
+                      headers=HEADERS, timeout=30)
+    assert r.status_code == 200, r.text
+    pid = r.json()["profile_id"]
+    rb = requests.post(f"{API}/onboarding/brief/{pid}", timeout=60)
+    assert rb.status_code == 200, rb.text
+    data = rb.json()
+    cta = (data.get("brief") or {}).get("cta") or {}
+    label = cta.get("label") or ""
+    assert expected_ru_substring.lower() in label.lower(), (
+        f"urgency={urgency} expected '{expected_ru_substring}' in cta.label, got {label!r}"
+    )
+
+
+# --- New 9-Q schema acceptance ---
+def test_profile_save_with_new_9q_schema():
+    payload = _profile_payload(
+        name="TEST_NewSchema",
+        management_structure="hierarchical",
+        communication_channels=["telegram", "email", "slack"],
+        process_system="notion",
+        knowledge_storage="onedrive",
+        pain_points=["leads_lost", "chaos", "no_followups"],
+        email="schema_test@example.com",
+        phone="+10000000002",
+        telegram="@schema_test",
+    )
+    # drop legacy back-compat fields to ensure new schema alone works
+    payload.pop("pain_primary", None)
+    payload.pop("pain_secondary", None)
+    payload.pop("tools_current", None)
+    r = requests.post(f"{API}/onboarding/profiles", json=payload,
+                      headers=HEADERS, timeout=30)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data.get("ok") is True
+    pid = data["profile_id"]
+    # GET to verify persistence
+    g = requests.get(f"{API}/onboarding/profiles/{pid}", timeout=20)
+    assert g.status_code == 200, g.text
+    doc = g.json()
+    assert doc.get("pain_points") == ["leads_lost", "chaos", "no_followups"]
+    assert doc.get("communication_channels") == ["telegram", "email", "slack"]
+    assert doc.get("management_structure") == "hierarchical"
+    assert doc.get("process_system") == "notion"
+    assert doc.get("knowledge_storage") == "onedrive"
+    assert doc.get("email") == "schema_test@example.com"
