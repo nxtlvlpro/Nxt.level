@@ -9,6 +9,11 @@ import {
   Loader2,
   Square,
   Volume2,
+  Paperclip,
+  X,
+  FileText,
+  Image as ImageIcon,
+  AlertTriangle,
 } from "lucide-react";
 import api from "../../lib/api";
 import { useT } from "../../i18n/LanguageContext";
@@ -825,6 +830,83 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
   );
 }
 
+function formatBytes(bytes) {
+  if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ChipIcon({ kind, status }) {
+  if (status === "uploading") return <Loader2 className="w-3 h-3 animate-spin text-brand-turquoise" />;
+  if (status === "error") return <AlertTriangle className="w-3 h-3 text-red-400" />;
+  if (kind === "image") return <ImageIcon className="w-3 h-3 text-brand-turquoise" />;
+  return <FileText className="w-3 h-3 text-brand-turquoise" />;
+}
+
+// Chip rendered above the textarea while user is composing.
+function ComposerChip({ att, onRemove }) {
+  const errored = att.status === "error";
+  return (
+    <div
+      className={`group inline-flex items-center gap-2 pl-2 pr-1 py-1 rounded-full text-[11px] border ${
+        errored
+          ? "border-red-500/30 bg-red-500/5 text-red-300"
+          : "border-brand-turquoise/30 bg-brand-turquoise/5 text-slate-200"
+      }`}
+      data-testid="home-chat-composer-chip"
+      title={att.name}
+    >
+      <ChipIcon kind={att.kind} status={att.status} />
+      <span className="max-w-[160px] truncate">{att.name}</span>
+      <span className="text-slate-500">{formatBytes(att.size)}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="ml-0.5 w-5 h-5 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-slate-200"
+        aria-label="remove"
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+// Chip rendered inside a chat bubble after the message is sent.
+function BubbleAttachmentChip({ att }) {
+  const isImage = att.kind === "image" && att.id;
+  if (isImage) {
+    const src = api.attachmentRawUrl(att.id);
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block max-w-[180px] rounded-lg overflow-hidden border border-white/10 hover:border-brand-turquoise/50"
+        title={att.name}
+      >
+        <img
+          src={src}
+          alt={att.name}
+          className="block w-full h-auto max-h-[140px] object-cover"
+          loading="lazy"
+        />
+      </a>
+    );
+  }
+  return (
+    <div
+      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[11px]"
+      title={att.name}
+    >
+      <FileText className="w-3 h-3 text-brand-turquoise" />
+      <span className="max-w-[160px] truncate">{att.name}</span>
+      {att.size ? (
+        <span className="text-slate-500">{formatBytes(att.size)}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function HermesChat({ t, lang }) {
   const [mode, setMode] = useState("text");
   const [input, setInput] = useState("");
@@ -843,8 +925,64 @@ function HermesChat({ t, lang }) {
   // Voice synthesis phase — "synthesizing" between assistant text arrival and
   // the first TTS audio chunk; cleared when audio starts/ends.
   const [voicePhase, setVoicePhase] = useState("idle");
+  // Attachments: array of { local_id, file, name, kind, size, status:"uploading"|"ready"|"error", record? }
+  const [attachments, setAttachments] = useState([]);
+  const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
   const cancelledRef = useRef(false);
+
+  const guessKind = (file) => {
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    if (["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) return "image";
+    if (["pdf", "docx", "txt", "md"].includes(ext)) return "document";
+    if (file.type?.startsWith("image/")) return "image";
+    return "other";
+  };
+
+  const onPickFiles = (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = ""; // allow re-picking same file
+    if (picked.length === 0) return;
+    picked.forEach((file) => {
+      const localId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      setAttachments((prev) => [
+        ...prev,
+        {
+          local_id: localId,
+          name: file.name,
+          size: file.size,
+          kind: guessKind(file),
+          status: "uploading",
+        },
+      ]);
+      api
+        .attachmentUpload(file, {
+          company_id: "default",
+          user_id: "home_visitor",
+          session_id: sessionId,
+        })
+        .then((rec) => {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.local_id === localId
+                ? { ...a, status: "ready", record: rec, kind: rec.kind || a.kind }
+                : a
+            )
+          );
+        })
+        .catch(() => {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.local_id === localId ? { ...a, status: "error" } : a
+            )
+          );
+        });
+    });
+  };
+
+  const removeAttachment = (localId) => {
+    setAttachments((prev) => prev.filter((a) => a.local_id !== localId));
+  };
 
   // Re-translate the welcome message when language flips — ONLY if the user
   // hasn't started a conversation yet.
@@ -882,10 +1020,27 @@ function HermesChat({ t, lang }) {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || sending) return;
-    const next = [...messages, { role: "user", content: text }];
+    const readyAttachments = attachments.filter((a) => a.status === "ready");
+    if ((!text && readyAttachments.length === 0) || sending) return;
+    // Build a user bubble that surfaces filenames when there's no typed text.
+    const userBubble = {
+      role: "user",
+      content: text || (readyAttachments.length > 0
+        ? `📎 ${readyAttachments.map((a) => a.name).join(", ")}`
+        : ""),
+      attachments: readyAttachments.map((a) => ({
+        id: a.record?.id,
+        name: a.name,
+        kind: a.kind,
+        size: a.size,
+        mime: a.record?.mime,
+      })),
+    };
+    const next = [...messages, userBubble];
     setMessages(next);
     setInput("");
+    // Clear the chips locally — they're already sent to backend.
+    setAttachments([]);
     setSending(true);
     setError("");
     const sysHint =
@@ -905,6 +1060,9 @@ function HermesChat({ t, lang }) {
         mode: "operational",
         temperature: 0.3,
         language: lang,
+        attachment_ids: readyAttachments
+          .map((a) => a.record?.id)
+          .filter(Boolean),
       });
       if (cancelledRef.current) return;
       const reply =
@@ -981,9 +1139,18 @@ function HermesChat({ t, lang }) {
                   m.role === "user" ? "bubble-user" : "bubble-ai"
                 }`}
               >
-                <div className="whitespace-pre-wrap break-words">
-                  {m.content}
-                </div>
+                {m.attachments && m.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {m.attachments.map((att, ai) => (
+                      <BubbleAttachmentChip key={att.id || ai} att={att} />
+                    ))}
+                  </div>
+                )}
+                {m.content && (
+                  <div className="whitespace-pre-wrap break-words">
+                    {m.content}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -1012,32 +1179,73 @@ function HermesChat({ t, lang }) {
 
         {/* Input footer — swaps between text composer and voice recorder. */}
         {mode === "text" ? (
-          <div className="flex items-end gap-2">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  send();
+          <div className="space-y-2">
+            {/* Attachment chips above the composer */}
+            {attachments.length > 0 && (
+              <div
+                className="flex flex-wrap gap-1.5"
+                data-testid="home-chat-attachment-chips"
+              >
+                {attachments.map((a) => (
+                  <ComposerChip
+                    key={a.local_id}
+                    att={a}
+                    onRemove={() => removeAttachment(a.local_id)}
+                  />
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.docx,.txt,.md,.csv,.xlsx"
+                onChange={onPickFiles}
+                className="hidden"
+                data-testid="home-chat-file-input"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending}
+                className="shrink-0 w-10 h-10 rounded-xl border border-white/10 bg-brand-dark/60 hover:border-brand-turquoise/50 text-slate-400 hover:text-brand-turquoise flex items-center justify-center transition-colors disabled:opacity-40"
+                aria-label={t("home.hermes.attach") || "Attach files"}
+                title={t("home.hermes.attach") || "Attach files"}
+                data-testid="home-chat-attach-btn"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                rows={1}
+                placeholder={t("home.hermes.placeholder")}
+                disabled={sending}
+                className="flex-1 bg-brand-dark/60 border border-white/10 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-brand-turquoise/50 resize-none disabled:opacity-50"
+                data-testid="home-chat-input"
+              />
+              <button
+                type="button"
+                onClick={send}
+                disabled={
+                  sending ||
+                  (!input.trim() &&
+                    attachments.filter((a) => a.status === "ready").length === 0)
                 }
-              }}
-              rows={1}
-              placeholder={t("home.hermes.placeholder")}
-              disabled={sending}
-              className="flex-1 bg-brand-dark/60 border border-white/10 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-brand-turquoise/50 resize-none disabled:opacity-50"
-              data-testid="home-chat-input"
-            />
-            <button
-              type="button"
-              onClick={send}
-              disabled={sending || !input.trim()}
-              className="neo-btn rounded-full px-4 py-2.5 text-brand-turquoise text-[11px] uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40"
-              data-testid="home-chat-send"
-            >
-              <Send className="w-3.5 h-3.5" />
-              {t("home.hermes.send")}
-            </button>
+                className="neo-btn rounded-full px-4 py-2.5 text-brand-turquoise text-[11px] uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40"
+                data-testid="home-chat-send"
+              >
+                <Send className="w-3.5 h-3.5" />
+                {t("home.hermes.send")}
+              </button>
+            </div>
           </div>
         ) : (
           <VoiceRecorder

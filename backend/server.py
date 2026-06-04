@@ -1248,6 +1248,7 @@ class HermesChatRequest(BaseModel):
     mode: str = "operational"
     temperature: float = 0.3
     model: Optional[str] = None
+    attachment_ids: List[str] = Field(default_factory=list)
 
 
 class HermesDigestRequest(BaseModel):
@@ -1781,8 +1782,24 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
     """Enhanced Hermes COO endpoint with tool-calling and multi-tenant context."""
     import time as _time
     t0 = _time.time()
+
+    # If the caller passed attachment_ids, hydrate them and inject a
+    # short system block describing each attachment so Hermes can refer
+    # to it in its reply.
+    messages = list(req.messages or [])
+    if req.attachment_ids:
+        from agents import attachments as _att
+        recs: List[Dict[str, Any]] = []
+        for aid in req.attachment_ids[:8]:
+            r = await _att.get_attachment(aid)
+            if r:
+                recs.append(r)
+        block = _att.build_hermes_context_block(recs)
+        if block:
+            messages = [{"role": "system", "content": block}] + messages
+
     result = await hermes_coo_agent.enhanced_chat(
-        messages=req.messages,
+        messages=messages,
         company_id=req.company_id,
         user_id=req.user_id,
         mode=req.mode,
@@ -2206,6 +2223,69 @@ async def documents_get(document_id: str) -> Dict[str, Any]:
     if not doc:
         raise HTTPException(status_code=404, detail="document not found")
     return doc
+
+
+# =====================================================================
+# Universal attachments (chat paperclip)
+# =====================================================================
+
+
+@api.post("/attachments/upload")
+async def attachments_upload(
+    file: UploadFile = File(...),
+    company_id: str = Form("default"),
+    user_id: str = Form("anonymous"),
+    session_id: Optional[str] = Form(None),
+) -> Dict[str, Any]:
+    """Ingest one file from the chat paperclip.
+
+    Returns a chip-friendly record: {id, kind, filename, summary, tags,
+    severity?, document_id?}. Documents are also pushed through the
+    Compliance pipeline; images get a Vision caption.
+    """
+    from agents import attachments as _att
+    raw = await file.read()
+    try:
+        rec = await _att.ingest_attachment(
+            filename=file.filename or "upload.bin",
+            content=raw,
+            company_id=company_id,
+            user_id=user_id,
+            session_id=session_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        logger.exception("attachment ingest failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"ingest_failed: {e}")
+    # Strip the on-disk path before returning — the UI doesn't need it.
+    rec.pop("path", None)
+    return rec
+
+
+@api.get("/attachments/{attachment_id}")
+async def attachments_get(attachment_id: str) -> Dict[str, Any]:
+    from agents import attachments as _att
+    rec = await _att.get_attachment(attachment_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="attachment not found")
+    rec.pop("path", None)
+    return rec
+
+
+@api.get("/attachments/{attachment_id}/raw")
+async def attachments_raw(attachment_id: str) -> Response:
+    """Serve the original bytes for previews (chip thumbnails)."""
+    from agents import attachments as _att
+    rec = await _att.get_attachment(attachment_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="attachment not found")
+    path = rec.get("path")
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="file missing on disk")
+    with open(path, "rb") as f:
+        return Response(content=f.read(),
+                        media_type=rec.get("mime", "application/octet-stream"))
 
 
 # =====================================================================

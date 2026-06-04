@@ -465,3 +465,42 @@ End-to-end curl `-N -s -X POST .../hermes/os/cycle/stream` on a real Russian cli
 - **Phase 4 (P1):** `HermesOSView.jsx` — frontend that consumes `/cycle/stream` and animates the 10-node graph live.
 - Plus the earlier P0/P1 backlog (Data Access Guard, Real Approval Gate, real Stripe, Agent Passport UI, SSE for legacy `GraphView`).
 
+
+---
+
+## v1.16.3 — Chat paperclip / universal attachments (2026-02-06)
+
+### What ships
+- **`backend/agents/attachments.py`** — universal ingest module.
+  - Classifies each upload by extension/mime into `document` | `image` | `table` | `other`.
+  - Documents (`.pdf/.docx/.txt/.md`) → delegate to existing `documents.ingest_document` (Compliance LLM, severity, findings, MemPalace).
+  - Images (`.png/.jpg/.jpeg/.webp/.gif`) → save to `/app/backend/uploads/attachments/` + call **OpenAI `gpt-4o-mini` Vision** via the existing `OPENAI_API_KEY` (1 short factual caption + 3–6 tags).
+  - Other files → saved as-is.
+  - Persists a single row per attachment in `db.attachments`.
+  - `build_hermes_context_block(records)` → short system-message block Hermes sees on the next turn so it can reference uploads naturally.
+- **Endpoints (server.py):**
+  - `POST /api/attachments/upload` — multipart upload, returns chip-friendly record.
+  - `GET  /api/attachments/{id}` — JSON metadata.
+  - `GET  /api/attachments/{id}/raw` — original bytes (used by the UI for image previews).
+- **`HermesChatRequest` extended with `attachment_ids: List[str]`**. The `/api/hermes/chat` handler now hydrates each attachment via the attachments module and prepends a system-message block describing them BEFORE the existing message list, so Hermes can reason about them on the same turn.
+- **Frontend (`HomeView.jsx`):**
+  - New Lucide `Paperclip` button to the left of the textarea (`data-testid=home-chat-attach-btn`).
+  - Hidden `<input type=file multiple accept="image/*,.pdf,.docx,.txt,.md,.csv,.xlsx">`.
+  - Selected files upload **immediately and in parallel** via `api.attachmentUpload()`. Each one renders as a chip above the textarea (`data-testid=home-chat-composer-chip`) with: icon (file/image/spinner/alert), filename (truncated), size, ✕ remove.
+  - On **Send**, only `status="ready"` attachments are included; their IDs ride along in the `attachment_ids` field, and the user bubble shows their chips inline (images become 180px thumbnails linking to `/raw`, documents become small badges).
+  - i18n keys added: `home.hermes.attach` (EN/RU).
+- **`frontend/src/lib/api.js`** got `attachmentUpload(file, opts)` + `attachmentRawUrl(id)` helpers.
+
+### Verified
+End-to-end Playwright test:
+1. Created `/tmp/test_doc.txt` with Russian contract text.
+2. Loaded HomeView → confirmed paperclip + hidden file input mount.
+3. Set the file via the hidden input → chip appears with spinner → flips to ready (Compliance LLM completes).
+4. Sent message "Проанализируй риски этого договора одним предложением" with the chip attached.
+5. Hermes replied: *"The contract carries critical risks: unlimited liability, no quality guarantees, and a unilateral termination clause — all of which could expose the company to significant financial and legal harm."* — exactly the three findings (liability=critical, termination=high, payment=medium) the Compliance LLM had extracted from the same document. End-to-end attachment context injection is live.
+
+### Notes
+- Per-attachment limit: 15 MB. Hermes sees max 8 attachments per turn (rest are silently dropped from the context block).
+- Files persist on disk under `/app/backend/uploads/attachments/` — same lifecycle as the documents pipeline.
+- Vision call uses the project's existing `OPENAI_API_KEY` (direct OpenAI SDK), matching the existing voice STT/TTS pattern.
+

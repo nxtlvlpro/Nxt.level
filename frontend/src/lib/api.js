@@ -140,6 +140,25 @@ export const api = {
       .then((r) => r.data);
   },
 
+  // Universal chat attachments (paperclip in HomeView dialog).
+  // Accepts any file; backend routes docs through Compliance + images
+  // through OpenAI Vision and returns a chip-friendly record.
+  attachmentUpload: (file, opts = {}) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    if (opts.company_id) fd.append("company_id", opts.company_id);
+    if (opts.user_id) fd.append("user_id", opts.user_id);
+    if (opts.session_id) fd.append("session_id", opts.session_id);
+    return http
+      .post("/attachments/upload", fd, {
+        headers: { "Content-Type": undefined },
+        timeout: 180000,
+      })
+      .then((r) => r.data);
+  },
+  attachmentRawUrl: (id) =>
+    `${http.defaults.baseURL}/attachments/${id}/raw`,
+
   voiceConverse: (blob, opts = {}) => {
     const fd = new FormData();
     const filename = opts.filename || "speech.webm";

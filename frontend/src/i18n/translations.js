@@ -150,6 +150,7 @@ export const TRANSLATIONS = {
     "home.hermes.mode.voice": "voice",
     "home.hermes.send": "send",
     "home.hermes.placeholder": "Write to Hermes…",
+    "home.hermes.attach": "Attach files",
     "home.hermes.thinking": "hermes is thinking…",
     "home.hermes.error": "Hermes is unavailable right now. Try again in a minute.",
     "home.hermes.welcome":
@@ -545,6 +546,7 @@ export const TRANSLATIONS = {
     "home.hermes.mode.voice": "голос",
     "home.hermes.send": "send",
     "home.hermes.placeholder": "Напишите Hermes…",
+    "home.hermes.attach": "Прикрепить файлы",
     "home.hermes.thinking": "hermes думает…",
     "home.hermes.error": "Сейчас Hermes недоступен. Попробуйте через минуту.",
     "home.hermes.welcome":
