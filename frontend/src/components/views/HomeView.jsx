@@ -646,23 +646,32 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
           setState("speaking");
           onPhase?.("speaking");
           const a = new Audio(`data:audio/mp3;base64,${item}`);
+          // crossOrigin is required for Web Audio analyser on data: URLs
+          // in some Chromium builds. Harmless on others.
+          try { a.crossOrigin = "anonymous"; } catch { /* ignore */ }
           audioRef.current = a;
+          // Feed Waveform with the currently-playing element so the bars
+          // dance to the actual TTS amplitude.
+          setActiveAudio(a);
           a.onended = () => {
             isPlaying = false;
             if (audioQueue.length > 0) {
               playNext();
             } else {
+              setActiveAudio(null);
               setState("idle");
               onPhase?.("idle");
             }
           };
           a.onerror = () => {
             isPlaying = false;
+            setActiveAudio(null);
             setState("idle");
             onPhase?.("idle");
           };
           a.play().catch(() => {
             isPlaying = false;
+            setActiveAudio(null);
             setState("idle");
             onPhase?.("idle");
           });
