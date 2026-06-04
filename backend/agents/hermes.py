@@ -795,8 +795,70 @@ async def hermes_chat(
     """Unified Hermes chat: DeepSeek + fenced-JSON tool loop.
 
     Replaces legacy `hermes_coo.enhanced_chat` and `hermes_max...hermes_coo_chat`.
+
+    Pre-step: every incoming turn is first classified by `agents.classifier`.
+    Non-business traffic (jokes, memes, trolling, fantasy match-ups, idle
+    small-talk) is delegated to the isolated JOKER sandbox so it never
+    touches MemPalace, tasks, or the operational core. The classifier runs
+    on EVERY turn — so when a user goes back to a business topic, control
+    automatically returns to Hermes on the very next message.
     """
     company = (company_id or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+
+    # ---- JOKER sandbox routing -------------------------------------
+    # Look at the LAST user message only; that is what the user just sent.
+    last_user_msg = ""
+    history_for_joker: List[Dict[str, Any]] = []
+    for m in (messages or []):
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role")
+        content = m.get("content") if isinstance(m.get("content"), str) else ""
+        if role == "user":
+            last_user_msg = content
+            history_for_joker.append({"role": "user", "content": content})
+        elif role == "assistant":
+            history_for_joker.append({"role": "assistant", "content": content})
+
+    if last_user_msg.strip():
+        try:
+            from agents import classifier as _classifier
+            from agents import joker as _joker
+            verdict = await _classifier.classify(
+                last_user_msg,
+                history=history_for_joker[:-1],  # everything except the current turn
+            )
+            if verdict.get("route") == "joker":
+                jr = await _joker.respond(
+                    message=last_user_msg,
+                    session_id=user_id or "anon",
+                    history=history_for_joker[:-1],
+                    user_id=user_id,
+                    lang=("ru" if any(ord(c) > 1000 for c in last_user_msg) else "en"),
+                )
+                # Return payload in the SAME shape Hermes normally returns
+                # so all downstream consumers (server.py / voice / chat panels)
+                # work without changes. Tool traces are empty by definition.
+                return {
+                    "content": jr.get("content", ""),
+                    "tool_calls": [],
+                    "iterations": 0,
+                    "company_id": company,
+                    "confidence": 0.5,
+                    "mock": jr.get("mock", False),
+                    "tokens_total": jr.get("tokens_total", 0),
+                    "provider": "joker_sandbox",
+                    "autonomy_level": autonomy_level,
+                    "routed_to": "joker",
+                    "routing_reason": verdict.get("reason"),
+                    "routing_stage": verdict.get("stage"),
+                    "downgraded": jr.get("downgraded", False),
+                }
+        except Exception as e:  # noqa: BLE001
+            # Classifier or JOKER failure must NEVER block a business request.
+            # Fall through to normal Hermes path.
+            logger.warning("joker pre-route failed (%s) — falling back to Hermes", e)
+
     full_messages: List[Dict[str, Any]] = [
         {"role": "system", "content": _system_prompt(mode, autonomy_level)},
         {"role": "system", "content": (

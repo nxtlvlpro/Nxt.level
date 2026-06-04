@@ -1,7 +1,7 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.9.1-locked-header (additive over v1.9.0-i18n)
-**Last updated:** 2026-06-01 by Главный Системный Архитектор (E1)
+**Current version:** v1.10.0-joker (additive over v1.9.1-locked-header)
+**Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
 
@@ -44,6 +44,23 @@ The following parts of the codebase are **explicitly frozen by the product owner
     - **Hermes inline chat respects language** — the HomeView Hermes chat prepends a system instruction (`Reply in English / Отвечай по-русски`) so DeepSeek answers in the chosen language regardless of the user's input language.
     - **Translated surfaces (in this pass):** Header / Seed error / BurgerMenu (all sections incl. pricing tiers) / HomeView (carousel intro + 7 agent cards + Hermes chat + tariffs + how-it-works + pilot CTA) / MicView (status + captions + errors) / ChatPanel (welcome + thinking + connection errors) / AlertsView (events count + empty state + locale-aware time) / MapView (titles + empty/loading states) / AgentsView personas modal (welcome + plan-gate + typing + ask placeholder + footer) / OpsView widget fallback copy (cross-dept / skills / market / hermes / documents).
     - **Untranslated by design:** technical cockpit labels (`ops.cockpit`, `cross-dept · coordinator`, `roi.map · hourly`, etc.) and global ticker symbols remain as-is.
+
+12. **v1.10 JOKER sandbox sub-agent (2026-06-04):**
+    - **Goal** — protect the operational core from joke/meme/trolling/fantasy traffic. Per ТЗ: zero-trust, separate audit ledger, never touches MemPalace / tasks / requests / roi.
+    - **`agents/classifier.py`** — two-stage intent router. Stage 1: regex pre-filter (free, covers ~80 % of noise — "анекдот", "загадка", "кто сильнее", "joke", "meme", emoji-only, hard greetings) and BUSINESS keywords that always win (sales, project, KPI, contract, marketing, finance, HR, analytics, …). Stage 2 (only when ambiguous): a single DeepSeek call with `max_tokens=6` returning `BUSINESS` or `NON_BUSINESS`.
+    - **`agents/joker.py`** — isolated sandbox: short system prompt (RU + EN), `max_tokens=150`, history limited to last 4 turns, temperature 0.8, NO imports from `agents.memory`, `agents.mempalace_bridge`, `agents.documents`, no task creation, no MemPalace writes.
+    - **Rate-limit** — 20 turns / 30 min per `session_id`; on overflow → `max_tokens=40` + history=1 (downgraded flag persisted to audit).
+    - **Routing point** — `agents/hermes.py:hermes_chat()`. On every turn the LAST user message is classified before the system prompt is built. If `route == "joker"`, JOKER replies and the payload is returned in the SAME shape Hermes uses (`content`, `tool_calls=[]`, `provider="joker_sandbox"`, plus `routed_to / routing_reason / routing_stage / downgraded`) so all downstream consumers (`/api/hermes/chat`, `/api/voice/converse`, `/api/voice/converse/stream`, `/api/chat`, `/api/personas`) work without code changes.
+    - **Isolation enforcement** — in `server.py:/api/hermes/chat`, if `routed_to == "joker"` the universal `finalize_llm_turn` pipeline hook is **skipped**, so JOKER traffic never lands in `db.requests` or `db.costs`. JOKER keeps its own ledger.
+    - **New collection** `db.joker_audit` (indexes on `session_id+ts` and `ts`). Schema: `{id, session_id, user_id, lang, message[:500], reply[:500], tokens_total, downgraded, channel:"joker", ts}`.
+    - **New endpoint** `GET /api/joker/stats?window_minutes=60` — returns `{turns, tokens, downgraded, window_minutes}` aggregated from `joker_audit` only.
+    - **Auto-return to business** — classifier runs on EVERY turn. A user who joked, then asks "статус по сделкам" lands back in Hermes immediately, no UI toggle.
+    - **UX** — completely transparent. No badge in HomeView bubbles per user request. `routed_to` field is present in API response for future Ops/Diagnostics widget.
+    - **Verified** end-to-end with 5 curl scenarios: regex-joker, regex-fantasy, LLM-tiebreaker-joker, hard-business, /api/joker/stats — all pass.
+
+13. **v1.10.1 Voice UX polish (2026-06-04):**
+    - **Waveform integration finished** — the existing `frontend/src/components/Waveform.jsx` is now actually fed audio in BOTH directions inside HomeView voice mode: live MediaStream during recording, currently-playing `<audio>` element during TTS playback (was previously dead — `activeAudio` state was declared but never set).
+    - **Breathing mic button** — the idle large mic CTA on HomeView was hard to notice (faint `border-brand-turquoise/40` only). Replaced with a smooth 3.2 s "breathing" turquoise glow (`.voice-mic-breathe` keyframes on border + box-shadow + inner shadow) plus a slower outer halo ring (`.voice-mic-halo`) for layered depth. Animation gates OFF when the button is in red/turquoise/purple event states so the visual language stays clear.
 
 ## Architecture (as built)
 

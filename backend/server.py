@@ -1255,6 +1255,18 @@ async def hermes_health() -> Dict[str, Any]:
     return await hermes_agent.health()
 
 
+@api.get("/joker/stats")
+async def joker_stats(window_minutes: int = 60) -> Dict[str, Any]:
+    """JOKER sandbox usage stats — how much off-topic traffic was absorbed.
+
+    Lightweight read against `db.joker_audit` only; never touches the
+    business core collections.
+    """
+    from agents import joker as _joker
+    window = max(5, min(int(window_minutes or 60), 24 * 60))
+    return await _joker.stats(window_minutes=window)
+
+
 @api.post("/hermes/chat")
 async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
     """Enhanced Hermes COO endpoint with tool-calling and multi-tenant context."""
@@ -1268,6 +1280,17 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
         temperature=req.temperature,
         model=req.model,
     )
+
+    # If the classifier delegated this turn to the JOKER sandbox, we
+    # deliberately SKIP the universal pipeline hook so that sandbox
+    # traffic never lands in `db.requests`, `db.costs`, or the ROI
+    # dashboard. JOKER keeps its own ledger (`db.joker_audit`).
+    if result.get("routed_to") == "joker":
+        result["request_id"] = f"joker_{uuid.uuid4().hex[:10]}"
+        result["confidence_level"] = "sandbox"
+        result["should_escalate"] = False
+        return result
+
     # Universal pipeline hook
     last_user_msg = ""
     for m in reversed(req.messages or []):

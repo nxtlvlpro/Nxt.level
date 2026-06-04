@@ -59,6 +59,9 @@ async def ensure_indexes() -> None:
     await db.market_signals.create_index([("ingested_at", -1)])
     await db.market_signals.create_index("category")
     await db.market_digests.create_index([("created_at", -1)])
+    # JOKER sandbox audit ledger — used for rate-limit + dashboard counts.
+    await db.joker_audit.create_index([("session_id", 1), ("ts", -1)])
+    await db.joker_audit.create_index([("ts", -1)])
 
 
 def close_db() -> None:
