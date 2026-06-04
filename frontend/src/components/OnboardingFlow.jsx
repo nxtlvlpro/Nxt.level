@@ -145,12 +145,6 @@ const QUESTIONS = [
       { v: "cold", k: "onb.urgency.cold" },
     ],
   },
-  // ── BLOCK 5. КОНТАКТЫ ──────────────────────────────────────────────
-  {
-    id: "contact",
-    block: 5,
-    type: "contact",
-  },
 ];
 
 // ---------------------------------------------------------------------
@@ -327,14 +321,17 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
     // Auto-advance for single-choice questions so the user doesn't have
     // to hunt for the "Next" button below the fold. Short delay lets them
     // see their pick highlighted + the Hermes insight before sliding.
-    if (q.type === "single" && qIndex < total - 1) {
+    // On the LAST question — auto-submit instead of trying to advance.
+    if (q.type === "single") {
       const idAtPick = qIndex;
       setTimeout(() => {
-        // Only advance if the user is still on the same question (no manual
-        // navigation in the meantime).
-        setQIndex((cur) => (cur === idAtPick ? cur + 1 : cur));
-        setSlideDir("right");
-        setInsight("");
+        if (idAtPick < total - 1) {
+          setQIndex((cur) => (cur === idAtPick ? cur + 1 : cur));
+          setSlideDir("right");
+          setInsight("");
+        } else {
+          submit();
+        }
       }, 700);
     }
   };
@@ -356,23 +353,22 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
     setQIndex(qIndex - 1);
   };
 
-  // ------- contact + submit -------
-  const setContactField = (k, v) => setAnswers((a) => ({ ...a, [k]: v }));
-
-  const validateContact = () => {
-    const name = (answers.name || "").trim();
-    const phone = (answers.phone || "").trim();
-    const tg = (answers.telegram || "").trim();
-    // ТЗ: name required; at least one of phone/telegram. Email optional.
-    return name.length >= 2 && (phone.length >= 4 || tg.length >= 2);
-  };
-
+  // ------- submit -------
   const submit = async () => {
     setError("");
     setStep("processing");
     try {
       const painArr = Array.isArray(answers.pain_points) ? answers.pain_points : [];
       const channels = Array.isArray(answers.communication_channels) ? answers.communication_channels : [];
+      // Pull contact info that the user already provided via the burger menu
+      // (stored on the BurgerMenu side as `nxt8.contact`). We pass it along
+      // for back-compat with the backend payload, but it's no longer asked
+      // inside the carousel — the survey ends right after `urgency`.
+      let burgerContact = {};
+      try {
+        const raw = localStorage.getItem("nxt8.contact");
+        if (raw) burgerContact = JSON.parse(raw) || {};
+      } catch { /* ignore */ }
       const payload = {
         industry:               answers.industry || "other",
         team_size:              answers.team_size || "solo",
@@ -387,14 +383,14 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
         tools_current:          channels,
         goal_90days:            answers.goal_90days || "",
         urgency:                answers.urgency || "warm",
-        name:                   (answers.name || "Friend").trim(),
-        phone:                  (answers.phone || "").trim(),
-        telegram:               (answers.telegram || "").trim(),
-        email:                  (answers.email || "").trim(),
+        name:                   (burgerContact.name || "Friend").trim(),
+        phone:                  (burgerContact.phone || "").trim(),
+        telegram:               (burgerContact.telegram || "").trim(),
+        email:                  (burgerContact.email || "").trim(),
         timezone:               Intl.DateTimeFormat().resolvedOptions().timeZone || "",
         lang,
         selected_plan:          planId || "",
-        access_code:            (answers.access_code || "").trim(),
+        access_code:            (burgerContact.access_code || "").trim(),
       };
       const saved = await api.onboardingSaveProfile(payload);
       setProfileId(saved.profile_id);
@@ -428,7 +424,6 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
       const arr = answers[currentQ.id] || [];
       return !Array.isArray(arr) || arr.length === 0;
     }
-    if (currentQ.type === "contact") return !validateContact();
     return false;
   })();
 
@@ -490,11 +485,8 @@ export default function OnboardingFlow({ open, planId, onClose, onCheckout, onTe
                   t={t}
                 />
               )}
-              {currentQ.type === "contact" && (
-                <ContactForm answers={answers} setField={setContactField} t={t} />
-              )}
 
-              {(insight || insightLoading) && currentQ.type !== "contact" && (
+              {(insight || insightLoading) && (
                 <InsightBanner text={insightLoading ? t("onb.insight.loading") : insight} />
               )}
             </div>
@@ -617,94 +609,6 @@ function MultiSelect({ q, values, onPick, t }) {
           />
         );
       })}
-    </div>
-  );
-}
-
-function ContactForm({ answers, setField, t }) {
-  const [codeStatus, setCodeStatus] = useState({ checking: false, valid: null, label: "" });
-
-  const checkCode = async (raw) => {
-    setField("access_code", raw);
-    if (!/^\d{3}$/.test(raw)) {
-      setCodeStatus({ checking: false, valid: null, label: "" });
-      return;
-    }
-    setCodeStatus({ checking: true, valid: null, label: "" });
-    try {
-      const r = await api.onboardingVerifyCode(raw);
-      setCodeStatus({ checking: false, valid: !!r.valid, label: r.label || "" });
-    } catch {
-      setCodeStatus({ checking: false, valid: false, label: "" });
-    }
-  };
-
-  return (
-    <div className="space-y-3" data-testid="onb-contact">
-      <p className="text-sm text-slate-300">{t("onb.contact.help")}</p>
-      <input
-        type="text"
-        value={answers.name || ""}
-        onChange={(e) => setField("name", e.target.value)}
-        placeholder={t("onb.contact.name")}
-        className="w-full rounded-2xl bg-brand-dark/60 border border-white/10 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-brand-turquoise focus:outline-none"
-        data-testid="onb-input-name"
-      />
-      <input
-        type="tel"
-        value={answers.phone || ""}
-        onChange={(e) => setField("phone", e.target.value)}
-        placeholder={t("onb.contact.phone")}
-        className="w-full rounded-2xl bg-brand-dark/60 border border-white/10 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-brand-turquoise focus:outline-none"
-        data-testid="onb-input-phone"
-      />
-      <input
-        type="text"
-        value={answers.telegram || ""}
-        onChange={(e) => setField("telegram", e.target.value)}
-        placeholder={t("onb.contact.telegram")}
-        className="w-full rounded-2xl bg-brand-dark/60 border border-white/10 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-brand-turquoise focus:outline-none"
-        data-testid="onb-input-telegram"
-      />
-      <input
-        type="email"
-        value={answers.email || ""}
-        onChange={(e) => setField("email", e.target.value)}
-        placeholder={t("onb.contact.email")}
-        className="w-full rounded-2xl bg-brand-dark/60 border border-white/10 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-brand-turquoise focus:outline-none"
-        data-testid="onb-input-email"
-      />
-      <p className="text-[10px] text-slate-500">{t("onb.contact.note")}</p>
-
-      <div className="pt-2">
-        <label className="text-[10px] uppercase tracking-widest text-slate-500 block mb-1">
-          {t("onb.contact.code.label")}
-        </label>
-        <input
-          type="text"
-          inputMode="numeric"
-          maxLength={3}
-          value={answers.access_code || ""}
-          onChange={(e) => checkCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
-          placeholder="___"
-          className={`w-32 text-center tracking-[0.4em] rounded-2xl bg-brand-dark/60 border px-4 py-3 text-base text-white placeholder-slate-600 focus:outline-none ${
-            codeStatus.valid === true ? "border-emerald-400"
-              : codeStatus.valid === false ? "border-red-400"
-                : "border-white/10 focus:border-brand-turquoise"
-          }`}
-          data-testid="onb-input-code"
-        />
-        {codeStatus.valid === true && (
-          <span className="ml-3 text-[10px] uppercase tracking-widest text-emerald-400" data-testid="onb-code-valid">
-            ✓ {t("onb.contact.code.valid")} · {codeStatus.label}
-          </span>
-        )}
-        {codeStatus.valid === false && (answers.access_code || "").length === 3 && (
-          <span className="ml-3 text-[10px] uppercase tracking-widest text-red-400" data-testid="onb-code-invalid">
-            × {t("onb.contact.code.invalid")}
-          </span>
-        )}
-      </div>
     </div>
   );
 }
