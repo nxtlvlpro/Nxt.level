@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import api from "../../lib/api";
 import { useT } from "../../i18n/LanguageContext";
+import Waveform from "../Waveform";
 
 // ============================================================
 // Static content keys (texts come from i18n dictionary)
@@ -523,9 +524,79 @@ function genSessionId() {
 function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionId, onPhase, lang, sessionId, t }) {
   const [state, setState] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [activeStream, setActiveStream] = useState(null);
+  const [activeAudio, setActiveAudio] = useState(null);
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const audioRef = useRef(null);
+  // VAD (voice-activity-detection) — auto-stop after 2 s of silence.
+  const vadCtxRef = useRef(null);
+  const vadIntervalRef = useRef(null);
+  const vadStartRef = useRef(0);
+  const vadLastSpeechRef = useRef(0);
+
+  const stopVad = () => {
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
+    }
+    if (vadCtxRef.current) {
+      try { vadCtxRef.current.close(); } catch { /* ignore */ }
+      vadCtxRef.current = null;
+    }
+  };
+
+  // VAD constants
+  const VAD_SILENCE_MS = 2000;       // stop after this much consecutive silence
+  const VAD_GRACE_MS = 800;          // ignore VAD during first N ms of recording
+  const VAD_MIN_DURATION_MS = 700;   // never auto-stop before this
+  const VAD_RMS_THRESHOLD = 8;       // byte-domain RMS deviation from 128
+  const VAD_MAX_DURATION_MS = 45000; // hard cap
+
+  const startVad = (stream) => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AC();
+      vadCtxRef.current = ctx;
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.4;
+      src.connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+      vadStartRef.current = performance.now();
+      vadLastSpeechRef.current = performance.now();
+      vadIntervalRef.current = setInterval(() => {
+        const now = performance.now();
+        const elapsed = now - vadStartRef.current;
+        analyser.getByteTimeDomainData(data);
+        let sumSq = 0;
+        for (let i = 0; i < data.length; i += 1) {
+          const v = data[i] - 128;
+          sumSq += v * v;
+        }
+        const rms = Math.sqrt(sumSq / data.length);
+        const isSpeech = rms >= VAD_RMS_THRESHOLD;
+        if (isSpeech) vadLastSpeechRef.current = now;
+
+        // Hard cap on duration
+        if (elapsed >= VAD_MAX_DURATION_MS) {
+          stop();
+          return;
+        }
+        // Auto-stop after enough silence (post grace + min duration)
+        if (
+          elapsed > VAD_GRACE_MS &&
+          elapsed > VAD_MIN_DURATION_MS &&
+          now - vadLastSpeechRef.current >= VAD_SILENCE_MS
+        ) {
+          stop();
+        }
+      }, 100);
+    } catch {
+      // VAD is optional — if it fails, the user can still tap to stop.
+    }
+  };
 
   // Stop any playback when unmounting (e.g. user switches mode)
   useEffect(() => {
@@ -537,7 +608,9 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
       if (rec && rec.state === "recording") {
         try { rec.stop(); } catch { /* ignore */ }
       }
+      stopVad();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const start = async () => {
@@ -546,6 +619,7 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
     setState("requesting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setActiveStream(stream);
       const mime =
         ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) =>
           window.MediaRecorder?.isTypeSupported?.(m)
@@ -557,6 +631,7 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
       };
       rec.onstop = async () => {
         stream.getTracks().forEach((tr) => tr.stop());
+        setActiveStream(null);
         setState("processing");
         // Audio playback queue — sequential, in-order.
         const audioQueue = [];
@@ -706,6 +781,15 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
               : speaking
                 ? t("voice.speaking")
                 : t("voice.idle")}
+      </div>
+      <div className="mt-3 h-7 flex items-center justify-center">
+        <Waveform
+          stream={recording ? activeStream : null}
+          audio={speaking ? activeAudio : null}
+          active={recording || speaking}
+          color={recording ? "#f87171" : "var(--brand-turquoise)"}
+          testId="home-voice-waveform"
+        />
       </div>
       {errorMsg && (
         <div className="text-[10px] text-red-400 mt-2">{errorMsg}</div>
