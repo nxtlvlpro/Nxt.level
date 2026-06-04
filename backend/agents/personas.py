@@ -42,7 +42,7 @@ from core.deepseek import get_deepseek
 
 logger = logging.getLogger("nxt8.personas")
 
-MAX_ITER = 2  # iterations of LLM → tools → LLM
+MAX_ITER = 3  # iterations of LLM → tools → LLM (must allow tools + final summary)
 
 # =====================================================================
 # Persona definitions
@@ -602,7 +602,13 @@ async def run_persona(
         '{"tool":"<name>","args":{...}}\n'
         "```\n"
         "Можно несколько блоков подряд. После выполнения тебе вернут результат "
-        "и ты сделаешь финальный структурированный ответ."
+        "и ты сделаешь финальный структурированный ответ.\n\n"
+        "## APPROVAL GATE (важно)\n"
+        "Если результат инструмента вернул `pending=true` и `approval_id` — это "
+        "означает что действие НЕ выполнено, оно ждёт одобрения Hermes/владельца. "
+        "В финальном ответе пользователю ЯВНО скажи: «⏸ Предложение отправлено "
+        "на одобрение Hermes (approval_id=...)». Не делай вид что задача создана. "
+        "Объясни пользователю почему действие требует одобрения (high-impact)."
     )
 
     messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_prompt}]
@@ -642,6 +648,8 @@ async def run_persona(
         messages.append({"role": "assistant", "content": last_content})
 
         # execute allowed tools only
+        from agents.manifests import requires_approval
+        from core import approval_gate
         for tc in tool_calls:
             name = tc["name"]
             args = dict(tc.get("args") or {})
@@ -654,6 +662,18 @@ async def run_persona(
                         f"Доступные: {', '.join(cfg['allowed_tools'])}"
                     ),
                 }
+            elif requires_approval(persona_id, name):
+                # Approval Gate — high-impact actions don't execute directly.
+                # They land in db.pending_approvals for Hermes/human review.
+                result = await approval_gate.request_approval(
+                    agent_id=persona_id,
+                    action=name,
+                    args=args,
+                    company_id=company_id,
+                    user_id=user_id,
+                    session_id=sid,
+                    rationale=f"persona {persona_id} proposed during turn",
+                )
             else:
                 fn = HERMES_TOOLS.get(name)
                 if not fn:

@@ -15,6 +15,9 @@ import {
   ArrowRight,
   AlertTriangle,
   MessageCircle,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import CollapsibleCard from "../CollapsibleCard";
 import api from "../../lib/api";
@@ -355,6 +358,8 @@ export default function AgentsView() {
         />
       )}
 
+      <PendingApprovalsCard />
+
       <InterAgentDialoguesCard />
     </div>
   );
@@ -518,5 +523,184 @@ function InterAgentDialoguesCard() {
 
       <DialogueModal d={open} onClose={() => setOpen(null)} />
     </>
+  );
+}
+
+
+// ============================================================
+// Pending Approvals — каждое high-impact решение агентов
+// проходит проверку перед внедрением.
+// ============================================================
+
+const ACTION_LABEL = {
+  create_task: "Создать задачу",
+  update_task: "Обновить задачу",
+  delegate_to: "Делегировать",
+  create_cross_department_bridge: "Кросс-департ. бридж",
+  mempalace_store: "Запись в Memory Palace",
+};
+
+const ACTION_TONE = {
+  create_task: "text-emerald-200 bg-emerald-500/10 ring-emerald-400/30",
+  update_task: "text-cyan-200 bg-cyan-500/10 ring-cyan-400/30",
+  delegate_to: "text-violet-200 bg-violet-500/10 ring-violet-400/30",
+  create_cross_department_bridge: "text-amber-200 bg-amber-500/10 ring-amber-400/30",
+  mempalace_store: "text-fuchsia-200 bg-fuchsia-500/10 ring-fuchsia-400/30",
+};
+
+function ApprovalRow({ item, onApprove, onReject, busy }) {
+  const actionTone = ACTION_TONE[item.action] || "text-white/70 bg-white/5 ring-white/10";
+  const actionLabel = ACTION_LABEL[item.action] || item.action;
+  const title = item.args?.title || item.args?.task_id || item.args?.target_agent_id || "—";
+  const priority = item.args?.priority;
+  return (
+    <div
+      data-testid={`approval-row-${item.id}`}
+      className="grid grid-cols-[auto,1fr,auto] items-start gap-3 px-3 py-2.5 rounded-lg bg-white/[0.02] ring-1 ring-white/5 hover:bg-white/[0.04] transition"
+    >
+      <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded-full ring-1 whitespace-nowrap ${actionTone}`}>
+        <ShieldCheck className="w-3 h-3" /> {actionLabel}
+      </span>
+
+      <div className="min-w-0">
+        <div className="text-sm text-white/90 truncate" title={title}>
+          {title}
+        </div>
+        <div className="flex items-center gap-2 text-[10px] font-mono text-white/40 mt-0.5">
+          <span>от: {item.agent_id}</span>
+          {priority && (
+            <span className={priority === "critical" || priority === "high"
+              ? "text-rose-300"
+              : "text-white/40"}>· prio: {priority}</span>
+          )}
+          {item.created_at && (
+            <span>· {new Date(item.created_at).toLocaleTimeString()}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          data-testid={`approval-approve-${item.id}`}
+          disabled={busy}
+          onClick={() => onApprove(item)}
+          className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-md bg-emerald-500/15 ring-1 ring-emerald-400/30 text-emerald-200 hover:bg-emerald-500/25 transition disabled:opacity-40"
+        >
+          <CheckCircle2 className="w-3 h-3" /> Одобрить
+        </button>
+        <button
+          type="button"
+          data-testid={`approval-reject-${item.id}`}
+          disabled={busy}
+          onClick={() => onReject(item)}
+          className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-md bg-rose-500/10 ring-1 ring-rose-400/30 text-rose-200 hover:bg-rose-500/20 transition disabled:opacity-40"
+        >
+          <XCircle className="w-3 h-3" /> Отклонить
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PendingApprovalsCard() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [err, setErr] = useState(null);
+
+  const refresh = () => {
+    setLoading(true);
+    api
+      .approvalsList("pending", undefined, 50)
+      .then((d) => setItems(d.items || []))
+      .catch((e) => setErr(e?.message || String(e)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  const decide = async (item, mode) => {
+    setBusyId(item.id);
+    try {
+      if (mode === "approve") {
+        await api.approvalsApprove(item.id, "owner");
+      } else {
+        const reason = window.prompt("Причина отклонения (опционально):") || "";
+        await api.approvalsReject(item.id, "owner", reason);
+      }
+      refresh();
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <CollapsibleCard
+      storageKey="agents-pending-approvals"
+      testId="agents-pending-approvals-card"
+      title="Approval Gate — на проверке у вас"
+      titleRight={
+        <span
+          data-testid="approvals-count"
+          className={`text-[10px] font-mono px-2 py-0.5 rounded-full ring-1 ${
+            items.length
+              ? "bg-amber-500/15 ring-amber-400/40 text-amber-200"
+              : "bg-white/5 ring-white/10 text-white/40"
+          }`}
+        >
+          {items.length}
+        </span>
+      }
+    >
+      <div className="text-[11px] font-mono text-white/40 mb-3 leading-relaxed">
+        Каждое high-impact решение подчинённых агентов (создание задач,
+        обновление статусов, кросс-департаментные мосты) ждёт вашего «ОК»
+        прежде чем уйти в продакшн. Hermes и автономные узлы Graph этот
+        gate обходят — они отвечают от лица CEO.
+      </div>
+
+      {err && (
+        <div
+          className="text-xs text-rose-300 bg-rose-500/10 ring-1 ring-rose-400/30 rounded-lg p-3 font-mono mb-3"
+          data-testid="approvals-error"
+        >
+          {err}
+        </div>
+      )}
+
+      {loading && !items.length && (
+        <div className="flex items-center gap-2 text-xs text-white/40 font-mono">
+          <Loader2 className="w-3 h-3 animate-spin" /> загрузка…
+        </div>
+      )}
+
+      {!loading && !items.length && !err && (
+        <div
+          className="text-xs text-white/40 font-mono italic"
+          data-testid="approvals-empty"
+        >
+          На проверке ничего. Команда работает в рамках мандата.
+        </div>
+      )}
+
+      <div className="space-y-1.5" data-testid="approvals-list">
+        {items.map((it) => (
+          <ApprovalRow
+            key={it.id}
+            item={it}
+            busy={busyId === it.id}
+            onApprove={(i) => decide(i, "approve")}
+            onReject={(i) => decide(i, "reject")}
+          />
+        ))}
+      </div>
+    </CollapsibleCard>
   );
 }

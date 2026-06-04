@@ -1968,6 +1968,18 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
     import time as _time
     t0 = _time.time()
 
+    # Validate the payload — empty messages list means the client sent
+    # nothing to react to. Returning a generic CEO greeting here just hides
+    # the bug (was: every "missing field" curl looked like a working answer).
+    if not req.messages or not any(
+        isinstance(m, dict) and (m.get("content") or "").strip()
+        for m in req.messages
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="messages must contain at least one non-empty {role, content}",
+        )
+
     # M1: stable session_id from the client (browser localStorage) so the
     # 4-layer memory + short-term history actually accumulate across turns.
     # Fallback to a generated id only when the client doesn't supply one.
@@ -2227,6 +2239,80 @@ async def agent_manifest(agent_id: str) -> Dict[str, Any]:
         "manifest": manifest,
         "prompt_block": _m.render_manifest_for_prompt(agent_id),
     }
+
+
+# =====================================================================
+# Approval Gate — high-impact agent actions wait for Hermes/human review
+# =====================================================================
+
+
+class ApprovalDecision(BaseModel):
+    decided_by: str = "hermes"
+    reason: Optional[str] = None
+
+
+@api.get("/approvals")
+async def approvals_list(
+    status: str = "pending",
+    company_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """List approval-gate records (pending by default)."""
+    from core import approval_gate as _ag
+    items = await _ag.list_pending(
+        status=status, company_id=company_id, agent_id=agent_id, limit=limit
+    )
+    return {"count": len(items), "status": status, "items": items}
+
+
+@api.get("/approvals/stats")
+async def approvals_stats(window_hours: int = 24) -> Dict[str, Any]:
+    from core import approval_gate as _ag
+    return await _ag.stats(window_hours=window_hours)
+
+
+@api.get("/approvals/{approval_id}")
+async def approvals_get(approval_id: str) -> Dict[str, Any]:
+    from core import approval_gate as _ag
+    rec = await _ag.get_pending(approval_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="approval not found")
+    return rec
+
+
+@api.post("/approvals/{approval_id}/approve")
+async def approvals_approve(
+    approval_id: str, payload: ApprovalDecision
+) -> Dict[str, Any]:
+    """Approve a pending action and execute it via the matching tool callable."""
+    from core import approval_gate as _ag
+    from agents.hermes import HERMES_TOOLS
+
+    async def _executor(action: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        fn = HERMES_TOOLS.get(action)
+        if not fn:
+            return {"ok": False, "error": f"unknown tool: {action}"}
+        return await fn(args)
+
+    return await _ag.approve(
+        approval_id,
+        decided_by=payload.decided_by or "hermes",
+        reason=payload.reason,
+        executor=_executor,
+    )
+
+
+@api.post("/approvals/{approval_id}/reject")
+async def approvals_reject(
+    approval_id: str, payload: ApprovalDecision
+) -> Dict[str, Any]:
+    from core import approval_gate as _ag
+    return await _ag.reject(
+        approval_id,
+        decided_by=payload.decided_by or "hermes",
+        reason=payload.reason,
+    )
 
 
 @api.get("/company-settings")

@@ -1,6 +1,62 @@
 # NXT8 — Release Notes
 
 
+## v1.7.0-approval-gate — 2026-06-04
+
+**Status:** ✅ Approval Gate live. Каждое high-impact решение подчинённых
+агентов проходит проверку владельца/Hermes ПЕРЕД внедрением. Audit гонял
+8 агентов по реальным кейсам — нашлись и пофикшены 3 системных бага.
+
+### Added
+- **`core/approval_gate.py`** — БД `db.pending_approvals` + API:
+  `request_approval`, `list_pending`, `get_pending`, `approve`, `reject`, `stats`.
+  Хранит `agent_id`, `action`, `args`, `rationale`, `status`, `decided_by`,
+  `decision_reason`, `result`. Подключён в `personas.run_persona` — перед
+  каждым вызовом инструмента проверяется `manifests.requires_approval(persona, action)`;
+  если `True`, действие НЕ выполняется напрямую, а уходит в pending.
+- **REST endpoints** (`server.py`):
+  - `GET  /api/approvals?status=pending&agent_id=...&limit=50`
+  - `GET  /api/approvals/stats?window_hours=24`
+  - `GET  /api/approvals/{id}`
+  - `POST /api/approvals/{id}/approve` — выполняет отложенный tool через `HERMES_TOOLS[action]`
+  - `POST /api/approvals/{id}/reject`
+- **Frontend** (`AgentsView.jsx`) — карточка **«Approval Gate — на проверке у вас»**
+  выше панели Inter-Agent Dialogues:
+  - badge с количеством pending (амбер если > 0)
+  - row с типом действия, agent_id, priority, timestamp
+  - кнопки **Одобрить / Отклонить** (с prompt для причины reject)
+  - auto-refresh каждые 10 сек
+- **`backend/tests/test_approval_gate.py`** + `conftest.py` — 5 тестов:
+  manifest <→> requires_approval, request→approve→execute, reject flow,
+  past `due_at` auto-shift, future `due_at` untouched.
+- **Indexes** на `db.pending_approvals`: `id` (unique), `status+created_at`,
+  `agent_id+created_at`, `company_id+status`.
+
+### Fixed
+- **Hermes `/api/hermes/chat`** возвращал шаблонное приветствие при пустом
+  payload. Теперь — `400` с детальным сообщением (раньше Pydantic тихо
+  использовал `messages=[]` по умолчанию и Hermes отвечал «Привет, я CEO,
+  чем могу помочь?»).
+- **`agents/hermes.py:_t_create_task`** — `due_at` в прошлом (LLM регулярно
+  пишет 2024-01-01) теперь авто-сдвигается на `now + 24h` с предупреждением
+  в логе. Бок-эффект: задачи больше не создаются с дедлайном в прошлом.
+- **`agents/personas.py:MAX_ITER` 2 → 3** — LLM получил больше места,
+  чтобы после tool result сформулировать финальный ответ (раньше Client
+  Manager «застревал» на JSON-stub'е).
+
+### Behavioural prompt updates
+- В `personas.py` system prompt добавлен явный раздел «APPROVAL GATE»:
+  агент обязан в финальном ответе сказать «⏸ Предложение отправлено на
+  одобрение Hermes (approval_id=...)» и объяснить пользователю почему.
+
+### Stress-test audit (8 агентов)
+- 🟢 HR-Mentor 9/10, Marketer 9/10, Compliance 9/10 (152-ФЗ цитаты),
+  Bookkeeper 9/10 (точный Payback/ROI), Analyst 8/10, Project Coord 8/10.
+- 🟠 Client Manager — застревал в tool-loop (фикс через MAX_ITER=3).
+- 🔴 Hermes — приветствие вместо ответа (фикс через 400 на empty messages).
+
+
+
 ## v1.4.0-mempalace — 2026-05-17
 
 **Status:** ✅ MemPalace long-term memory layer integrated natively. Parallel to existing Mongo-backed short-term memory.

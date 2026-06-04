@@ -126,6 +126,26 @@ export const api = {
       .get(`/agents/escalations?limit=${limit}${status ? `&status=${status}` : ""}`)
       .then((r) => r.data),
 
+  // Approval Gate — high-impact actions waiting for Hermes/owner review
+  approvalsList: (status = "pending", agent_id, limit = 50) =>
+    http
+      .get(
+        `/approvals?status=${encodeURIComponent(status)}&limit=${limit}${agent_id ? `&agent_id=${encodeURIComponent(agent_id)}` : ""}`
+      )
+      .then((r) => r.data),
+  approvalsApprove: (approval_id, decided_by = "owner", reason) =>
+    http
+      .post(`/approvals/${approval_id}/approve`, { decided_by, reason })
+      .then((r) => r.data),
+  approvalsReject: (approval_id, decided_by = "owner", reason) =>
+    http
+      .post(`/approvals/${approval_id}/reject`, { decided_by, reason })
+      .then((r) => r.data),
+  approvalsStats: (window_hours = 24) =>
+    http
+      .get(`/approvals/stats?window_hours=${window_hours}`)
+      .then((r) => r.data),
+
   // Documents (Compliance persona)
   documentsList: (company_id, limit = 50) =>
     http

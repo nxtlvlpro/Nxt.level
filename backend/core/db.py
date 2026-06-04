@@ -87,6 +87,11 @@ async def ensure_indexes() -> None:
     await db.payment_transactions.create_index("session_id", unique=True)
     await db.payment_transactions.create_index([("created_at", -1)])
     await db.payment_transactions.create_index([("user_id", 1), ("created_at", -1)])
+    # Approval Gate — high-impact agent actions waiting for Hermes/human review.
+    await db.pending_approvals.create_index("id", unique=True)
+    await db.pending_approvals.create_index([("status", 1), ("created_at", -1)])
+    await db.pending_approvals.create_index([("agent_id", 1), ("created_at", -1)])
+    await db.pending_approvals.create_index([("company_id", 1), ("status", 1)])
 
 
 def close_db() -> None:

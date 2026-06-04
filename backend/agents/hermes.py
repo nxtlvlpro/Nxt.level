@@ -72,6 +72,26 @@ async def _t_create_task(args: Dict[str, Any]) -> Dict[str, Any]:
     title = (args.get("title") or "").strip()
     if not title:
         return {"ok": False, "error": "title is required"}
+    # Sanitize due_at: reject obviously past dates (LLM tends to write
+    # 2023/2024 timestamps despite the current year being 2026). If the
+    # provided due_at is in the past, bump it to now + 24h.
+    raw_due = args.get("due_at")
+    due_at_value = raw_due
+    if raw_due:
+        try:
+            parsed = datetime.fromisoformat(str(raw_due).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            if parsed < now:
+                due_at_value = (now + timedelta(hours=24)).isoformat()
+                logger.warning(
+                    "create_task: due_at %s is in the past, auto-shifted to %s",
+                    raw_due, due_at_value,
+                )
+        except Exception:  # noqa: BLE001
+            # Unparseable — keep the raw value but never block creation.
+            due_at_value = raw_due
     doc = {
         "id": str(uuid.uuid4()),
         "kind": args.get("kind", "task"),  # "task" | "followup"
@@ -82,7 +102,7 @@ async def _t_create_task(args: Dict[str, Any]) -> Dict[str, Any]:
         "department": args.get("department"),
         "priority": args.get("priority", "medium"),
         "status": "open",
-        "due_at": args.get("due_at"),
+        "due_at": due_at_value,
         "created_at": _now(),
         "source": "hermes",
         "related_contact": args.get("contact_id"),

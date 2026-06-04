@@ -1,6 +1,24 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.0.0-pilot-zero (released 2026-05-16)
+**Текущая версия:** v1.7.0-approval-gate (2026-06-04)
+
+## ✅ Done — Approval Gate (2026-06-04)
+- core/approval_gate.py + REST endpoints
+- Frontend pending-approvals card в AgentsView
+- 5 регрессионных тестов
+- Фиксы: empty messages → 400, past due_at, MAX_ITER=3
+
+## P0 — Active
+
+- [ ] **Tariff IDs sync** — `manifests.py` использует basic/simple/pro/enterprise,
+      а `/api/payments/plans` отдаёт personal/team/operations/headquarters.
+      Без этого tariff gating ломается.
+- [ ] **ROI phantom cost** — `agents/roi.py` показывает фантомные $14.58/час →
+      дашборд показывает −100% ROI.
+- [ ] **Data Access Guard** — `core/access_guard.py` нужно интегрировать в
+      tool-call middleware (manifests описывают read/write права, но они
+      не enforce'ятся). Approval Gate уже решил часть (write actions),
+      но read-доступ из чужого scope ещё открыт.
 
 ## P0 — Pilot Zero (now → +4 weeks)
 Запуск на реальной компании. Никаких новых фич — только observability и операционная поддержка.
