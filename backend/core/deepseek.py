@@ -106,6 +106,7 @@ class DeepSeekClient:
         temperature: float = 0.7,
         max_tokens: int = 2048,
         request_logprobs: bool = True,
+        model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         if self.mock_mode:
             return self._mock_response(messages)
@@ -113,7 +114,7 @@ class DeepSeekClient:
         errors: List[str] = []
         for p in self.providers:
             try:
-                data = await self._call(p, messages, temperature, max_tokens, request_logprobs)
+                data = await self._call(p, messages, temperature, max_tokens, request_logprobs, model_override)
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code if e.response is not None else "?"
                 reason = {
@@ -199,14 +200,23 @@ class DeepSeekClient:
         temperature: float,
         max_tokens: int,
         request_logprobs: bool,
+        model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
+        # Per-call model override — only applied when the provider is the
+        # direct DeepSeek API (which actually offers `deepseek-reasoner`).
+        # OpenRouter routes by its own model id (`deepseek/deepseek-...`)
+        # so we keep its configured default there.
+        effective_model = p.model
+        if model_override and p.name == "deepseek_direct":
+            effective_model = model_override
         payload: Dict[str, Any] = {
-            "model": p.model,
+            "model": effective_model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        if request_logprobs and p.supports_logprobs:
+        # deepseek-reasoner does NOT accept logprobs; only deepseek-chat does.
+        if request_logprobs and p.supports_logprobs and "reasoner" not in effective_model:
             payload["logprobs"] = True
             payload["top_logprobs"] = 5
 

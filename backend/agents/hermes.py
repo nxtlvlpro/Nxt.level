@@ -885,10 +885,16 @@ async def hermes_chat(
     tokens_total = 0
     provider = None
 
+    # Pick the right DeepSeek model per request — reasoner for planning /
+    # math / debug / long context, cheap chat for everything else.
+    from core.complexity_router import pick_model as _pick_model
+    chosen_model = _pick_model(full_messages, intent="hermes_chat", role=mode)
+
     for iteration in range(MAX_TOOL_ITERATIONS + 1):
         iterations = iteration + 1
         resp = await deepseek.chat(messages=full_messages,
-                                   temperature=temperature, max_tokens=2048)
+                                   temperature=temperature, max_tokens=2048,
+                                   model_override=chosen_model)
         last_content = (resp.get("content") or "").strip()
         confidence = float(resp.get("confidence") or 0.7)
         mock = mock or bool(resp.get("mock"))

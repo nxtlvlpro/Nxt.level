@@ -1,6 +1,6 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.13.1-deepseek-direct (additive over v1.13.0-graph-v2)
+**Current version:** v1.13.2-model-router (additive over v1.13.1-deepseek-direct)
 **Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
 
 ## 🔒 LOCKED COMPONENTS
@@ -160,6 +160,23 @@ The following parts of the codebase are **explicitly frozen by the product owner
     - **`core/deepseek.py:_DeepSeekClient.__init__`** — provider order reversed: direct DeepSeek (`api.deepseek.com/v1`, model `deepseek-chat`) is now FIRST in the chain; OpenRouter (`openrouter.ai/api/v1`, `deepseek/deepseek-chat-v3-0324`) remains the automatic fallback if the direct API ever errors or hits a quota.
     - **`/api/health`** confirms the active provider after restart: `{deepseek.model: "deepseek-chat", mock_mode: false, active_provider: "deepseek_direct"}`.
     - **Latency win** — observed Hermes chat round-trip dropped from 8-15 s (OpenRouter `:free` rate-limited) to ~2.5 s on the direct API. Quality of the V3 model is identical.
+
+20. **v1.13.2 Complexity-aware model routing (deepseek-chat ↔ deepseek-reasoner) (2026-06-04):**
+    - **Goal** — cut LLM spend without losing quality on hard tasks. `deepseek-reasoner` (R1) is ~2× more expensive than `deepseek-chat` (V3), so it must be used surgically.
+    - **`core/complexity_router.py`** (new) — stateless heuristic that inspects ONLY the user-role content of the outgoing messages (system prompts ignored, otherwise Hermes' big system block would inflate every score). Pattern matches against:
+      - **Reasoner triggers** (RU+EN): `анализ/посчитай/докажи/оптимизируй/спланируй`, `analyze/compute/optimize/plan`, `trade-off/compare`, `strategy/архитектур/forecast`, math/percent tokens, debug/stack-trace, algorithm/complexity.
+      - **Cheap triggers**: greetings, thanks, rephrase/translate/summarize, jokes.
+      - Body length ≥ 1500 chars combined with ≥1 reasoning hit also escalates.
+      - Two or more reasoner hits OR (one hit + long body) → `deepseek-reasoner`. Otherwise → `deepseek-chat`.
+    - **`core/deepseek.py:_call(model_override=...)`** — new optional per-call argument that lets a single Hermes turn target `deepseek-reasoner` while every other turn stays on the cheaper default. Applied ONLY when the active provider is `deepseek_direct` (OpenRouter routes via its own slugs).
+    - **`agents/hermes.py:hermes_chat()`** — runs `pick_model()` once at the start of the tool-loop and propagates the chosen model through all iterations of the tool loop. JOKER, classifier, persona chats, onboarding insights/reply, voice — all keep falling back to `deepseek-chat` automatically (they never pass `model_override`).
+    - **`agents/hermes_graph_v2.py:planner_node()`** — locked to `force_model="deepseek-reasoner"` (planning is the single role that benefits the most from R1 chain-of-thought). Executor/reviewer/fixer/hermes_validation stay on cheap chat — they are short-form JSON responses.
+    - **Telemetry** — every routing decision is counted in a thread-safe in-memory dict (`stats()` returns `{deepseek-chat, deepseek-reasoner, force_cheap, force_reasoner, reasoner_share_pct}`).
+    - **New endpoint** `GET /api/llm/router-stats` — distribution since process start, useful to verify the share stays in a reasonable band (target ≤30% reasoner).
+    - **Verified** end-to-end with 3 contrasting curls:
+      - "Какой статус сделок сегодня?" → `deepseek-chat` ✅
+      - "Проанализируй trade-off и посчитай ROI 3 стратегий... пошагово" → `deepseek-reasoner` ✅ (R1-style markdown with ROI formula and step-wise breakdown)
+      - "Спасибо большое за помощь" → routed to JOKER (no Hermes spend at all) ✅
 
 ## Architecture (as built)
 

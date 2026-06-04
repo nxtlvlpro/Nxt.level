@@ -138,13 +138,17 @@ async def _llm_role_call(
     user_blob: Dict[str, Any],
     max_tokens: int = 500,
     temperature: float = 0.3,
+    force_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Single DeepSeek call returning a JSON object. Strips accidental
     code fences and falls back to {} on any parse error so the caller can
-    decide policy. NEVER raises into the graph runtime."""
+    decide policy. NEVER raises into the graph runtime.
+
+    `force_model` lets a node lock itself onto a specific model
+    (e.g. planner → reasoner). When None, the cheap default is used."""
     try:
         ds = get_deepseek()
-        resp = await ds.chat(
+        kwargs = dict(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": json.dumps(user_blob, ensure_ascii=False)},
@@ -153,6 +157,9 @@ async def _llm_role_call(
             max_tokens=max_tokens,
             request_logprobs=False,
         )
+        if force_model:
+            kwargs["model_override"] = force_model
+        resp = await ds.chat(**kwargs)
         raw = _strip_fences(resp.get("content", ""))
         return json.loads(raw) if raw else {}
     except Exception as e:  # noqa: BLE001
@@ -279,6 +286,7 @@ async def planner_node(state: Dict[str, Any]) -> Dict[str, Any]:
         },
         max_tokens=450,
         temperature=0.4,
+        force_model="deepseek-reasoner",   # planning benefits most from R1
     )
     # Validate: minimum shape.
     if not isinstance(plan.get("steps"), list) or not plan["steps"]:

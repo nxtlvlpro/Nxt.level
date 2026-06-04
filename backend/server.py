@@ -1418,6 +1418,13 @@ async def graph_v2_run(req: GraphV2RunRequest) -> Dict[str, Any]:
     return state
 
 
+@api.get("/llm/router-stats")
+async def llm_router_stats() -> Dict[str, Any]:
+    """Distribution of deepseek-chat vs deepseek-reasoner since process start."""
+    from core.complexity_router import stats as _stats
+    return _stats()
+
+
 # =====================================================================
 # Channel adapters (Wingman-inspired ingress)
 # =====================================================================
