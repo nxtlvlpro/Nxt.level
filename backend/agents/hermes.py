@@ -947,6 +947,25 @@ async def hermes_chat(
             f"Контекст вызова: company_id={company}, user_id={user_id or 'unknown'}, "
             f"mode={mode}, autonomy={autonomy_level}.")},
     ]
+
+    # Auto-inject the client's company manifest (from the onboarding survey)
+    # so every Hermes turn — and every tool he triggers — answers WITH the
+    # client's industry, team_size, channels, pain_points in mind. This is
+    # how the onboarding becomes permanent context, not a one-shot.
+    if user_id:
+        try:
+            from agents.onboarding import get_company_manifest, render_company_manifest_block
+            cm = await get_company_manifest(user_id)
+            if cm:
+                lang = "ru" if cm.get("lang", "").startswith("ru") else "en"
+                full_messages.insert(
+                    2,
+                    {"role": "system",
+                     "content": render_company_manifest_block(cm, lang=lang)},
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("company manifest injection failed: %s", e)
+
     for m in messages or []:
         if not isinstance(m, dict):
             continue

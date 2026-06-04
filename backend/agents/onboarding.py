@@ -530,7 +530,119 @@ async def save_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
     await db.client_profiles.update_one(
         {"id": profile_id}, {"$set": doc}, upsert=True,
     )
+    # Mirror the survey into a stable per-user "company manifest" that Hermes
+    # auto-loads on every future turn. This is what turns a one-shot onboarding
+    # answer into permanent context for the whole agent ecosystem.
+    try:
+        await persist_company_manifest(doc)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("persist_company_manifest failed: %s", e)
     return {"ok": True, **doc}
+
+
+async def persist_company_manifest(profile: Dict[str, Any]) -> None:
+    """Write a compact, durable company manifest derived from the onboarding
+    survey. Keyed by the visitor's persistent user_id (or telegram/phone as
+    fallback) so the next chat from the same browser/device finds it.
+
+    Hermes' system prompt calls `get_company_manifest(user_id)` on every turn
+    and injects this manifest right after the team roster, so EVERY future
+    answer is grounded in the client's real situation — industry, team_size,
+    channels, pain_points, goal — without re-asking.
+    """
+    db = get_db()
+    keys: List[str] = []
+    if profile.get("telegram"):
+        keys.append(f"tg:{profile['telegram'].lstrip('@').lower()}")
+    if profile.get("phone"):
+        keys.append(f"ph:{''.join(ch for ch in profile['phone'] if ch.isdigit())}")
+    if profile.get("email"):
+        keys.append(f"em:{profile['email'].strip().lower()}")
+    if not keys:
+        keys.append(f"profile:{profile['id']}")
+
+    manifest = {
+        "profile_id":           profile["id"],
+        "name":                 profile.get("name"),
+        "industry":             profile.get("industry"),
+        "team_size":            profile.get("team_size"),
+        "management_structure": profile.get("management_structure"),
+        "communication_channels": profile.get("communication_channels") or [],
+        "process_system":       profile.get("process_system"),
+        "knowledge_storage":    profile.get("knowledge_storage"),
+        "pain_points":          profile.get("pain_points") or [],
+        "goal_90days":          profile.get("goal_90days"),
+        "urgency":              profile.get("urgency"),
+        "lang":                 profile.get("lang"),
+        "selected_plan":        profile.get("selected_plan"),
+        "updated_at":           _now(),
+        "keys":                 keys,
+    }
+    for key in keys:
+        await db.company_manifests.update_one(
+            {"_id": key},
+            {"$set": manifest, "$setOnInsert": {"created_at": _now()}},
+            upsert=True,
+        )
+
+
+async def get_company_manifest(user_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Best-effort lookup. Returns None if nothing known about this user yet."""
+    if not user_id:
+        return None
+    db = get_db()
+    # Try by persistent browser id key (matches the format save_profile sets).
+    candidates = [
+        f"profile:{user_id}",
+        f"tg:{user_id.lstrip('@').lower()}",
+        f"em:{user_id.lower()}",
+    ]
+    for k in candidates:
+        doc = await db.company_manifests.find_one({"_id": k})
+        if doc:
+            doc.pop("_id", None)
+            return doc
+    return None
+
+
+def render_company_manifest_block(manifest: Dict[str, Any], lang: str = "ru") -> str:
+    """Human-readable block injected into Hermes' system prompt on every turn."""
+    if not manifest:
+        return ""
+    if (lang or "ru").startswith("ru"):
+        head = "## КОНТЕКСТ КОМПАНИИ КЛИЕНТА (из онбординг-анкеты)"
+        rows = [
+            f"- Имя:           {manifest.get('name') or '—'}",
+            f"- Индустрия:     {manifest.get('industry') or '—'}",
+            f"- Размер команды:{manifest.get('team_size') or '—'}",
+            f"- Структура мгмт:{manifest.get('management_structure') or '—'}",
+            f"- Каналы:        {', '.join(manifest.get('communication_channels') or []) or '—'}",
+            f"- Процессы в:    {manifest.get('process_system') or '—'}",
+            f"- База знаний:   {manifest.get('knowledge_storage') or '—'}",
+            f"- Боли:          {', '.join(manifest.get('pain_points') or []) or '—'}",
+            f"- Цель 90 дней:  {manifest.get('goal_90days') or '—'}",
+            f"- Срочность:     {manifest.get('urgency') or '—'}",
+        ]
+        foot = ("Этот контекст обязателен для каждого ответа. Если предлагаешь действие — "
+                "оно должно быть осмысленным под эту компанию. Не задавай повторно вопросы, "
+                "ответы на которые уже есть выше.")
+    else:
+        head = "## CLIENT COMPANY CONTEXT (from onboarding survey)"
+        rows = [
+            f"- Name:               {manifest.get('name') or '—'}",
+            f"- Industry:           {manifest.get('industry') or '—'}",
+            f"- Team size:          {manifest.get('team_size') or '—'}",
+            f"- Mgmt structure:     {manifest.get('management_structure') or '—'}",
+            f"- Comm channels:      {', '.join(manifest.get('communication_channels') or []) or '—'}",
+            f"- Process system:     {manifest.get('process_system') or '—'}",
+            f"- Knowledge storage:  {manifest.get('knowledge_storage') or '—'}",
+            f"- Pain points:        {', '.join(manifest.get('pain_points') or []) or '—'}",
+            f"- 90-day goal:        {manifest.get('goal_90days') or '—'}",
+            f"- Urgency:            {manifest.get('urgency') or '—'}",
+        ]
+        foot = ("This context is mandatory for every reply. Proposed actions must make "
+                "sense FOR THIS company. Do not re-ask questions already answered above.")
+    return head + "\n" + "\n".join(rows) + "\n\n" + foot
 
 
 async def get_profile(profile_id: str) -> Optional[Dict[str, Any]]:
@@ -633,21 +745,55 @@ Return STRICT JSON ONLY (no markdown, no fences) with exactly this shape:
 def _system_prompt_for_reply(lang: str) -> str:
     if lang == "ru":
         return (
-            "Ты — Гермес, опытный операционный директор. Ты говоришь с предпринимателем "
-            "по-человечески, без жаргона, без эмодзи, без воды.\n"
-            "Твоя задача — на основе анкеты собрать персональный ответ из 5 блоков. "
-            "Клиент должен почувствовать «меня поняли». Никаких общих фраз. "
-            "Только конкретика под его нишу и боль.\n"
-            "Никогда не выдумывай статистику. Никогда не упоминай таблицы или API.\n"
+            "Ты — Hermes, операционный директор NXT8. С тобой говорит предприниматель — "
+            "владелец живого бизнеса с реальными болями. От твоего ответа напрямую зависит, "
+            "подключится ли он к проекту. Поэтому:\n\n"
+            "ПРАВИЛА:\n"
+            "1. Никакого маркетингового шума. Никаких «революционизируем», «нового уровня», "
+            "«ускорим в 10 раз». Только спокойный профессиональный тон СEO.\n"
+            "2. Опирайся ТОЛЬКО на манифесты агентов NXT8 (даны во втором system-сообщении) "
+            "и на конкретные ответы клиента из анкеты. Не выдумывай функции, агентов или "
+            "интеграции, которых нет в реальном продукте.\n"
+            "3. Покажи, что ты прочитал анкету буквально: называй industry, team_size, его "
+            "каналы коммуникации, его process_system, его конкретные pain_points. Если он "
+            "написал «WhatsApp + Telegram + хаос в задачах» — этими словами и говори.\n"
+            "4. block2_team должен описать ИМЕННО агентов NXT8 (client_manager, project_coord, "
+            "analyst, marketer, compliance, bookkeeper, hr_mentor) — с фактическими функциями "
+            "из их манифестов — и привязать каждого к КОНКРЕТНОЙ боли клиента. Не выдумывай "
+            "новых ролей вроде «Продавец» или «Заместитель», если их нет в манифесте.\n"
+            "5. block3_in_30_days — 3-4 КОНКРЕТНЫХ шага по отделам, которые Hermes реально "
+            "запустит в первые 30 дней (а не общие фразы «настроим контроль»). Пример: "
+            "«client_manager начнёт фиксировать каждую заявку из WhatsApp в db.requests и "
+            "ставить follow-up через 24 часа».\n"
+            "6. block4_potential — честная оценка потенциала. Без рекордов. Если "
+            "team_size=solo и goal=scale — скажи прямо что путь длиннее.\n"
+            "7. Длина блоков: block1 = 2-3 предложения, block4 = 2-3 предложения, block2/3 "
+            "= 3-4 пункта. Не растягивай ради объёма, но и не сокращай так, что суть теряется.\n\n"
             + REPLY_SCHEMA_HINT
         )
     return (
-        "You are Hermes, a senior operations director talking with a business owner.\n"
-        "Speak like a human — no jargon, no emoji, no fluff.\n"
-        "Your job: turn the onboarding survey into a personal 5-block reply. "
-        "The client must feel 'they understood me'. No generic phrases. "
-        "Be specific to their industry and primary pain.\n"
-        "Never invent statistics. Never reference tables or APIs.\n"
+        "You are Hermes, the operations director of NXT8. You're talking with a real "
+        "business owner whose decision to onboard depends on this very reply. So:\n\n"
+        "RULES:\n"
+        "1. No marketing noise. No 'revolutionise', 'next-level', '10x faster'. Calm "
+        "professional CEO-to-CEO tone only.\n"
+        "2. Ground EVERYTHING in (a) the NXT8 agent manifests given in the second system "
+        "message and (b) the survey answers. Do NOT invent agents, functions or integrations "
+        "that don't exist in the real product.\n"
+        "3. Show you literally read the survey: name their industry, team_size, the exact "
+        "communication channels, their process_system, their specific pain_points. If they "
+        "wrote 'WhatsApp + Telegram + chaos in tasks' — use those exact words.\n"
+        "4. block2_team must describe REAL NXT8 agents (client_manager, project_coord, "
+        "analyst, marketer, compliance, bookkeeper, hr_mentor) — with their actual manifest "
+        "functions — and pair each with a SPECIFIC pain the client mentioned. Do not invent "
+        "roles like 'Sales rep' or 'Deputy' that are not in the manifests.\n"
+        "5. block3_in_30_days — 3-4 CONCRETE department-level steps Hermes will actually "
+        "launch in the first 30 days. Not 'set up control'. Example: 'client_manager will "
+        "log every WhatsApp inquiry to db.requests and create a 24h follow-up task'.\n"
+        "6. block4_potential — honest. No record-breaking claims. If team_size=solo and "
+        "goal=scale, say the road is longer.\n"
+        "7. Block lengths: block1 = 2-3 sentences, block4 = 2-3 sentences, block2/3 = 3-4 "
+        "items. Don't pad. Don't cut to the point of losing meaning.\n\n"
         + REPLY_SCHEMA_HINT
     )
 
@@ -749,8 +895,8 @@ async def generate_hermes_reply(
                 {"role": "system", "content": grounding_msg},
                 {"role": "user",   "content": json.dumps(user_blob, ensure_ascii=False)},
             ],
-            temperature=0.5,
-            max_tokens=900,
+            temperature=0.4,
+            max_tokens=1400,
             request_logprobs=False,
         )
         raw = (resp.get("content") or "").strip()

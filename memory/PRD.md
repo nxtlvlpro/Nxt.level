@@ -1081,3 +1081,74 @@ Bookkeeper'а — **4 функции** (cost/revenue/ROI телеметрия AI
 - `frontend/src/components/views/HomeView.jsx` — speak-button + state
 - `frontend/src/i18n/translations.js` — 2 новых ключа в EN + RU
 
+
+---
+
+## v1.25.0 — Onboarding → Permanent Company Context — 2026-06-04
+
+### User request
+"Гермес должен глубоко обработать анкету, понять как именно будет строиться
+дальнейшая работа всех отделов. ответ без воды и выдумки. данные сохраняются
+в манифест компании и дальнейшая работа идёт с постоянным учётом этих данных.
+от ответа Гермеса напрямую зависит захочет ли клиент подключиться."
+
+### What shipped
+
+**1. Deep-analysis prompt — `_system_prompt_for_reply()` в `agents/onboarding.py`**
+- 7 жёстких правил: zero marketing fluff, ground in real manifests + literal
+  survey answers, name the exact channels + pain points the client wrote,
+  block2_team uses ONLY real NXT8 agent ids, block3 = 3-4 concrete department
+  actions referencing real `db.*` collections, block4 = honest (no 10× claims),
+  exact length per block.
+- `max_tokens` 900 → **1400** (нужно для развёрнутых блоков по отделам)
+- `temperature` 0.5 → **0.4** (меньше выдумок)
+
+**2. Company manifest persistence — `agents/onboarding.py`**
+- `persist_company_manifest(profile)` — записывает компактный manifest в
+  новую коллекцию `db.company_manifests`, ключи: `tg:<username>`,
+  `ph:<digits>`, `em:<email>`, `profile:<uuid>`. Любой из ключей найдёт
+  компанию в будущем — устойчиво к смене устройства/сессии.
+- `get_company_manifest(user_id)` — best-effort lookup по трём ключам.
+- `render_company_manifest_block(manifest, lang)` — компактный 10-строчный
+  блок для инъекции в system prompt (RU/EN).
+- `save_profile` теперь зеркалит ответы в company_manifests прозрачно.
+
+**3. Auto-load on every Hermes turn — `agents/hermes.py`**
+- В `enhanced_chat()` сразу после базовых system messages вставляется
+  `render_company_manifest_block()` если `get_company_manifest(user_id)`
+  что-то нашёл. С инструкцией: "обязательный контекст для каждого ответа,
+  не задавай повторно вопросы".
+
+### Verification (live E2E)
+Анкета: онлайн-школа, 6-20 чел, owner_only, WhatsApp+Instagram+email, хаос
+в чатах, знания у сотрудников, pain=[leads_lost, owner_overloaded,
+no_visibility], goal=free_my_time, urgency=hot, Мария / @maria_edu /
+maria@school.io.
+
+**Hermes reply** (`source: llm`):
+- Intro: "Мария, я прочитал вашу анкету и вижу, что вы управляете
+  образовательным бизнесом **в одиночку**, утопая в **WhatsApp, Instagram
+  и email**" — буквально слова клиента
+- Block 1: точный диагноз "заявки тонут в чатах, перегружены операционкой"
+- Block 2: **4 РЕАЛЬНЫХ агента** — client_manager (для WhatsApp+Instagram
+  лидов), project_coord (bridging), analyst (воронка), compliance
+  (договоры с учениками — важно для edu!)
+- Block 3: 4 действия с упоминанием `db.requests` — не общие фразы
+- Block 4: ЧЕСТНО "путь небыстрый, но реалистичный" (нет 10× claims)
+- Block 5: персональное "Готовы начать с фиксации заявок?"
+
+**Persistence**: 3 ключа записаны в `db.company_manifests`
+(`tg:maria_edu`, `ph:79991234567`, `em:maria@school.io`) с полным контекстом.
+
+**Auto-load**: следующий чат с тем же user_id (`tg:maria_edu`) и
+сообщением "С чего начнём прямо сегодня?" — Hermes сразу обращается по
+имени "Мария", предлагает фиксы под её ситуацию (просроченные follow-up
+по лидам, compliance для договоров), в конце "Мария, с какого действия
+начнём?". Контекст не теряется между сессиями.
+
+### Files touched
+- `backend/agents/onboarding.py` — 7-rule deep prompt + manifest persist +
+  lookup + render helpers (~140 строк)
+- `backend/agents/hermes.py` — auto-inject company manifest в
+  `enhanced_chat()` (~20 строк)
+
