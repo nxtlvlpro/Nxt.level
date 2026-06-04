@@ -8,6 +8,7 @@ import {
   Mic,
   LayoutGrid,
   GitBranch,
+  Activity,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
   { id: "cmd", label: "CMD", icon: Terminal },
   { id: "ops", label: "OPS", icon: LayoutGrid },
   { id: "graph", label: "GRAPH", icon: GitBranch },
+  { id: "os", label: "OS", icon: Activity },
   { id: "agents", label: "AGENTS", icon: Users },
   { id: "map", label: "MAP", icon: Map },
   { id: "alerts", label: "ALERTS", icon: Bell, badge: true },

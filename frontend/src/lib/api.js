@@ -284,6 +284,62 @@ export const api = {
       }
     }
   },
+
+  // ---------- Hermes Operating Graph (10-node OS) ----------
+  hermesOsNodes: () => http.get("/hermes/os/nodes").then((r) => r.data),
+  hermesOsCycles: (limit = 20) =>
+    http.get(`/hermes/os/cycles?limit=${limit}`).then((r) => r.data),
+  hermesOsCycleGet: (cycle_id) =>
+    http.get(`/hermes/os/cycle/${cycle_id}`).then((r) => r.data),
+  hermesOsMemoryStats: () =>
+    http.get("/hermes/memory/stats").then((r) => r.data),
+  hermesOsMemoryKG: (entity, limit = 25) =>
+    http
+      .get(`/hermes/memory/knowledge-graph?${
+        entity ? `entity=${encodeURIComponent(entity)}&` : ""
+      }limit=${limit}`)
+      .then((r) => r.data),
+  hermesOsMemoryInst: (limit = 25) =>
+    http.get(`/hermes/memory/institutional?limit=${limit}`).then((r) => r.data),
+  // Live cycle SSE — calls onEvent(name, data) for every node tick.
+  hermesOsStream: async (payload, onEvent) => {
+    const resp = await fetch(`${API}/hermes/os/cycle/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+    if (!resp.ok || !resp.body) {
+      onEvent?.("error", { reason: `http_${resp.status}` });
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) !== -1) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        let name = "message";
+        let dataLine = "";
+        for (const line of block.split("\n")) {
+          if (line.startsWith("event:")) name = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataLine += line.slice(5).trimStart();
+        }
+        if (!dataLine) continue;
+        let data;
+        try {
+          data = JSON.parse(dataLine);
+        } catch {
+          continue;
+        }
+        onEvent?.(name, data);
+      }
+    }
+  },
 };
 
 export default api;

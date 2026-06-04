@@ -504,3 +504,32 @@ End-to-end Playwright test:
 - Files persist on disk under `/app/backend/uploads/attachments/` — same lifecycle as the documents pipeline.
 - Vision call uses the project's existing `OPENAI_API_KEY` (direct OpenAI SDK), matching the existing voice STT/TTS pattern.
 
+
+---
+
+## v1.16.4 — HermesOSView (live 10-node graph UI), 2026-02-06
+
+### What ships
+- **`frontend/src/components/views/HermesOSView.jsx`** — new view that consumes the `POST /api/hermes/os/cycle/stream` SSE endpoint built in v1.16.2.
+  - **10-node grid** (`Eye / Compass / ShieldCheck / Brain / GitFork / Cpu / Radar / Lightbulb / Sparkles / Rocket`). Each card has 4 visual states: `idle / active / done / error`. Active node glows turquoise with a loader; completed nodes flip to emerald check; errored ones turn red.
+  - **Live per-node summary text** extracted from the streamed slice (e.g. Observe shows `slice.summary`, Validate shows `STATUS — reason`, Routing shows `MODE → assignees`, Learn shows `N lessons, N KG edges`).
+  - **3 preset events** for one-click triggering: `new_client_message`, `contract_review`, `internal_task`. "Run live" button starts the SSE stream.
+  - **Memory stats strip** (Short-Term / Operational / Knowledge Graph / Institutional) refreshes after each run.
+  - **Side panels with tabs**: Recent cycles list (clickable, shows id + kind + source + hops + time), Knowledge Graph table (source → relation → target), Institutional Memory feed (scope + tags + text).
+- **`api.js` extension** — 6 new helpers: `hermesOsNodes`, `hermesOsCycles`, `hermesOsCycleGet`, `hermesOsMemoryStats`, `hermesOsMemoryKG`, `hermesOsMemoryInst`, plus the streaming `hermesOsStream(payload, onEvent)` which uses fetch + ReadableStream + a small SSE block parser (handles `event:` + multi-line `data:` per W3C spec).
+- **Nav wiring** — added `Activity`-iconed `OS` entry between GRAPH and AGENTS in both `SideNav` and `BottomNav`. App router has `case "os" → <HermesOSView />`.
+
+### Verified
+End-to-end Playwright run on the deployed preview:
+1. Clicked sidenav OS → view rendered with 11 testids found (1 grid + 10 nodes).
+2. Clicked **Run live** → over ~25 s the stream painted nodes one by one: Observe lit, then Context (`stm=0 ops=0 kg=0 inst=0`), Validate flagged `NEEDS_REVIEW`, Reason produced a goal, Routing chose `SELF → hermes`, Execute logged the action, Monitor/Learn/Improve/Evolve completed with summaries.
+3. Final screenshot shows all 10 nodes done (green checks) and the brand-new cycle `cac778c0` at the top of Recent Cycles, KG counter jumped from 26 → 33 edges.
+
+### Remaining for the user's listed backlog
+- Data Access Guard (backend enforcement of `manifests.data_access`)
+- Real Approval Gate (`db.pending_approvals` + UI)
+- Real Stripe checkout (replace static `nxt8.pro/checkout` link)
+- Agent Passport UI (manifest modal in AgentsView)
+
+These were not bundled into this step on purpose — the OS UI on its own is a meaningful unit to verify; the rest are independent and can be sequenced one-by-one.
+

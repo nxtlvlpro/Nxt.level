@@ -12,6 +12,7 @@ import AlertsView from "./components/views/AlertsView";
 import MicView from "./components/views/MicView";
 import OpsView from "./components/views/OpsView";
 import GraphView from "./components/views/GraphView";
+import HermesOSView from "./components/views/HermesOSView";
 import api from "./lib/api";
 import { useT } from "./i18n/LanguageContext";
 import { HEADER_LOCKED } from "./config/header.locked";
@@ -66,6 +67,8 @@ function App() {
         return <OpsView />;
       case "graph":
         return <GraphView />;
+      case "os":
+        return <HermesOSView />;
       case "home":
       default:
         return <HomeView />;
