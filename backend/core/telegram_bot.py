@@ -439,6 +439,28 @@ async def _handle_callback(update_cb: Dict[str, Any]) -> None:
         return
 
     op, approval_id = data.split(":", 1)
+    # Daily digest inline buttons — handled separately from approvals.
+    if op in {"digest_approve", "digest_edit"}:
+        digest_id = approval_id
+        try:
+            from core.db import get_db as _gdb
+            await _gdb().digests.update_one(
+                {"digest_id": digest_id},
+                {"$set": {"status": "approved" if op == "digest_approve" else "edit_requested"}},
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        if cb_id:
+            await _answer_callback(cb_id, "OK")
+        if op == "digest_approve":
+            await send_message(chat_id, "✅ План на день подтверждён. Запускаю.")
+        else:
+            await send_message(
+                chat_id,
+                "✏ Хорошо — напишите, что хотите изменить, и я перестрою план.",
+            )
+        return
+
     from core import approval_gate as _ag
     from agents.hermes import HERMES_TOOLS
 

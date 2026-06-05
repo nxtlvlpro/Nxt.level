@@ -74,6 +74,8 @@ http.interceptors.response.use(
     else if (status === 404) message = detailStr || "Не найдено";
     else if (status === 429)
       message = "Слишком много запросов, подождите минуту";
+    else if (status === 503 && detailStr === "llm_unavailable")
+      message = "AI временно недоступен, попробуйте через минуту";
     else if (status >= 500) message = "Ошибка сервера, попробуйте позже";
 
     if (message) {

@@ -139,9 +139,20 @@ async def lifespan(_app: FastAPI):
     deepseek = get_deepseek()
     logger.info("DeepSeek mock_mode=%s model=%s", deepseek.mock_mode, deepseek.model)
     task = asyncio.create_task(_roi_scheduler())
+    # Pulse + Daily-digest background scheduler.
+    try:
+        from core import scheduler as _sch
+        _sch.start()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("scheduler start failed: %s", e)
     try:
         yield
     finally:
+        try:
+            from core import scheduler as _sch
+            await _sch.shutdown()
+        except Exception:  # noqa: BLE001
+            pass
         task.cancel()
         try:
             await task
@@ -152,6 +163,23 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="NXT8 API", version="1.0.0", lifespan=lifespan)
 api = APIRouter(prefix="/api")
+
+
+# Map LLM-exhaustion exceptions to a clean 503. Triggered when every
+# configured LLM provider failed AND `ALLOW_LLM_MOCK=false`. Frontend
+# (`lib/api.js`) recognises `detail == "llm_unavailable"` and shows
+# the dedicated toast.
+from core.deepseek import LLMUnavailable as _LLMUnavailable  # noqa: E402
+from fastapi.responses import JSONResponse as _JSONResp  # noqa: E402
+
+
+@app.exception_handler(_LLMUnavailable)
+async def _handle_llm_unavailable(_request: Request, exc: _LLMUnavailable):  # noqa: ARG001
+    logger.warning("LLM unavailable: %s", exc)
+    return _JSONResp(
+        {"detail": "llm_unavailable", "note": getattr(exc, "note", ""), "errors": getattr(exc, "errors", "")},
+        status_code=503,
+    )
 
 
 # =====================================================================
@@ -3257,6 +3285,86 @@ async def whatsapp_webhook(secret: str, request: Request) -> Dict[str, Any]:
     # Twilio expects TwiML or 200 OK. Empty 200 is fine — we already
     # respond out-of-band via the REST API.
     return Response(content="<Response/>", media_type="application/xml")
+
+
+# =====================================================================
+# Scheduler — Pulse + Daily Digest (admin-only manual triggers)
+# =====================================================================
+
+
+@api.post("/scheduler/pulse/run")
+async def scheduler_run_pulse(
+    payload: Optional[Dict[str, Any]] = None,
+    _admin: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_admin),
+) -> Dict[str, Any]:
+    """Force a single Pulse tick. With `{"company_id": "..."}` runs for one
+    tenant; otherwise runs the global tick loop just like the scheduler."""
+    from agents import pulse as _pulse
+    from core import scheduler as _sch
+    cid = (payload or {}).get("company_id") if isinstance(payload, dict) else None
+    if cid:
+        return await _pulse.pulse_tick(str(cid))
+    tenants = await _sch.list_active_tenants(force=True)
+    results: List[Dict[str, Any]] = []
+    for t in tenants:
+        try:
+            results.append(await _pulse.pulse_tick(t))
+        except Exception as e:  # noqa: BLE001
+            results.append({"company_id": t, "error": str(e)})
+    return {"ok": True, "tenants": len(tenants), "results": results}
+
+
+@api.post("/scheduler/digest/preview")
+async def scheduler_digest_preview(
+    payload: Dict[str, Any],
+    _admin: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_admin),
+) -> Dict[str, Any]:
+    """Build a digest WITHOUT sending it — used for QA / first-look review."""
+    from agents import digest as _digest
+    cid = str(payload.get("company_id") or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="company_id required")
+    return await _digest.build_preview(cid)
+
+
+@api.post("/scheduler/digest/send")
+async def scheduler_digest_send(
+    payload: Dict[str, Any],
+    _admin: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_admin),
+) -> Dict[str, Any]:
+    """Force a real digest send for the given tenant (bypasses dedup)."""
+    from agents import digest as _digest
+    cid = str(payload.get("company_id") or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="company_id required")
+    return await _digest.build_and_send(cid)
+
+
+@api.get("/scheduler/status")
+async def scheduler_status(
+    _admin: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_admin),
+) -> Dict[str, Any]:
+    from core import scheduler as _sch
+    sch = _sch.get_scheduler()
+    jobs = []
+    if sch:
+        for j in sch.get_jobs():
+            jobs.append({
+                "id": j.id, "name": j.name,
+                "next_run": j.next_run_time.isoformat() if j.next_run_time else None,
+            })
+    return {
+        "running": sch is not None and sch.running,
+        "active_tenants": await _sch.list_active_tenants(),
+        "jobs": jobs,
+        "config": {
+            "pulse_enabled": _sch.PULSE_ENABLED,
+            "digest_enabled": _sch.DIGEST_ENABLED,
+            "pulse_interval_minutes": _sch.PULSE_INTERVAL_MINUTES,
+            "digest_hour": _sch.DIGEST_HOUR,
+            "tz": _sch.DEFAULT_TZ,
+        },
+    }
 
 
 # =====================================================================

@@ -15,6 +15,24 @@ Confidence:
 
 from __future__ import annotations
 
+
+class LLMUnavailable(Exception):
+    """All configured LLM providers failed (or none configured) and
+    `ALLOW_LLM_MOCK` is disabled. Caught by FastAPI handler in server.py
+    and surfaced to clients as HTTP 503 + `{"detail": "llm_unavailable"}`."""
+
+    def __init__(self, errors: str = "", *, note: str = "all_providers_failed") -> None:
+        self.errors = errors
+        self.note = note
+        super().__init__(f"{note}: {errors}" if errors else note)
+
+
+def _allow_mock() -> bool:
+    import os
+    raw = (os.environ.get("ALLOW_LLM_MOCK") or "true").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 import logging
 import math
 import os
@@ -109,7 +127,9 @@ class DeepSeekClient:
         model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         if self.mock_mode:
-            return self._mock_response(messages)
+            if _allow_mock():
+                return self._mock_response(messages)
+            raise LLMUnavailable("no providers configured", note="llm_no_providers")
 
         errors: List[str] = []
         for p in self.providers:
@@ -150,8 +170,11 @@ class DeepSeekClient:
         # all providers failed
         self.last_error = "; ".join(errors) or "all_providers_failed"
         self.active_provider = None
-        logger.error("all LLM providers failed: %s — falling back to mock", self.last_error)
-        return self._mock_response(messages, note=self.last_error)
+        if _allow_mock():
+            logger.error("all LLM providers failed: %s — falling back to mock", self.last_error)
+            return self._mock_response(messages, note=self.last_error)
+        logger.error("all LLM providers failed: %s — raising LLMUnavailable", self.last_error)
+        raise LLMUnavailable(self.last_error, note="all_providers_failed")
 
     async def chat_stream(
         self,
@@ -165,8 +188,10 @@ class DeepSeekClient:
         falls back to a single mock chunk to keep client UX consistent.
         """
         if self.mock_mode:
-            yield self._mock_response(messages)["content"]
-            return
+            if _allow_mock():
+                yield self._mock_response(messages)["content"]
+                return
+            raise LLMUnavailable("no providers configured", note="llm_no_providers")
 
         errors: List[str] = []
         for p in self.providers:
@@ -189,7 +214,10 @@ class DeepSeekClient:
 
         self.last_error = "; ".join(errors) or "all_providers_failed_stream"
         self.active_provider = None
-        yield self._mock_response(messages, note=self.last_error)["content"]
+        if _allow_mock():
+            yield self._mock_response(messages, note=self.last_error)["content"]
+            return
+        raise LLMUnavailable(self.last_error, note="all_providers_failed_stream")
 
     # ---------- internals ----------
 
