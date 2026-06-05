@@ -1433,21 +1433,6 @@ function HermesChat({ t, lang }) {
                 <Send className="w-3.5 h-3.5" />
                 {t("home.hermes.send")}
               </button>
-              <button
-                type="button"
-                onClick={() => setTalkMode((v) => !v)}
-                aria-pressed={talkMode}
-                title={t("home.hermes.talk.tooltip")}
-                data-testid="home-chat-talk-toggle"
-                className={`rounded-full px-3 py-2.5 text-[11px] uppercase tracking-widest flex items-center gap-1.5 border transition-colors ${
-                  talkMode
-                    ? "border-brand-turquoise text-brand-dark bg-brand-turquoise"
-                    : "border-white/10 text-slate-300 hover:border-brand-turquoise/60 hover:text-brand-turquoise"
-                }`}
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-                {t("home.hermes.talk.button")}
-              </button>
             </div>
           </div>
         ) : (

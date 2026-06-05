@@ -138,6 +138,24 @@ PUBLIC_PATH_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"^/api/whatsapp/webhook/[^/]+/?$"),
     re.compile(r"^/api/share/[^/]+/?(og\.png)?/?$"),
     re.compile(r"^/api/s/[^/]+/?$"),
+    # ── Test-mode public surface (landing/demo without sign-up) ─────────
+    # The landing page lets anonymous visitors talk to Hermes, hear
+    # answers, watch the ticker, and view the alerts/ROI snapshot. These
+    # endpoints are intentionally open to traffic without a session.
+    re.compile(r"^/api/chat/?$"),
+    re.compile(r"^/api/chat/stream/?$"),
+    re.compile(r"^/api/hermes/chat/?$"),
+    re.compile(r"^/api/hermes/talk/?$"),
+    re.compile(r"^/api/hermes/ultra/?$"),
+    re.compile(r"^/api/voice/converse/?$"),
+    re.compile(r"^/api/voice/converse_stream/?$"),
+    re.compile(r"^/api/voice/transcribe/?$"),
+    re.compile(r"^/api/voice/tts/?$"),
+    re.compile(r"^/api/alerts/?$"),
+    re.compile(r"^/api/onboarding/.+"),
+    re.compile(r"^/api/personas/.+"),
+    re.compile(r"^/api/tour/.+"),
+    re.compile(r"^/api/ticker/.+"),
 ]
 
 
