@@ -51,6 +51,15 @@ http.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // Pure-analytics endpoints must never disturb the user with a toast,
+    // even if the payload is malformed (e.g. unknown step_id from a stale
+    // localStorage build). The per-call .catch() swallows the rejection.
+    const isAnalytics =
+      url.includes("/tour/events") || url.includes("/share/click");
+    if (isAnalytics) {
+      return Promise.reject(error);
+    }
+
     const detail = error?.response?.data?.detail;
     const detailStr =
       typeof detail === "string" && detail.trim() ? detail.trim() : null;

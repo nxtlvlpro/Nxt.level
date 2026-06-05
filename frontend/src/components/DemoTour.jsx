@@ -97,14 +97,18 @@ export default function DemoTour() {
   // Persistent client id.
   useEffect(() => { clientIdRef.current = ensureClientId(); }, []);
 
-  // Record "tour open" exactly once per client (analytics).
+  // Record "tour open" exactly once per client (analytics). We wait until
+  // the step catalogue is loaded so we can anchor the `start` event to the
+  // first real step_id — the backend rejects `start` events with a null
+  // step_id (see core/tour.py · VALID_STEP_IDS).
   useEffect(() => {
     if (dismissed) return;
+    if (steps.length === 0) return;
     if (readBool(STARTED_KEY)) return;
     writeBool(STARTED_KEY, true);
     const cid = clientIdRef.current || ensureClientId();
-    api.tourEvent(cid, "start", null, { source: "auto_first_visit" });
-  }, [dismissed]);
+    api.tourEvent(cid, "start", steps[0].id, { source: "auto_first_visit" });
+  }, [dismissed, steps]);
 
   // Listen for app-wide "tour step completed" custom events so any
   // component can mark a step as done without coupling to this file.
