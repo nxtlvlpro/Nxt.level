@@ -1798,10 +1798,15 @@ async def onboarding_verify_code(req: AccessCodeRequest) -> Dict[str, Any]:
 @api.post("/onboarding/profiles")
 async def onboarding_save_profile(
     req: OnboardingProfileRequest,
-    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+    user: Optional["_auth_mod.AuthedUser"] = Depends(_auth_mod.optional_user),
 ) -> Dict[str, Any]:
     """Save the completed survey and, if an access code was provided, validate
     and consume it. Returns the profile id plus a `test_access` flag.
+
+    PUBLIC endpoint — anonymous visitors from the landing page must be able to
+    complete the onboarding survey without an account. If a session IS present
+    we tag the resulting profile with the caller's tenant so admin listings
+    stay isolated; anonymous profiles are left untagged until the user signs up.
     """
     from agents import onboarding as _onb
     payload = req.model_dump()
@@ -1816,34 +1821,35 @@ async def onboarding_save_profile(
     saved = await _onb.save_profile(payload)
     if not saved.get("ok"):
         raise HTTPException(status_code=400, detail=saved.get("error") or "save_failed")
-    # Tag the freshly-saved profile with the caller's tenant so listings
-    # and per-tenant brief lookups stay isolated.
-    try:
-        await get_db().client_profiles.update_one(
-            {"id": saved["id"]},
-            {"$set": {"company_id": user.company_id, "owner_user_id": user.user_id}},
-        )
-    except Exception:  # noqa: BLE001
-        pass
+    # Tag the freshly-saved profile with the caller's tenant when a session
+    # exists. Anonymous landing-page submissions stay untagged.
+    if user is not None:
+        try:
+            await get_db().client_profiles.update_one(
+                {"id": saved["id"]},
+                {"$set": {"company_id": user.company_id, "owner_user_id": user.user_id}},
+            )
+        except Exception:  # noqa: BLE001
+            pass
     return {"ok": True, "profile_id": saved["id"], "test_access": test_access}
 
 
 @api.get("/onboarding/profiles/{profile_id}")
 async def onboarding_get_profile(
     profile_id: str,
-    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+    user: Optional["_auth_mod.AuthedUser"] = Depends(_auth_mod.optional_user),
 ) -> Dict[str, Any]:
     from agents import onboarding as _onb
     profile = await _onb.get_profile(profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="profile_not_found")
-    # Cross-tenant isolation — admins still see everything.
-    if (
-        not user.is_admin
-        and profile.get("company_id")
-        and profile.get("company_id") != user.company_id
-    ):
-        raise HTTPException(status_code=404, detail="profile_not_found")
+    # Cross-tenant isolation — admins still see everything. Anonymous profiles
+    # (no company_id) remain readable by their session-less submitter via
+    # profile_id (it acts as a capability token until the user signs up).
+    owner_company = profile.get("company_id")
+    if owner_company:
+        if user is None or (not user.is_admin and owner_company != user.company_id):
+            raise HTTPException(status_code=404, detail="profile_not_found")
     return profile
 
 

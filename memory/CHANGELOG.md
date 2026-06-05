@@ -1,5 +1,25 @@
 # NXT8 — Release Notes
 
+## v1.13.x-hotfix-onboarding-anon — 2026-02-XX
+
+**Status:** 🔥 Production hotfix — анонимный онбординг с лендинга снова работает.
+
+### Bug — "Не удалось обработать ответы" в конце анкеты
+- **Root cause:** `POST /api/onboarding/profiles` и `GET /api/onboarding/profiles/{id}`
+  имели `Depends(require_user)` после security-rewrite. Middleware whitelist
+  `^/api/onboarding/.+` пропускал запрос, но endpoint-level dependency
+  отдавал `401 not_authenticated` анонимным посетителям лендинга.
+- **Fix (`server.py`):** заменил `require_user` → `optional_user` на
+  обоих endpoint'ах. Если сессия есть — профиль тегается `company_id`
+  и `owner_user_id` (tenant-isolation сохранён). Если нет — профиль
+  остаётся анонимным, доступным по `profile_id` как capability-token
+  до момента регистрации.
+- **Tested:** curl save+brief через preview-proxy и localhost — OK,
+  возвращает `hermes_reply` с LLM-content.
+
+---
+
+
 
 ## v1.13.0-iteration-1-auth-and-admin-gate — 2026-06-05
 
