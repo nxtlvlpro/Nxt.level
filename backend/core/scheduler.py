@@ -47,8 +47,10 @@ def _int(name: str, default: int) -> int:
 
 PULSE_ENABLED = _flag("PULSE_ENABLED", "true")
 DIGEST_ENABLED = _flag("DIGEST_ENABLED", "true")
+SESSION_CLEANUP_ENABLED = _flag("SESSION_CLEANUP_ENABLED", "true")
 PULSE_INTERVAL_MINUTES = _int("PULSE_INTERVAL_MINUTES", 60)
 DIGEST_HOUR = _int("DIGEST_HOUR", 9)
+SESSION_CLEANUP_HOUR = _int("SESSION_CLEANUP_HOUR", 3)
 TENANT_INACTIVE_DAYS = _int("TENANT_INACTIVE_DAYS", 7)
 DEFAULT_TZ = (os.environ.get("DIGEST_DEFAULT_TIMEZONE") or "Europe/Moscow").strip()
 
@@ -157,6 +159,39 @@ async def _refresh_tenants_cache() -> None:
     await list_active_tenants(force=True)
 
 
+async def _run_session_cleanup() -> None:
+    """M3 — daily 03:00 sweep of anonymous-session short-term memory.
+
+    The 90-day TTL index on `sessions.expires_at` is the absolute backstop;
+    this job runs the 24h-stale anon-only purge for a tighter retention.
+    Known users (with stable user_id) are explicitly skipped inside
+    `MemoryEngine.cleanup_expired_sessions`.
+    """
+    if not SESSION_CLEANUP_ENABLED:
+        return
+    started_at = datetime.now(timezone.utc).isoformat()
+    deleted = 0
+    err: Optional[str] = None
+    try:
+        from agents import memory as _mem
+        deleted = await _mem.get_memory().cleanup_expired_sessions()
+    except Exception as e:  # noqa: BLE001
+        err = str(e)
+        logger.warning("session cleanup failed: %s", e)
+    try:
+        await get_db().scheduler_jobs.insert_one({
+            "job": "session_cleanup",
+            "started_at": started_at,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "deleted": int(deleted),
+            "ok": err is None,
+            "error": err,
+        })
+    except Exception:  # noqa: BLE001
+        pass
+    logger.info("session_cleanup done: deleted=%d", deleted)
+
+
 # ---------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------
@@ -167,8 +202,8 @@ def start() -> None:
     global _scheduler
     if _scheduler is not None:
         return
-    if not (PULSE_ENABLED or DIGEST_ENABLED):
-        logger.info("scheduler disabled (both PULSE & DIGEST off)")
+    if not (PULSE_ENABLED or DIGEST_ENABLED or SESSION_CLEANUP_ENABLED):
+        logger.info("scheduler disabled (PULSE, DIGEST and SESSION_CLEANUP all off)")
         return
 
     sch = AsyncIOScheduler(timezone="UTC")
@@ -205,11 +240,22 @@ def start() -> None:
             replace_existing=True,
         )
 
+    if SESSION_CLEANUP_ENABLED:
+        sch.add_job(
+            _run_session_cleanup,
+            CronTrigger(hour=SESSION_CLEANUP_HOUR, minute=0, timezone=DEFAULT_TZ),
+            id="session_cleanup",
+            name=f"Session cleanup @ {SESSION_CLEANUP_HOUR}:00 {DEFAULT_TZ}",
+            max_instances=1,
+            coalesce=True,
+            replace_existing=True,
+        )
+
     sch.start()
     _scheduler = sch
     logger.info(
-        "scheduler started · pulse_every=%dm digest_at=%02d:00 %s",
-        PULSE_INTERVAL_MINUTES, DIGEST_HOUR, DEFAULT_TZ,
+        "scheduler started · pulse_every=%dm digest_at=%02d:00 session_cleanup_at=%02d:00 %s",
+        PULSE_INTERVAL_MINUTES, DIGEST_HOUR, SESSION_CLEANUP_HOUR, DEFAULT_TZ,
     )
 
 

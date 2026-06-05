@@ -1,7 +1,21 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.17.0-telegram-channel (additive over v1.16.0-hermes-ceo)
-**Last updated:** 2026-06-04 by Главный Системный Архитектор (E1)
+**Current version:** v1.18.0-memory-m3 (additive over v1.17.0-telegram-channel)
+**Last updated:** 2026-06-05 by E1
+
+## What's new — v1.18 (2026-06-05)
+
+**Memory Sprint · Fix M3 — Session size cap + TTL.** Закрыта последняя
+дыра memory-sprint'а: `db.sessions.messages[]` ограничен 200 элементами
+(защита от 16 MB BSON-лимита). Анонимные сессии получают BSON-Date
+`expires_at = now + 90d`, на которое навешен MongoDB TTL-индекс; сессии
+известных пользователей `expires_at` не получают (история хранится
+вечно). При промоушене анонимной сессии в авторизованную `expires_at`
+автоматически снимается через `$unset`. APScheduler ежедневно в 03:00
+(`Europe/Moscow`) запускает `cleanup_expired_sessions` (24h sweeper для
+анонимов), результаты пишутся в `db.scheduler_jobs`. Env-флаги:
+`SESSION_CLEANUP_ENABLED`, `SESSION_CLEANUP_HOUR`. Покрытие — 7 тестов
+в `/app/backend/tests/test_memory_m3_session_limits.py`.
 
 ## What's new — v1.17 (2026-06-04)
 

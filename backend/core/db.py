@@ -37,6 +37,15 @@ def get_db() -> AsyncIOMotorDatabase:
 async def ensure_indexes() -> None:
     db = get_db()
     await db.sessions.create_index("session_id", unique=True)
+    # M3 — TTL on anonymous sessions. `expires_at` is BSON-Date (set only
+    # for anonymous sessions in `agents.memory.append_message`); known
+    # users have no `expires_at`, so this TTL ignores them.
+    await db.sessions.create_index(
+        "expires_at", expireAfterSeconds=0, name="sessions_expires_at_ttl"
+    )
+    # M3 — used by the 24h `cleanup_expired_sessions` sweeper.
+    await db.sessions.create_index([("updated_at", 1)])
+    await db.sessions.create_index([("company_id", 1), ("updated_at", -1)])
     await db.memories.create_index([("type", 1), ("created_at", -1)])
     await db.memories.create_index("metadata.department")
     await db.requests.create_index([("session_id", 1), ("created_at", -1)])

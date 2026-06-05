@@ -9,7 +9,7 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
     # fallback to internal preview if env not set in shell
-    BASE_URL = "https://agent-orchestrate-6.preview.emergentagent.com"
+    BASE_URL = "https://company-os-9.preview.emergentagent.com"
 
 API = f"{BASE_URL}/api"
 HEADERS = {"Content-Type": "application/json"}

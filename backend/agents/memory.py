@@ -14,6 +14,15 @@ Tenant isolation (Memory Sprint · M1):
 - TF-IDF cache is keyed per tenant so corpora do not cross-pollinate and
   one tenant's `store_memory` does not invalidate another's cache.
 
+Session size + TTL (Memory Sprint · M3):
+- Sessions cap message array at MAX_SESSION_MESSAGES (200) via `$push` +
+  `$slice` so a doc never approaches the 16 MB BSON limit.
+- Anonymous sessions get a BSON-Date `expires_at` (now + 90 days). A MongoDB
+  TTL index on `sessions.expires_at` auto-purges them. Known users
+  (stable user_id) have `expires_at` cleared so their history is kept.
+- `cleanup_expired_sessions` is also scheduled daily @ 03:00 in
+  core.scheduler for fast 24h-TTL pruning on top of the 90d TTL index.
+
 Note: ТЗ specifies Chroma + sentence-transformers. For Emergent single-process
 deployment we use TF-IDF (scikit-learn) — same semantic search contract,
 no external service. When DeepSeek embeddings API is wired this module
@@ -37,9 +46,26 @@ from core.db import get_db
 
 logger = logging.getLogger("nxt8.memory")
 
+# M3 — hard cap on session.messages length so a single session doc never
+# explodes past the 16MB BSON limit. `$push` + `$slice` keeps the most
+# recent N entries on every write.
+MAX_SESSION_MESSAGES = 200
+
+# M3 — absolute TTL on anonymous sessions. Backstop for the 24h
+# `cleanup_expired_sessions` sweeper. Known users' sessions don't get
+# `expires_at` set, so they're never auto-purged by the TTL index.
+SESSION_ANON_TTL_DAYS = 90
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _is_known_user_id(user_id: Optional[str]) -> bool:
+    """True if `user_id` is a stable browser/account id (not an anon stub)."""
+    if not user_id:
+        return False
+    return not user_id.lower().startswith(("anon", "home_visitor"))
 
 
 def _half_life_decay(days_old: float, half_life_days: float = 30.0) -> float:
@@ -73,19 +99,38 @@ class MemoryEngine:
         db = get_db()
         msg = {"role": role, "content": content, "ts": _now()}
         set_fields: Dict[str, Any] = {"updated_at": _now()}
+        unset_fields: Dict[str, Any] = {}
+        is_known = _is_known_user_id(user_id)
         # Bind a stable per-browser user_id to the session so cross-session
         # continuity (M1) and ttl-exemption for known users (M5) work.
-        if user_id and not user_id.lower().startswith(("anon", "home_visitor")):
+        if is_known:
             set_fields["user_id"] = user_id
         # Tenant binding: write `company_id` at the root of every session
         # doc so all reads can filter cheaply by tenant.
         if company_id:
             set_fields["company_id"] = company_id
+        # M3 — absolute TTL on anonymous sessions only. BSON-Date so the
+        # MongoDB TTL index on `expires_at` can auto-purge. For known users
+        # we strip any stale `expires_at` so their history is preserved.
+        if is_known:
+            unset_fields["expires_at"] = ""
+        else:
+            set_fields["expires_at"] = datetime.now(timezone.utc) + timedelta(
+                days=SESSION_ANON_TTL_DAYS
+            )
         update: Dict[str, Any] = {
-            "$push": {"messages": msg},
+            # M3 — cap messages[] at MAX_SESSION_MESSAGES on every write.
+            "$push": {
+                "messages": {
+                    "$each": [msg],
+                    "$slice": -MAX_SESSION_MESSAGES,
+                }
+            },
             "$set": set_fields,
             "$setOnInsert": {"created_at": _now()},
         }
+        if unset_fields:
+            update["$unset"] = unset_fields
         await db.sessions.update_one(
             {"session_id": session_id},
             update,
