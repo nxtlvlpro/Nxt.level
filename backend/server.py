@@ -536,29 +536,44 @@ async def mempalace_health() -> Dict[str, Any]:
 
 
 @api.post("/mempalace/store")
-async def mempalace_store(req: MemPalaceStoreRequest) -> Dict[str, Any]:
+async def mempalace_store(
+    req: MemPalaceStoreRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     if not (req.content or "").strip():
         raise HTTPException(status_code=400, detail="content must not be empty")
     return await mempalace_agent.get_mempalace().store(
         content=req.content,
         wing=req.wing,
-        room=req.room,
+        logical_room=req.room,
         metadata=req.metadata,
         source=req.source,
+        company_id=user.company_id,
     )
 
 
 @api.post("/mempalace/search")
-async def mempalace_search(req: MemPalaceSearchRequest) -> Dict[str, Any]:
+async def mempalace_search(
+    req: MemPalaceSearchRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     items = await mempalace_agent.get_mempalace().search(
-        query=req.query, wing=req.wing, room=req.room, top_k=req.top_k
+        query=req.query,
+        wing=req.wing,
+        logical_room=req.room,
+        top_k=req.top_k,
+        company_id=user.company_id,
     )
     return {"count": len(items), "results": items}
 
 
 @api.get("/mempalace/wings")
-async def mempalace_wings() -> Dict[str, Any]:
-    wings = await mempalace_agent.get_mempalace().list_wings()
+async def mempalace_wings(
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    wings = await mempalace_agent.get_mempalace().list_wings(
+        company_id=user.company_id,
+    )
     return {"count": len(wings), "wings": wings}
 
 
@@ -1267,13 +1282,14 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                         mempalace_agent.get_mempalace().store(
                             content=f"USER: {req.message}\nASSISTANT: {full}",
                             wing="chats",
-                            room=session_id,
+                            logical_room=session_id,
                             metadata={
                                 "user_id": req.user_id,
                                 "intent": intent,
                                 "channel": "stream",
                             },
                             source="chat_stream",
+                            company_id=stream_company_id,
                         )
                     )
             except Exception as _mp_err:  # noqa: BLE001

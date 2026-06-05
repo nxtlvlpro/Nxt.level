@@ -248,10 +248,15 @@ async def _t_mempalace_search(args: Dict[str, Any]) -> Dict[str, Any]:
     if not query:
         return {"ok": False, "error": "empty query", "results": []}
     top_k = int(args.get("top_k") or 5)
+    company_id = args.get("company_id") or DEFAULT_COMPANY
     bridge = mempalace_agent.get_mempalace()
-    results = await bridge.search(query=query, wing=args.get("wing"),
-                                  room=args.get("room"), top_k=top_k)
-    return {"ok": True, "count": len(results), "results": results}
+    results = await bridge.search(
+        query=query, wing=args.get("wing"),
+        logical_room=args.get("room"), top_k=top_k,
+        company_id=company_id,
+    )
+    return {"ok": True, "count": len(results), "results": results,
+            "company_id": company_id}
 
 
 async def _t_mempalace_store(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -259,13 +264,15 @@ async def _t_mempalace_store(args: Dict[str, Any]) -> Dict[str, Any]:
     content = (args.get("content") or "").strip()
     if not content:
         return {"ok": False, "error": "empty content"}
+    company_id = args.get("company_id") or DEFAULT_COMPANY
     bridge = mempalace_agent.get_mempalace()
     return await bridge.store(
         content=content,
         wing=args.get("wing") or "internal",
-        room=args.get("room") or "general",
-        metadata={"company_id": args.get("company_id"), "via": "hermes_tool"},
+        logical_room=args.get("room"),
+        metadata={"via": "hermes_tool"},
         source="hermes",
+        company_id=company_id,
     )
 
 
@@ -402,6 +409,7 @@ async def _t_find_opportunities_in_contact(args: Dict[str, Any]) -> Dict[str, An
             bridge = mempalace_agent.get_mempalace()
             results = await bridge.search(
                 query=f"contact {contact_id}", top_k=5,
+                company_id=args.get("company_id") or DEFAULT_COMPANY,
             )
             for r in results or []:
                 snippet = r.get("content") or r.get("text") or ""

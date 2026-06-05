@@ -214,7 +214,9 @@ async def ingest_document(
     document_id = str(uuid.uuid4())
     chunks = _chunk(text)
 
-    # 1. store chunks in MemPalace under wing=documents/room=<doc_id>
+    # 1. store chunks in MemPalace under wing=documents/room=<company_id>
+    #    (M2: tenant lives in `room`; doc_id is preserved as `logical_room`
+    #    inside `source_file` so we can post-filter to a single document).
     mp_stored = 0
     try:
         bridge = mempalace_agent.get_mempalace()
@@ -223,15 +225,15 @@ async def ingest_document(
                 await bridge.store(
                     content=chunk,
                     wing="documents",
-                    room=document_id,
+                    logical_room=document_id,
                     metadata={
-                        "company_id": company_id,
                         "filename": filename,
                         "title": title or filename,
                         "chunk_index": idx,
                         "total_chunks": len(chunks),
                     },
                     source="documents_upload",
+                    company_id=company_id,
                 )
                 mp_stored += 1
             except Exception as e:  # noqa: BLE001
