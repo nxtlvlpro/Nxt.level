@@ -52,6 +52,8 @@ async def coordinate(
     query: str,
     user_id: str = "anonymous",
     session_id: Optional[str] = None,
+    *,
+    company_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Multi-department coordination pipeline. Returns synthesis + per-dept findings."""
     deepseek = get_deepseek()
@@ -64,7 +66,7 @@ async def coordinate(
     findings: List[Dict[str, Any]] = []
     if departments:
         for dept in departments:
-            results = await mem.search(query=query, top_k=4)
+            results = await mem.search(query=query, top_k=4, company_id=company_id)
             # filter by metadata.department when present
             scoped = [r for r in results if (r.get("metadata") or {}).get("department") == dept]
             # fall back to top-k if no exact dept match
@@ -83,7 +85,7 @@ async def coordinate(
             })
     else:
         # single-dept: fall back to general search
-        results = await mem.search(query=query, top_k=5)
+        results = await mem.search(query=query, top_k=5, company_id=company_id)
         findings.append({"department": "general", "items": [
             {"content": r["content"], "rank": r["rank"], "metadata": r.get("metadata", {})}
             for r in results

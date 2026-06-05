@@ -136,6 +136,13 @@ async def lifespan(_app: FastAPI):
         await _onb.seed_default_codes()
     except Exception as e:  # noqa: BLE001
         logger.warning("onboarding seed failed: %s", e)
+    # Memory Sprint · M1: backfill company_id on legacy sessions.
+    try:
+        from core.migrations import m_tag_memory_with_company_id as _m
+        res = await _m.run()
+        logger.info("memory backfill: %s", res)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("memory backfill failed: %s", e)
     deepseek = get_deepseek()
     logger.info("DeepSeek mock_mode=%s model=%s", deepseek.mock_mode, deepseek.model)
     task = asyncio.create_task(_roi_scheduler())
@@ -331,7 +338,8 @@ async def seed_demo(
          {"department": "support", "priority": "high"}),
     ]
     for content, meta in corporate_docs:
-        await mem.store_memory(content, memory_type="corporate", metadata=meta)
+        await mem.store_memory(content, memory_type="corporate", metadata=meta,
+                               company_id=_admin.company_id)
 
     employees = [
         {"employee_id": "emp_alex", "name": "Alex Morgan", "department": "sales",
@@ -465,16 +473,9 @@ async def memory_store(
     user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
     mid = await memory_agent.get_memory().store_memory(
-        content=req.content, memory_type=req.type, metadata=req.metadata
+        content=req.content, memory_type=req.type, metadata=req.metadata,
+        company_id=user.company_id,
     )
-    # Tag the freshly-stored memory with the caller's tenant so reads
-    # can filter it. Best-effort — failure to tag falls back to "global".
-    try:
-        await get_db().memories.update_one(
-            {"id": mid}, {"$set": {"company_id": user.company_id}}
-        )
-    except Exception:  # noqa: BLE001
-        pass
     return {"id": mid, "status": "stored"}
 
 
@@ -484,21 +485,9 @@ async def memory_search(
     user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
     res = await memory_agent.get_memory().search(
-        query=req.query, top_k=req.top_k, memory_type=req.type
+        query=req.query, top_k=req.top_k, memory_type=req.type,
+        company_id=user.company_id,
     )
-    # Tenant-filter the candidates (TF-IDF cache is global — we just drop
-    # rows that don't belong to this company). Legacy un-tagged rows are
-    # treated as invisible per Iteration-2 spec (option `a`).
-    ids = [r.get("id") for r in res if r.get("id")]
-    if ids:
-        visible = await get_db().memories.find(
-            {"id": {"$in": ids}, "company_id": user.company_id},
-            {"_id": 0, "id": 1},
-        ).to_list(length=len(ids))
-        visible_ids = {v["id"] for v in visible}
-        res = [r for r in res if r.get("id") in visible_ids]
-    else:
-        res = []
     return {"count": len(res), "results": res}
 
 
@@ -951,9 +940,12 @@ async def voice_converse(
     # Persist to short-term memory (best effort)
     try:
         mem = memory_agent.get_memory()
-        await mem.append_message(sid, "user", user_text, user_id=user_id)
+        v_company_id = await _resolve_company_id(user_id)
+        await mem.append_message(sid, "user", user_text,
+                                 user_id=user_id, company_id=v_company_id)
         if reply_text:
-            await mem.append_message(sid, "assistant", reply_text, user_id=user_id)
+            await mem.append_message(sid, "assistant", reply_text,
+                                     user_id=user_id, company_id=v_company_id)
     except Exception as mem_err:  # noqa: BLE001
         logger.warning("voice memory append failed: %s", mem_err)
 
@@ -1125,9 +1117,12 @@ async def voice_converse_stream(
         # Persist memory.
         try:
             mem = memory_agent.get_memory()
-            await mem.append_message(sid, "user", user_text, user_id=user_id)
+            vs_company_id = await _resolve_company_id(user_id)
+            await mem.append_message(sid, "user", user_text,
+                                     user_id=user_id, company_id=vs_company_id)
             if reply_text:
-                await mem.append_message(sid, "assistant", reply_text, user_id=user_id)
+                await mem.append_message(sid, "assistant", reply_text,
+                                         user_id=user_id, company_id=vs_company_id)
         except Exception as mem_err:  # noqa: BLE001
             logger.warning("voice_stream memory append failed: %s", mem_err)
 
@@ -1217,8 +1212,11 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
         mem = memory_agent.get_memory()
 
         try:
-            await mem.append_message(session_id, "user", req.message, user_id=req.user_id)
-            ctx = await mem.get_optimal_context(req.message, session_id, max_chars=6000)
+            stream_company_id = await _resolve_company_id(req.user_id)
+            await mem.append_message(session_id, "user", req.message,
+                                     user_id=req.user_id, company_id=stream_company_id)
+            ctx = await mem.get_optimal_context(req.message, session_id, max_chars=6000,
+                                                company_id=stream_company_id)
 
             # Quick intent classify via fast model call (small max_tokens)
             intent_resp = await deepseek.chat(
@@ -1258,7 +1256,8 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                 yield f"event: delta\ndata: {_json.dumps({'text': delta})}\n\n"
 
             full = "".join(full_chunks)
-            await mem.append_message(session_id, "assistant", full, user_id=req.user_id)
+            await mem.append_message(session_id, "assistant", full,
+                                     user_id=req.user_id, company_id=stream_company_id)
 
             # Long-term memory: store the user/assistant exchange in MemPalace
             # under chats/{session_id}. Fire-and-forget; never blocks streaming.
@@ -1398,7 +1397,9 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
         mem = memory_agent.get_memory()
 
         try:
-            await mem.append_message(session_id, "user", req.message, user_id=req.user_id)
+            talk_company_id = await _resolve_company_id(req.user_id, req.company_id)
+            await mem.append_message(session_id, "user", req.message,
+                                     user_id=req.user_id, company_id=talk_company_id)
 
             from agents.hermes import _system_prompt as _hermes_sys
             from agents.onboarding import get_company_manifest, render_company_manifest_block
@@ -1457,7 +1458,8 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
                 sent_idx += 1
 
             full = "".join(full_chunks)
-            await mem.append_message(session_id, "assistant", full, user_id=req.user_id)
+            await mem.append_message(session_id, "assistant", full,
+                                     user_id=req.user_id, company_id=talk_company_id)
 
             latency_ms = int((_time.time() - t0) * 1000)
 
@@ -1474,7 +1476,6 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
                     m["content"] for m in (await mem.get_session(session_id, limit=10))
                     if m.get("role") == "assistant"
                 ]
-                company_id = await _resolve_company_id(req.user_id, req.company_id)
                 await finalize_llm_turn(
                     channel="talk",
                     agent="hermes_talk",
@@ -1492,7 +1493,7 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
                     mock=False,
                     latency_ms=latency_ms,
                     extra={"sentences": sent_idx, "lang": req.lang},
-                    company_id=company_id,
+                    company_id=talk_company_id,
                 )
             except Exception as _hook_err:  # noqa: BLE001
                 logger.warning("hermes_talk finalize_llm_turn failed: %s", _hook_err)
@@ -2288,11 +2289,14 @@ async def hermes_chat(req: HermesChatRequest) -> Dict[str, Any]:
     # so cross-session continuity works.
     try:
         mem = memory_agent.get_memory()
+        hc_company_id = await _resolve_company_id(req.user_id)
         if last_user_msg:
-            await mem.append_message(sid, "user", last_user_msg, user_id=req.user_id)
+            await mem.append_message(sid, "user", last_user_msg,
+                                     user_id=req.user_id, company_id=hc_company_id)
         reply_text = result.get("content") or ""
         if reply_text:
-            await mem.append_message(sid, "assistant", reply_text, user_id=req.user_id)
+            await mem.append_message(sid, "assistant", reply_text,
+                                     user_id=req.user_id, company_id=hc_company_id)
     except Exception as mem_err:  # noqa: BLE001
         logger.warning("hermes_chat memory append failed: %s", mem_err)
 
@@ -2380,9 +2384,12 @@ async def hermes_ultra_endpoint(req: HermesUltraRequest) -> Dict[str, Any]:
     # Persist user + assistant turns into short-term memory (best effort)
     try:
         mem = memory_agent.get_memory()
-        await mem.append_message(session_id, "user", req.message, user_id=req.user_id)
+        hu_company_id = await _resolve_company_id(req.user_id)
+        await mem.append_message(session_id, "user", req.message,
+                                 user_id=req.user_id, company_id=hu_company_id)
         if result.get("content"):
-            await mem.append_message(session_id, "assistant", result["content"], user_id=req.user_id)
+            await mem.append_message(session_id, "assistant", result["content"],
+                                     user_id=req.user_id, company_id=hu_company_id)
     except Exception as mem_err:  # noqa: BLE001
         logger.warning("memory append failed: %s", mem_err)
 

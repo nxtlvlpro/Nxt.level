@@ -62,10 +62,11 @@ async def _t_search_memory(args: Dict[str, Any]) -> Dict[str, Any]:
     if not query:
         return {"ok": False, "error": "empty query", "results": []}
     top_k = int(args.get("top_k") or 5)
+    company_id = args.get("company_id") or DEFAULT_COMPANY
     mem = memory_agent.get_memory()
-    results = await mem.search(query=query, top_k=top_k)
+    results = await mem.search(query=query, top_k=top_k, company_id=company_id)
     return {"ok": True, "count": len(results), "results": results,
-            "company_id": args.get("company_id", DEFAULT_COMPANY)}
+            "company_id": company_id}
 
 
 async def _t_create_task(args: Dict[str, Any]) -> Dict[str, Any]:

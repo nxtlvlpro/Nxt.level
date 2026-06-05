@@ -6,6 +6,14 @@ Implements multi-tier memory per ТЗ Module 4:
 - long_term: corporate / episodic / semantic memories with TF-IDF semantic search
 - ranking : recency × frequency × importance
 
+Tenant isolation (Memory Sprint · M1):
+- Every `db.sessions` and `db.memories` doc carries a top-level `company_id`.
+- `search` / `get_optimal_context` REQUIRE a tenant scope. Calls without
+  `company_id` get ONLY documents whose `company_id` is None (legacy/admin
+  pool) — they never see another tenant's data.
+- TF-IDF cache is keyed per tenant so corpora do not cross-pollinate and
+  one tenant's `store_memory` does not invalidate another's cache.
+
 Note: ТЗ specifies Chroma + sentence-transformers. For Emergent single-process
 deployment we use TF-IDF (scikit-learn) — same semantic search contract,
 no external service. When DeepSeek embeddings API is wired this module
@@ -45,7 +53,10 @@ class MemoryEngine:
 
     def __init__(self) -> None:
         self.short_term_ttl_hours = 24
-        self._tfidf_cache: Optional[Dict[str, Any]] = None
+        # Per-tenant TF-IDF cache. Key = company_id (str) or None for the
+        # legacy/admin pool. Each entry is independent so writes in one
+        # tenant never invalidate another tenant's cache.
+        self._tfidf_cache: Dict[Optional[str], Dict[str, Any]] = {}
         self._tfidf_lock = asyncio.Lock()
 
     # ---------- short-term ----------
@@ -56,18 +67,25 @@ class MemoryEngine:
         role: str,
         content: str,
         user_id: Optional[str] = None,
+        *,
+        company_id: Optional[str] = None,
     ) -> None:
         db = get_db()
         msg = {"role": role, "content": content, "ts": _now()}
-        update: Dict[str, Any] = {
-            "$push": {"messages": msg},
-            "$set": {"updated_at": _now()},
-            "$setOnInsert": {"created_at": _now()},
-        }
+        set_fields: Dict[str, Any] = {"updated_at": _now()}
         # Bind a stable per-browser user_id to the session so cross-session
         # continuity (M1) and ttl-exemption for known users (M5) work.
         if user_id and not user_id.lower().startswith(("anon", "home_visitor")):
-            update["$set"]["user_id"] = user_id
+            set_fields["user_id"] = user_id
+        # Tenant binding: write `company_id` at the root of every session
+        # doc so all reads can filter cheaply by tenant.
+        if company_id:
+            set_fields["company_id"] = company_id
+        update: Dict[str, Any] = {
+            "$push": {"messages": msg},
+            "$set": set_fields,
+            "$setOnInsert": {"created_at": _now()},
+        }
         await db.sessions.update_one(
             {"session_id": session_id},
             update,
@@ -102,6 +120,8 @@ class MemoryEngine:
         content: str,
         memory_type: str = "corporate",
         metadata: Optional[Dict[str, Any]] = None,
+        *,
+        company_id: Optional[str] = None,
     ) -> str:
         db = get_db()
         doc = {
@@ -110,30 +130,47 @@ class MemoryEngine:
             "type": memory_type,
             "metadata": metadata or {},
             "access_count": 0,
+            "company_id": company_id,
             "created_at": _now(),
         }
         await db.memories.insert_one(doc)
-        self._tfidf_cache = None  # invalidate
-        logger.info("Stored %s memory (%d chars)", memory_type, len(content))
+        # Only invalidate the cache for THIS tenant — other tenants'
+        # corpora are untouched.
+        self._tfidf_cache.pop(company_id, None)
+        logger.info("Stored %s memory (%d chars) tenant=%s",
+                    memory_type, len(content), company_id)
         return doc["id"]
 
     async def list_memories(
-        self, memory_type: Optional[str] = None, limit: int = 100
+        self, memory_type: Optional[str] = None, limit: int = 100,
+        *, company_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         db = get_db()
         q: Dict[str, Any] = {}
         if memory_type:
             q["type"] = memory_type
+        if company_id is not None:
+            q["company_id"] = company_id
         cursor = db.memories.find(q, {"_id": 0}).sort("created_at", -1).limit(limit)
         return await cursor.to_list(length=limit)
 
-    async def _ensure_tfidf(self) -> Optional[Dict[str, Any]]:
+    async def _ensure_tfidf(
+        self, company_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         async with self._tfidf_lock:
-            if self._tfidf_cache is not None:
-                return self._tfidf_cache
+            cached = self._tfidf_cache.get(company_id)
+            if cached is not None:
+                return cached
             db = get_db()
+            # Strict tenant scope: a tenant query returns ONLY that tenant's
+            # docs. The legacy/admin pool (company_id=None) sees only NULL-
+            # tagged docs; it never inherits another tenant's data.
+            q = {"company_id": company_id}
             docs = await db.memories.find(
-                {}, {"_id": 0, "id": 1, "content": 1, "type": 1, "metadata": 1, "created_at": 1, "access_count": 1}
+                q,
+                {"_id": 0, "id": 1, "content": 1, "type": 1,
+                 "metadata": 1, "created_at": 1, "access_count": 1,
+                 "company_id": 1},
             ).to_list(length=5000)
             if not docs:
                 return None
@@ -144,16 +181,19 @@ class MemoryEngine:
             except ValueError:
                 # empty vocab (only stopwords / empty docs)
                 return None
-            self._tfidf_cache = {"docs": docs, "vectorizer": vectorizer, "matrix": matrix}
-            return self._tfidf_cache
+            entry = {"docs": docs, "vectorizer": vectorizer, "matrix": matrix}
+            self._tfidf_cache[company_id] = entry
+            return entry
 
     async def search(
         self,
         query: str,
         top_k: int = 5,
         memory_type: Optional[str] = None,
+        *,
+        company_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        cache = await self._ensure_tfidf()
+        cache = await self._ensure_tfidf(company_id=company_id)
         if not cache:
             return []
         try:
@@ -203,22 +243,23 @@ class MemoryEngine:
         results.sort(key=lambda r: r["rank"], reverse=True)
         top = results[:top_k]
 
-        # increment access counters for ranked memories
+        # increment access counters for ranked memories (tenant-scoped)
         if top:
             db = get_db()
             ids = [r["id"] for r in top if r.get("id")]
-            await db.memories.update_many(
-                {"id": {"$in": ids}}, {"$inc": {"access_count": 1}}
-            )
+            match: Dict[str, Any] = {"id": {"$in": ids}}
+            match["company_id"] = company_id
+            await db.memories.update_many(match, {"$inc": {"access_count": 1}})
 
         return top
 
     async def get_optimal_context(
-        self, query: str, session_id: str, max_chars: int = 6000
+        self, query: str, session_id: str, max_chars: int = 6000,
+        *, company_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Combine short-term + retrieved long-term memories into one context string."""
         short = await self.build_short_context(session_id, max_chars=max_chars // 2)
-        retrieved = await self.search(query, top_k=5)
+        retrieved = await self.search(query, top_k=5, company_id=company_id)
         long_parts: List[str] = []
         used = len(short)
         for r in retrieved:

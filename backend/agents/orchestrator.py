@@ -59,6 +59,8 @@ async def route(
     message: str,
     channel: str = "web",
     context: Optional[Dict[str, Any]] = None,
+    *,
+    company_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     t0 = time.time()
     deepseek = get_deepseek()
@@ -66,10 +68,12 @@ async def route(
     request_id = str(uuid.uuid4())
 
     # 1. record user message in short-term memory
-    await mem.append_message(session_id, "user", message, user_id=user_id)
+    await mem.append_message(session_id, "user", message,
+                             user_id=user_id, company_id=company_id)
 
     # 2. build context (short + long term)
-    ctx = await mem.get_optimal_context(message, session_id, max_chars=6000)
+    ctx = await mem.get_optimal_context(message, session_id, max_chars=6000,
+                                        company_id=company_id)
 
     # 3. classify intent
     intent_resp = await deepseek.chat(
@@ -128,7 +132,8 @@ async def route(
         })
 
     # 7. record assistant message in short-term memory
-    await mem.append_message(session_id, "assistant", answer.get("content", ""), user_id=user_id)
+    await mem.append_message(session_id, "assistant", answer.get("content", ""),
+                             user_id=user_id, company_id=company_id)
 
     latency_ms = int((time.time() - t0) * 1000)
 
