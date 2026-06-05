@@ -142,7 +142,7 @@ count= 15
 ========================================
 >>> S7.2: Создание checkout сессии
 ========================================
-{"detail":[{"type":"missing","loc":["body","origin"],"msg":"Field required","input":{"plan_id":"pro","success_url":"https://approval-gate-demo.preview.emergentagent.com/payment/return","cancel_url":"https://approval-gate-demo.preview.emergentagent.com/"},"url":"https://errors.pydantic.dev/2.12/v/missing"}]}
+{"detail":[{"type":"missing","loc":["body","origin"],"msg":"Field required","input":{"plan_id":"pro","success_url":"https://agent-orchestrate-6.preview.emergentagent.com/payment/return","cancel_url":"https://agent-orchestrate-6.preview.emergentagent.com/"},"url":"https://errors.pydantic.dev/2.12/v/missing"}]}
 
 [time=114ms exit=0]
 

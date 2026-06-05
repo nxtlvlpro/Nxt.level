@@ -9,7 +9,7 @@ import os
 import httpx
 import pytest
 
-API = (os.environ.get("REACT_APP_BACKEND_URL") or "https://approval-gate-demo.preview.emergentagent.com").rstrip("/")
+API = (os.environ.get("REACT_APP_BACKEND_URL") or "https://agent-orchestrate-6.preview.emergentagent.com").rstrip("/")
 
 
 def _run(coro):
