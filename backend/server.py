@@ -271,8 +271,15 @@ async def health() -> Dict[str, Any]:
 
 
 @api.post("/seed")
-async def seed_demo() -> Dict[str, Any]:
-    """Insert demo corporate memory + employees + deals — for first WOW screen."""
+async def seed_demo(
+    _admin: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_admin),
+) -> Dict[str, Any]:
+    """Insert demo corporate memory + employees + deals — for first WOW screen.
+
+    Admin-only. Either:
+      • header `X-Admin-Token: $SEED_ADMIN_TOKEN`, or
+      • an authenticated session whose email is in `NXT8_ADMIN_EMAILS`.
+    """
     mem = memory_agent.get_memory()
     db = get_db()
 

@@ -390,6 +390,12 @@ def install_auth_middleware(app: Any) -> None:
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
+        # Let endpoint-level `Depends(require_admin)` validate the
+        # service-to-service token header — middleware just confirms the
+        # request *claims* admin identity rather than letting it fall
+        # through to the regular session check.
+        if request.headers.get("X-Admin-Token"):
+            return await call_next(request)
         # Resolve session — cookie or Bearer header.
         token = _extract_token(
             request.cookies.get(COOKIE_NAME),

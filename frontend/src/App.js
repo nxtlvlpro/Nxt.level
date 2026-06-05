@@ -70,16 +70,9 @@ function AppShell() {
     } catch { /* ignore */ }
   }, [view]);
 
-  useEffect(() => {
-    // Auto-seed on first load (idempotent on backend side). Now requires
-    // an admin token; the dev/preview env injects it via SEED_ADMIN_TOKEN
-    // header through `api.seed()`. On prod we skip silently.
-    setSeedStatus("seeding");
-    api
-      .seed()
-      .then(() => setSeedStatus("ready"))
-      .catch(() => setSeedStatus("error"));
-  }, []);
+  // `/api/seed` is now admin-only (Iteration 1 / Task 3). We no longer
+  // auto-trigger it on every page load. To seed demo data, run:
+  //   curl -X POST -H "X-Admin-Token: $SEED_ADMIN_TOKEN" $API/api/seed
 
   useEffect(() => {
     let mounted = true;

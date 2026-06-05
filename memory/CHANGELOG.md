@@ -1,7 +1,82 @@
 # NXT8 — Release Notes
 
 
-## v1.12.0-whatsapp-channel — 2026-06-05
+## v1.13.0-iteration-1-auth-and-admin-gate — 2026-06-05
+
+**Status:** ✅ Итерация 1 (P0 блокеры запуска) полностью закрыта — auth,
+error boundaries + toasts, admin gate на `/api/seed`.
+
+### Task 1 — Emergent Google OAuth + JWT-session middleware
+- **`core/auth.py`** (~340 строк) — модуль с `require_user`, `require_admin`,
+  `optional_user`, `install_auth_middleware`, и endpoint'ами
+  `POST /api/auth/session`, `GET /api/auth/me`, `POST /api/auth/logout`.
+- **`db.users` / `db.user_sessions`** — кастомный `user_id` (UUID),
+  TTL-индекс на `expires_at` (7 дней).
+- **Middleware-gate** на все `/api/*` кроме whitelist: `/health`, `/auth/*`,
+  `/payments/webhook`, `/webhook/stripe`, `/telegram/webhook/{secret}`,
+  `/whatsapp/webhook/{secret}`, `/share/{id}(/og.png)?`, `/s/{id}`. Также
+  пропускает запросы с `X-Admin-Token` (валидируется в endpoint'е).
+- **Identity-binding hole закрыт**: `/api/telegram/{connect,status,disconnect}`
+  и `/api/whatsapp/{connect,status,disconnect}` теперь берут `user_id`
+  ТОЛЬКО из JWT — `client_id` в body игнорируется.
+- **Frontend** (`src/auth/`): `AuthContext.jsx` (Provider + `useUser`),
+  `AuthCallback.jsx` (one-shot `#session_id` exchange через `useRef`),
+  `LoginPage.jsx` (Sign in with Google), `ProtectedRoute.jsx` (3-state gate).
+- **`App.js`** — новый `AppRouter`: `/login` → `<LoginPage>`,
+  `/auth/callback` → `<AuthCallback>`, остальное → `<ProtectedRoute>`.
+- **`lib/api.js`** — `withCredentials: true`, Bearer-fallback из
+  `localStorage["nxt8.session_token"]`, 401 → silent redirect на `/login`.
+- 15 новых pytest (`tests/test_auth.py`) — все passing.
+
+### Task 2 — Error Boundary + toast.error
+- **`components/AppErrorBoundary.jsx`** — React class component с
+  `getDerivedStateFromError` + `componentDidCatch` (только `console.error`,
+  без UI-показа техдеталей). Fallback: «Что-то пошло не так» + кнопка
+  «Обновить страницу» (`window.location.reload()`).
+- **`lib/api.js`** — расширенный response-interceptor:
+  - 400→«Проверьте данные»  · 403→«Нет доступа»  · 404→«Не найдено»
+  - 429→«Слишком много запросов, подождите минуту»
+  - 500+→«Ошибка сервера, попробуйте позже»
+  - 401 → silent redirect (без toast)
+  - Использует `error.response.data.detail` если есть.
+  - Игнорирует `ERR_CANCELED` (route changes).
+- **`App.js`** — `<Toaster richColors closeButton position="top-right" />`
+  из `components/ui/sonner` + `<AppErrorBoundary>` оборачивает всё дерево
+  СНАРУЖИ `<AuthProvider>`.
+- 3 QA-скриншота passing.
+
+### Task 3 — Admin gate на `/api/seed`
+- **`server.py`** — `POST /api/seed` теперь `Depends(_auth_mod.require_admin)`.
+  Открыт через:
+  - `X-Admin-Token: $SEED_ADMIN_TOKEN` (service-to-service), либо
+  - залогиненный user с email в `NXT8_ADMIN_EMAILS`.
+- **`App.js`** — убран auto-seed на старте (он бы спамил 403-toast
+  для non-admin юзеров). Демо-данные теперь сидятся вручную:
+  ```
+  curl -X POST -H "X-Admin-Token: $SEED_ADMIN_TOKEN" $API/api/seed
+  ```
+- 6 новых pytest (`tests/test_admin_guard.py`) — все passing.
+
+### Env additions
+- `EMERGENT_AUTH_SESSION_URL` — Emergent OAuth session endpoint
+- `NXT8_ADMIN_EMAILS=buro8arno@gmail.com` — admin allowlist
+- `SEED_ADMIN_TOKEN` — service-to-service admin secret
+- `SESSION_COOKIE_NAME=session_token`
+- `SESSION_TTL_DAYS=7`
+
+### Regression
+- **79 / 79** тестов passing (15 auth + 6 admin + 58 канал/share/tour/roi).
+- Lint чистый (advisory=0 на backend + frontend).
+- E2E smoke: login screen, error boundary fallback, toast UX —
+  все проверены через Playwright screenshots.
+
+### Production deployment notes
+- Перед `nxt8.pro` деплоем: обновить `PUBLIC_BASE_URL=https://nxt8.pro` в prod env.
+- `NXT8_ADMIN_EMAILS` и `SEED_ADMIN_TOKEN` тоже должны попасть в prod env.
+- Twilio Console: настроить inbound webhook
+  `https://nxt8.pro/api/whatsapp/webhook/nxt8_wa_whk_4b8c1e57f2` (P1 Task #11).
+
+
 
 **Status:** ✅ WhatsApp-канал в 1 клик через Twilio. Зеркалит Telegram-бридж.
 Клиент привязывает номер deep-link'ом `wa.me/<from>?text=NXT8+<token>`,
