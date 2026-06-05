@@ -799,7 +799,39 @@ HERMES_TOOLS: Dict[str, Any] = {
     "delegate_to_agent":             _t_delegate_to_agent,
     "escalate_to_hermes":            _t_escalate_to_hermes,
     "ask_colleague":                 _t_ask_colleague,
+    # AI-Mentor scoring (awarded by the mentor persona during chat)
+    "award_skill_points":            None,    # late-bound below to avoid import cycle
+    "assess_user_level":             None,
 }
+
+
+# Late-bind AI-Mentor tools (the module imports `core.db`, which only
+# spins up once Mongo is reachable — keeping this lazy avoids import-time
+# loops with `personas.py`).
+async def _t_award_skill_points(args: Dict[str, Any]) -> Dict[str, Any]:
+    from agents import ai_mentor as _aim
+    pattern = (args.get("pattern") or "").strip() or "unknown"
+    points = int(args.get("points") or _aim.POINTS.get(pattern, 5))
+    reason = (args.get("reason") or "").strip()
+    uid = (args.get("user_id") or "").strip() or "anon"
+    cid = (args.get("company_id") or "").strip() or "default"
+    return await _aim.award_points(uid, cid, pattern, points, reason)
+
+
+async def _t_assess_user_level(args: Dict[str, Any]) -> Dict[str, Any]:
+    from agents import ai_mentor as _aim
+    msgs = args.get("messages") or []
+    if not isinstance(msgs, list):
+        msgs = [str(msgs)]
+    grade = _aim.compute_ai_grade([str(m) for m in msgs])
+    uid = (args.get("user_id") or "").strip() or "anon"
+    cid = (args.get("company_id") or "").strip() or "default"
+    res = await _aim.set_grade(uid, cid, grade)
+    return {**res, "computed_grade": grade}
+
+
+HERMES_TOOLS["award_skill_points"] = _t_award_skill_points
+HERMES_TOOLS["assess_user_level"] = _t_assess_user_level
 
 
 _TOOLS_DOC = (

@@ -3367,6 +3367,43 @@ async def scheduler_status(
     }
 
 
+
+# =====================================================================
+# AI-Mentor — user learning profile
+# =====================================================================
+
+
+@api.get("/mentor/profile")
+async def mentor_profile(
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    from agents import ai_mentor as _aim
+    profile = await _aim.get_profile(user.user_id, user.company_id)
+    return {
+        "ok": True,
+        "ai_grade": int(profile.get("ai_grade", 0)),
+        "skill_points": int(profile.get("skill_points", 0)),
+        "patterns_used": profile.get("patterns_used") or [],
+        "points_to_next_level": _aim.points_to_next_level(profile),
+    }
+
+
+@api.post("/mentor/assess")
+async def mentor_assess(
+    payload: Dict[str, Any],
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    """Force-reassess the caller's ai_grade from a fresh batch of messages."""
+    from agents import ai_mentor as _aim
+    msgs = payload.get("messages") or []
+    if not isinstance(msgs, list) or not msgs:
+        raise HTTPException(status_code=400, detail="messages[] required")
+    grade = _aim.compute_ai_grade([str(m) for m in msgs])
+    await _aim.set_grade(user.user_id, user.company_id, grade)
+    return {"ok": True, "computed_grade": grade}
+
+
+
 # =====================================================================
 # Mount + CORS
 # =====================================================================

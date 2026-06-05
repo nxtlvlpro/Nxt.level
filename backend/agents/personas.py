@@ -96,22 +96,26 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
     },
     "hr_mentor": {
         "id": "hr_mentor",
-        "name": "HR-Ментор",
-        "role": "Развитие сотрудников",
-        "description": "Оценивает сотрудников, находит слабые места, даёт рекомендации по обучению и менторингу. Видит 5 уровней (junior→strategist) и сравнивает с уровневой нормой.",
+        "name": "AI-Ментор",
+        "role": "Обучение промптингу на реальных задачах",
+        "description": "Учит сотрудников работать с AI лучше прямо в процессе решения их задач. Адаптивная стратегия по уровню 0–5 (новичок → продвинутый). Не делает работу за тебя — учит делать её сильнее.",
         "icon": "GraduationCap",
         "color": "violet",
-        "allowed_tools": ["search_memory", "web_search", "fetch_url"],
+        "allowed_tools": [
+            "search_memory",
+            "award_skill_points",
+            "assess_user_level",
+            "web_search",
+        ],
+        # System prompt is BUILT DYNAMICALLY per-user (by ai_grade) in
+        # `chat_with_persona`. This string is the bootstrap fallback when
+        # we don't yet know the user's grade.
         "system_prompt": (
-            "Ты — HR-Ментор NXT8. Твой фокус: люди.\n\n"
-            "Ты анализируешь performance, выявляешь weak patterns (low_accuracy, "
-            "high_escalation, repeating_errors), даёшь конкретные рекомендации:\n"
-            "  - training session\n  - pair-mentoring с senior\n"
-            "  - чек-листы для повторяющихся ошибок.\n\n"
-            "У тебя в контексте — реальные данные по сотрудникам. Опирайся ТОЛЬКО на них, "
-            "не выдумывай. Если данных мало — попроси внести через `/api/mentor/performance`."
+            "Ты — AI-Ментор NXT8. Учи сотрудников промптингу на их реальных задачах. "
+            "Никогда не давай готовый ответ — давай шаблон с пропусками. "
+            "Заканчивай ОДНИМ вопросом."
         ),
-        "data_fetchers": ["mentor_overview"],
+        "data_fetchers": ["user_skill_profile"],
     },
     "client_manager": {
         "id": "client_manager",
@@ -510,6 +514,7 @@ async def _fetch_compliance_context() -> str:
 
 _FETCHER_DISPATCH = {
     "mentor_overview": _fetch_mentor_overview,
+    "user_skill_profile": lambda: "",  # injected per-request in chat_with_persona
     "diagnostics_summary": _fetch_diagnostics_summary,
     "roi_current": _fetch_roi_current,
     "roi_dashboard": _fetch_roi_dashboard,
@@ -602,6 +607,18 @@ async def run_persona(
     # 1. Pre-context
     ctx_blocks: List[str] = []
     for fetcher in cfg.get("data_fetchers") or []:
+        # The AI-Mentor profile fetcher needs per-user/per-tenant args.
+        if fetcher == "user_skill_profile":
+            try:
+                from agents import ai_mentor as _aim
+                block = await _aim.build_user_skill_block(
+                    user_id or "anon", company_id or "default"
+                )
+                if block:
+                    ctx_blocks.append(block)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("user_skill_profile fetch failed: %s", e)
+            continue
         fn = _FETCHER_DISPATCH.get(fetcher)
         if fn:
             try:
@@ -615,6 +632,20 @@ async def run_persona(
     #    Deep v2.0 prompt overrides the legacy short prompt if available.
     deep_prompt = get_deep_prompt(persona_id) or cfg["system_prompt"]
     manifest_block = render_manifest_for_prompt(persona_id)
+
+    # 2a. AI-Mentor — fully replace the static prompt with a level-aware
+    #     one tailored to the calling user's current ai_grade.
+    if persona_id == "hr_mentor":
+        try:
+            from agents import ai_mentor as _aim
+            profile = await _aim.get_profile(
+                user_id or "anon", company_id or "default"
+            )
+            deep_prompt = _aim.build_mentor_prompt(
+                int(profile.get("ai_grade", 0)), profile=profile
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("mentor prompt build failed: %s", e)
 
     # 2b. Company context — region/industry/regulations/channels so agents
     #     adapt their answers to WHERE the company operates.
