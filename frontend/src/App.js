@@ -20,8 +20,12 @@ import DemoTour from "./components/DemoTour";
 import api from "./lib/api";
 import { useT } from "./i18n/LanguageContext";
 import { HEADER_LOCKED } from "./config/header.locked";
+import { AuthProvider, useUser } from "./auth/AuthContext";
+import AuthCallback from "./auth/AuthCallback";
+import LoginPage from "./auth/LoginPage";
+import ProtectedRoute from "./auth/ProtectedRoute";
 
-function App() {
+function AppShell() {
   const { t } = useT();
   // Pathname routing: payment return / cancel pages render standalone,
   // bypassing the main app shell so the user is never confused mid-flow.
@@ -65,7 +69,9 @@ function App() {
   }, [view]);
 
   useEffect(() => {
-    // Auto-seed on first load (idempotent on backend side)
+    // Auto-seed on first load (idempotent on backend side). Now requires
+    // an admin token; the dev/preview env injects it via SEED_ADMIN_TOKEN
+    // header through `api.seed()`. On prod we skip silently.
     setSeedStatus("seeding");
     api
       .seed()
@@ -191,6 +197,43 @@ function App() {
         </>
       )}
     </div>
+  );
+}
+
+// Lightweight router: pathname + URL fragment.
+function AppRouter() {
+  if (typeof window === "undefined") return null;
+  const path = window.location.pathname || "/";
+  const hash = window.location.hash || "";
+
+  // OAuth callback: detect the session_id fragment synchronously
+  // (NOT in an effect — that would race with AuthProvider's /me check).
+  if (hash.includes("session_id=") || path.startsWith("/auth/callback")) {
+    return <AuthCallback />;
+  }
+  if (path.startsWith("/login")) {
+    return <LoginPage />;
+  }
+  // Standalone public pages are handled inside AppShell.
+  if (
+    path.startsWith("/payment/return") ||
+    path.startsWith("/privacy") ||
+    path.startsWith("/terms")
+  ) {
+    return <AppShell />;
+  }
+  return (
+    <ProtectedRoute>
+      <AppShell />
+    </ProtectedRoute>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppRouter />
+    </AuthProvider>
   );
 }
 

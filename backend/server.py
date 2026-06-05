@@ -26,7 +26,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from core import auth as _auth_mod  # imported early — referenced by route decorators
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
@@ -99,6 +100,12 @@ async def lifespan(_app: FastAPI):
         await _share.ensure_indexes()
     except Exception as e:  # noqa: BLE001
         logger.warning("share ensure_indexes failed: %s", e)
+    # Auth indexes (users + user_sessions).
+    try:
+        from core import auth as _auth
+        await _auth.ensure_indexes()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("auth ensure_indexes failed: %s", e)
     # Telegram channel — indexes + auto-install webhook (only if token set).
     try:
         from core import telegram_bot as _tg
@@ -2942,32 +2949,37 @@ async def share_conversion(req: ShareConversionRequest) -> Dict[str, Any]:
 
 
 class TelegramConnectRequest(BaseModel):
-    client_id: str
+    # `client_id` body field kept for back-compat but is IGNORED — the
+    # bound user_id always comes from the authenticated session.
+    client_id: Optional[str] = None
 
 
 class TelegramDisconnectRequest(BaseModel):
-    client_id: str
+    client_id: Optional[str] = None
 
 
 @api.post("/telegram/connect")
-async def telegram_connect(req: TelegramConnectRequest) -> Dict[str, Any]:
-    """Mint a one-time Telegram deep-link for this client."""
+async def telegram_connect(
+    req: TelegramConnectRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    """Mint a one-time Telegram deep-link bound to the authenticated user."""
     from core import telegram_bot as _tg
     if not _tg.is_enabled():
         raise HTTPException(status_code=503, detail="telegram_disabled")
-    if not (req.client_id or "").strip():
-        raise HTTPException(status_code=400, detail="client_id required")
-    res = await _tg.mint_link_token(req.client_id.strip())
+    res = await _tg.mint_link_token(user.user_id)
     if not res.get("ok"):
         raise HTTPException(status_code=502, detail=res.get("error") or "mint_failed")
     return res
 
 
 @api.get("/telegram/status")
-async def telegram_status(client_id: str) -> Dict[str, Any]:
+async def telegram_status(
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     from core import telegram_bot as _tg
     info = await _tg.get_bot_info()
-    chat = await _tg.get_chat_for_client(client_id)
+    chat = await _tg.get_chat_for_client(user.user_id)
     return {
         "ok": True,
         "enabled": _tg.is_enabled(),
@@ -2986,11 +2998,12 @@ async def telegram_status(client_id: str) -> Dict[str, Any]:
 
 
 @api.post("/telegram/disconnect")
-async def telegram_disconnect(req: TelegramDisconnectRequest) -> Dict[str, Any]:
+async def telegram_disconnect(
+    req: TelegramDisconnectRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     from core import telegram_bot as _tg
-    if not (req.client_id or "").strip():
-        raise HTTPException(status_code=400, detail="client_id required")
-    return await _tg.unbind(req.client_id.strip())
+    return await _tg.unbind(user.user_id)
 
 
 @api.post("/telegram/webhook/{secret}")
@@ -3031,31 +3044,34 @@ async def telegram_install_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 class WhatsAppConnectRequest(BaseModel):
-    client_id: str
+    client_id: Optional[str] = None
 
 
 class WhatsAppDisconnectRequest(BaseModel):
-    client_id: str
+    client_id: Optional[str] = None
 
 
 @api.post("/whatsapp/connect")
-async def whatsapp_connect(req: WhatsAppConnectRequest) -> Dict[str, Any]:
-    """Mint a one-time WhatsApp deep-link with a pre-filled binding token."""
+async def whatsapp_connect(
+    req: WhatsAppConnectRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    """Mint a one-time WhatsApp deep-link bound to the authenticated user."""
     from core import whatsapp_bot as _wa
     if not _wa.is_enabled():
         raise HTTPException(status_code=503, detail="whatsapp_disabled")
-    if not (req.client_id or "").strip():
-        raise HTTPException(status_code=400, detail="client_id required")
-    res = await _wa.mint_link_token(req.client_id.strip())
+    res = await _wa.mint_link_token(user.user_id)
     if not res.get("ok"):
         raise HTTPException(status_code=502, detail=res.get("error") or "mint_failed")
     return res
 
 
 @api.get("/whatsapp/status")
-async def whatsapp_status(client_id: str) -> Dict[str, Any]:
+async def whatsapp_status(
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     from core import whatsapp_bot as _wa
-    chat = await _wa.get_chat_for_client(client_id)
+    chat = await _wa.get_chat_for_client(user.user_id)
     return {
         "ok": True,
         "enabled": _wa.is_enabled(),
@@ -3074,11 +3090,12 @@ async def whatsapp_status(client_id: str) -> Dict[str, Any]:
 
 
 @api.post("/whatsapp/disconnect")
-async def whatsapp_disconnect(req: WhatsAppDisconnectRequest) -> Dict[str, Any]:
+async def whatsapp_disconnect(
+    req: WhatsAppDisconnectRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     from core import whatsapp_bot as _wa
-    if not (req.client_id or "").strip():
-        raise HTTPException(status_code=400, detail="client_id required")
-    return await _wa.unbind(req.client_id.strip())
+    return await _wa.unbind(user.user_id)
 
 
 @api.post("/whatsapp/webhook/{secret}")
@@ -3115,7 +3132,14 @@ async def whatsapp_webhook(secret: str, request: Request) -> Dict[str, Any]:
 # =====================================================================
 
 
+# Mount auth router (login/session/me/logout) inside the /api prefix.
+api.include_router(_auth_mod.router)
+
 app.include_router(api)
+
+# Install the auth middleware AFTER routes are mounted so it intercepts
+# everything. Public paths and webhooks are whitelisted inside the gate.
+_auth_mod.install_auth_middleware(app)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

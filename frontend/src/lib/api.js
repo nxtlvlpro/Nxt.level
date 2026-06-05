@@ -3,15 +3,69 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+const SESSION_TOKEN_KEY = "nxt8.session_token";
+
 const http = axios.create({
   baseURL: API,
   timeout: 180000,
+  // Send the httpOnly session_token cookie cross-origin.
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
+
+// Inject Bearer header from localStorage as a fallback for browsers /
+// webviews that strip the third-party httpOnly cookie. The backend
+// accepts whichever arrives first.
+http.interceptors.request.use((config) => {
+  try {
+    const tok = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (tok && !config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${tok}`;
+    }
+  } catch {
+    /* ignore — localStorage may be disabled */
+  }
+  return config;
+});
+
+// Global response interceptor:
+//   • 401 → drop local token + send the visitor back to /login.
+//   • All other errors are propagated; toast handling lives in
+//     `src/components/AppErrorBoundary` + per-screen handlers.
+http.interceptors.response.use(
+  (r) => r,
+  (error) => {
+    const status = error?.response?.status;
+    const url = error?.config?.url || "";
+    // Don't redirect during the OAuth bootstrap calls themselves —
+    // that would create a loop.
+    const isAuthCall = url.startsWith("/auth/");
+    if (status === 401 && !isAuthCall && typeof window !== "undefined") {
+      try {
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+      } catch {
+        /* ignore */
+      }
+      const path = window.location.pathname || "";
+      if (!path.startsWith("/login") && !path.startsWith("/auth/")) {
+        window.location.replace("/login");
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const api = {
   health: () => http.get("/health").then((r) => r.data),
   seed: () => http.post("/seed").then((r) => r.data),
+
+  // Emergent Google OAuth — session lifecycle
+  authSession: (sessionId) =>
+    http
+      .post("/auth/session", null, { headers: { "X-Session-ID": sessionId } })
+      .then((r) => r.data),
+  authMe: () => http.get("/auth/me").then((r) => r.data),
+  authLogout: () => http.post("/auth/logout").then((r) => r.data),
 
   chat: (payload) => http.post("/chat", payload).then((r) => r.data),
   recentRequests: (limit = 10) =>
@@ -174,32 +228,16 @@ export const api = {
     http.get(`/share/stats?window_hours=${window_hours}`).then((r) => r.data),
 
   // Telegram channel — 1-click bot link for clients
-  telegramStatus: (client_id) =>
-    http
-      .get(`/telegram/status?client_id=${encodeURIComponent(client_id)}`)
-      .then((r) => r.data),
-  telegramConnect: (client_id) =>
-    http
-      .post("/telegram/connect", { client_id })
-      .then((r) => r.data),
-  telegramDisconnect: (client_id) =>
-    http
-      .post("/telegram/disconnect", { client_id })
-      .then((r) => r.data),
+  telegramStatus: () => http.get("/telegram/status").then((r) => r.data),
+  telegramConnect: () => http.post("/telegram/connect", {}).then((r) => r.data),
+  telegramDisconnect: () =>
+    http.post("/telegram/disconnect", {}).then((r) => r.data),
 
   // WhatsApp channel — 1-click bind via wa.me deep-link (Twilio)
-  whatsappStatus: (client_id) =>
-    http
-      .get(`/whatsapp/status?client_id=${encodeURIComponent(client_id)}`)
-      .then((r) => r.data),
-  whatsappConnect: (client_id) =>
-    http
-      .post("/whatsapp/connect", { client_id })
-      .then((r) => r.data),
-  whatsappDisconnect: (client_id) =>
-    http
-      .post("/whatsapp/disconnect", { client_id })
-      .then((r) => r.data),
+  whatsappStatus: () => http.get("/whatsapp/status").then((r) => r.data),
+  whatsappConnect: () => http.post("/whatsapp/connect", {}).then((r) => r.data),
+  whatsappDisconnect: () =>
+    http.post("/whatsapp/disconnect", {}).then((r) => r.data),
 
   // Documents (Compliance persona)
   documentsList: (company_id, limit = 50) =>
