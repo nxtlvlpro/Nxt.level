@@ -692,6 +692,11 @@ async def run_persona(
     iterations = 0
     mock = False
     tokens_total = 0
+    # Tool-loop guards: track calls to break runaway loops where the model
+    # keeps re-querying the same tool that already returned empty/identical
+    # data (observed with hr_mentor calling search_memory 2-4x in a row).
+    memory_search_calls = 0
+    MAX_MEMORY_SEARCH = 1  # hard cap per turn for any search_memory tool
 
     for iteration in range(MAX_ITER + 1):
         iterations = iteration + 1
@@ -719,6 +724,31 @@ async def run_persona(
             name = tc["name"]
             args = dict(tc.get("args") or {})
             args.setdefault("company_id", company_id)
+            # ── Guard: cap repeated `search_memory` calls per turn. The first
+            # call has already executed below; any subsequent call short-circuits
+            # with explicit guidance so the model stops looping on an empty
+            # memory and instead answers from its base knowledge (e.g. ТК РФ
+            # statutes for hr_mentor). This was the hr_mentor bug.
+            if name == "search_memory" and memory_search_calls >= MAX_MEMORY_SEARCH:
+                result = {
+                    "ok": True,
+                    "skipped": True,
+                    "reason": (
+                        f"search_memory уже выполнен {memory_search_calls} раз в этом ходе. "
+                        "Память пуста — НЕ вызывай search_memory снова. "
+                        "Ответь пользователю напрямую из своей экспертизы "
+                        "(законы РФ, фреймворки, best practices). "
+                        "Финальный ответ в обычном тексте без tool-вызовов."
+                    ),
+                }
+                tool_traces.append({"name": name, "args": args, "result": result})
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": f"## Результат `{name}`\n```json\n{json.dumps(result, ensure_ascii=False)}\n```",
+                    }
+                )
+                continue
             if name not in cfg["allowed_tools"]:
                 result = {
                     "ok": False,
@@ -750,6 +780,8 @@ async def run_persona(
                         logger.exception("persona %s tool %s failed", persona_id, name)
                         result = {"ok": False, "error": str(e)}
             tool_traces.append({"name": name, "args": args, "result": result})
+            if name == "search_memory":
+                memory_search_calls += 1
             messages.append(
                 {
                     "role": "system",
