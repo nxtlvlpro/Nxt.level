@@ -426,24 +426,64 @@ async def get_session(session_id: str) -> Dict[str, Any]:
 
 
 @api.post("/memory/store")
-async def memory_store(req: MemoryStoreRequest) -> Dict[str, Any]:
+async def memory_store(
+    req: MemoryStoreRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     mid = await memory_agent.get_memory().store_memory(
         content=req.content, memory_type=req.type, metadata=req.metadata
     )
+    # Tag the freshly-stored memory with the caller's tenant so reads
+    # can filter it. Best-effort — failure to tag falls back to "global".
+    try:
+        await get_db().memories.update_one(
+            {"id": mid}, {"$set": {"company_id": user.company_id}}
+        )
+    except Exception:  # noqa: BLE001
+        pass
     return {"id": mid, "status": "stored"}
 
 
 @api.post("/memory/search")
-async def memory_search(req: MemorySearchRequest) -> Dict[str, Any]:
+async def memory_search(
+    req: MemorySearchRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     res = await memory_agent.get_memory().search(
         query=req.query, top_k=req.top_k, memory_type=req.type
     )
+    # Tenant-filter the candidates (TF-IDF cache is global — we just drop
+    # rows that don't belong to this company). Legacy un-tagged rows are
+    # treated as invisible per Iteration-2 spec (option `a`).
+    ids = [r.get("id") for r in res if r.get("id")]
+    if ids:
+        visible = await get_db().memories.find(
+            {"id": {"$in": ids}, "company_id": user.company_id},
+            {"_id": 0, "id": 1},
+        ).to_list(length=len(ids))
+        visible_ids = {v["id"] for v in visible}
+        res = [r for r in res if r.get("id") in visible_ids]
+    else:
+        res = []
     return {"count": len(res), "results": res}
 
 
 @api.get("/memory/list")
-async def memory_list(type: Optional[str] = None, limit: int = 100) -> Dict[str, Any]:
-    items = await memory_agent.get_memory().list_memories(memory_type=type, limit=limit)
+async def memory_list(
+    type: Optional[str] = None,
+    limit: int = 100,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    q: Dict[str, Any] = {"company_id": user.company_id}
+    if type:
+        q["type"] = type
+    items = (
+        await get_db()
+        .memories.find(q, {"_id": 0})
+        .sort("created_at", -1)
+        .limit(limit)
+        .to_list(length=limit)
+    )
     return {"count": len(items), "items": items}
 
 
@@ -591,17 +631,40 @@ async def roi_trend(hours: int = 24) -> Dict[str, Any]:
 
 
 @api.post("/roi/deals")
-async def roi_create_deal(req: DealRequest) -> Dict[str, Any]:
-    return await roi_agent.record_deal(
+async def roi_create_deal(
+    req: DealRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    res = await roi_agent.record_deal(
         deal_id=req.deal_id, value_usd=req.value_usd, team=req.team, closed_at=req.closed_at
     )
+    # Tenant tag (post-write). Aggregate dashboards stay global for now —
+    # per-tenant ROI breakdown is P1 (foundation laid here).
+    try:
+        await get_db().deals.update_one(
+            {"deal_id": req.deal_id}, {"$set": {"company_id": user.company_id}}
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    return res
 
 
 @api.post("/roi/interactions")
-async def roi_record_interaction(req: InteractionRequest) -> Dict[str, Any]:
+async def roi_record_interaction(
+    req: InteractionRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     await roi_agent.record_interaction(
         deal_id=req.deal_id, agent=req.agent, interaction_type=req.interaction_type
     )
+    # Tag the most recent interaction for this deal with the tenant.
+    try:
+        await get_db().interactions.update_many(
+            {"deal_id": req.deal_id, "agent": req.agent, "company_id": {"$exists": False}},
+            {"$set": {"company_id": user.company_id}},
+        )
+    except Exception:  # noqa: BLE001
+        pass
     return {"status": "recorded"}
 
 
@@ -1568,7 +1631,10 @@ async def onboarding_verify_code(req: AccessCodeRequest) -> Dict[str, Any]:
 
 
 @api.post("/onboarding/profiles")
-async def onboarding_save_profile(req: OnboardingProfileRequest) -> Dict[str, Any]:
+async def onboarding_save_profile(
+    req: OnboardingProfileRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     """Save the completed survey and, if an access code was provided, validate
     and consume it. Returns the profile id plus a `test_access` flag.
     """
@@ -1585,14 +1651,33 @@ async def onboarding_save_profile(req: OnboardingProfileRequest) -> Dict[str, An
     saved = await _onb.save_profile(payload)
     if not saved.get("ok"):
         raise HTTPException(status_code=400, detail=saved.get("error") or "save_failed")
+    # Tag the freshly-saved profile with the caller's tenant so listings
+    # and per-tenant brief lookups stay isolated.
+    try:
+        await get_db().client_profiles.update_one(
+            {"id": saved["id"]},
+            {"$set": {"company_id": user.company_id, "owner_user_id": user.user_id}},
+        )
+    except Exception:  # noqa: BLE001
+        pass
     return {"ok": True, "profile_id": saved["id"], "test_access": test_access}
 
 
 @api.get("/onboarding/profiles/{profile_id}")
-async def onboarding_get_profile(profile_id: str) -> Dict[str, Any]:
+async def onboarding_get_profile(
+    profile_id: str,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     from agents import onboarding as _onb
     profile = await _onb.get_profile(profile_id)
     if not profile:
+        raise HTTPException(status_code=404, detail="profile_not_found")
+    # Cross-tenant isolation — admins still see everything.
+    if (
+        not user.is_admin
+        and profile.get("company_id")
+        and profile.get("company_id") != user.company_id
+    ):
         raise HTTPException(status_code=404, detail="profile_not_found")
     return profile
 
@@ -2299,40 +2384,69 @@ class ApprovalDecision(BaseModel):
 @api.get("/approvals")
 async def approvals_list(
     status: str = "pending",
-    company_id: Optional[str] = None,
     agent_id: Optional[str] = None,
     limit: int = 50,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
-    """List approval-gate records (pending by default)."""
+    """List approval-gate records (pending by default) scoped to the
+    caller's tenant."""
     from core import approval_gate as _ag
     items = await _ag.list_pending(
-        status=status, company_id=company_id, agent_id=agent_id, limit=limit
+        status=status,
+        company_id=user.company_id,
+        agent_id=agent_id,
+        limit=limit,
     )
     return {"count": len(items), "status": status, "items": items}
 
 
 @api.get("/approvals/stats")
-async def approvals_stats(window_hours: int = 24) -> Dict[str, Any]:
+async def approvals_stats(
+    window_hours: int = 24,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     from core import approval_gate as _ag
     return await _ag.stats(window_hours=window_hours)
 
 
 @api.get("/approvals/{approval_id}")
-async def approvals_get(approval_id: str) -> Dict[str, Any]:
+async def approvals_get(
+    approval_id: str,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
     from core import approval_gate as _ag
     rec = await _ag.get_pending(approval_id)
     if not rec:
+        raise HTTPException(status_code=404, detail="approval not found")
+    # Cross-tenant access prevention. Admins can still see everything.
+    if (
+        not user.is_admin
+        and rec.get("company_id")
+        and rec.get("company_id") != user.company_id
+    ):
         raise HTTPException(status_code=404, detail="approval not found")
     return rec
 
 
 @api.post("/approvals/{approval_id}/approve")
 async def approvals_approve(
-    approval_id: str, payload: ApprovalDecision
+    approval_id: str,
+    payload: ApprovalDecision,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
     """Approve a pending action and execute it via the matching tool callable."""
     from core import approval_gate as _ag
     from agents.hermes import HERMES_TOOLS
+
+    rec = await _ag.get_pending(approval_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="approval not found")
+    if (
+        not user.is_admin
+        and rec.get("company_id")
+        and rec.get("company_id") != user.company_id
+    ):
+        raise HTTPException(status_code=404, detail="approval not found")
 
     async def _executor(action: str, args: Dict[str, Any]) -> Dict[str, Any]:
         fn = HERMES_TOOLS.get(action)
@@ -2342,7 +2456,7 @@ async def approvals_approve(
 
     return await _ag.approve(
         approval_id,
-        decided_by=payload.decided_by or "hermes",
+        decided_by=payload.decided_by or user.email or "hermes",
         reason=payload.reason,
         executor=_executor,
     )
@@ -2350,12 +2464,23 @@ async def approvals_approve(
 
 @api.post("/approvals/{approval_id}/reject")
 async def approvals_reject(
-    approval_id: str, payload: ApprovalDecision
+    approval_id: str,
+    payload: ApprovalDecision,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
     from core import approval_gate as _ag
+    rec = await _ag.get_pending(approval_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="approval not found")
+    if (
+        not user.is_admin
+        and rec.get("company_id")
+        and rec.get("company_id") != user.company_id
+    ):
+        raise HTTPException(status_code=404, detail="approval not found")
     return await _ag.reject(
         approval_id,
-        decided_by=payload.decided_by or "hermes",
+        decided_by=payload.decided_by or user.email or "hermes",
         reason=payload.reason,
     )
 

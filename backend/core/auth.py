@@ -43,6 +43,69 @@ from core.db import get_db
 logger = logging.getLogger("nxt8.auth")
 
 # ---------------------------------------------------------------------
+# Multi-tenancy — company_id derivation
+# ---------------------------------------------------------------------
+
+# Personal-mailbox providers — each user under one of these domains gets
+# their own private tenant. Corporate domains share a tenant per company.
+FREE_EMAIL_DOMAINS: frozenset[str] = frozenset({
+    "gmail.com",
+    "googlemail.com",
+    "yahoo.com",
+    "yahoo.co.uk",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+    "msn.com",
+    "icloud.com",
+    "me.com",
+    "mac.com",
+    "mail.ru",
+    "yandex.ru",
+    "yandex.com",
+    "ya.ru",
+    "proton.me",
+    "protonmail.com",
+    "pm.me",
+    "duck.com",
+    "gmx.com",
+    "gmx.net",
+    "aol.com",
+})
+
+
+def _slug(s: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
+    return s or "unknown"
+
+
+def derive_company_id(email: str) -> str:
+    """Map an email to its tenant id.
+
+      • Personal provider → "<provider_stem>_<localpart>"
+        (each user is their own tenant)
+      • Corporate domain  → "<domain_stem>"
+        (everyone on the same domain shares a tenant)
+
+    >>> derive_company_id("buro8arno@gmail.com")
+    'gmail_buro8arno'
+    >>> derive_company_id("john.doe@acme.com")
+    'acme'
+    >>> derive_company_id("client@ACME.com")
+    'acme'
+    """
+    raw = (email or "").strip().lower()
+    local, _, domain = raw.partition("@")
+    domain = domain.strip()
+    if not domain:
+        return f"orphan_{_slug(local or 'anon')}"
+    if domain in FREE_EMAIL_DOMAINS:
+        stem = domain.split(".")[0]
+        return f"{_slug(stem)}_{_slug(local)}"
+    return _slug(domain.split(".")[0])
+
+
+# ---------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------
 
@@ -93,6 +156,7 @@ class AuthedUser(BaseModel):
     name: str = ""
     picture: str = ""
     is_admin: bool = False
+    company_id: str = ""
     session_token: str = ""
 
 
@@ -128,6 +192,7 @@ async def _upsert_user(profile: Dict[str, Any]) -> Dict[str, Any]:
 
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     is_admin = email in _admin_emails()
+    company_id = derive_company_id(email)
     now = _now()
 
     if existing:
@@ -135,6 +200,7 @@ async def _upsert_user(profile: Dict[str, Any]) -> Dict[str, Any]:
             "name": profile.get("name") or existing.get("name") or "",
             "picture": profile.get("picture") or existing.get("picture") or "",
             "is_admin": is_admin,
+            "company_id": existing.get("company_id") or company_id,
             "last_login_at": now.isoformat(),
         }
         await db.users.update_one({"user_id": existing["user_id"]}, {"$set": update})
@@ -148,6 +214,7 @@ async def _upsert_user(profile: Dict[str, Any]) -> Dict[str, Any]:
         "name": profile.get("name") or "",
         "picture": profile.get("picture") or "",
         "is_admin": is_admin,
+        "company_id": company_id,
         "created_at": now.isoformat(),
         "last_login_at": now.isoformat(),
     }
@@ -226,12 +293,24 @@ async def _resolve_user_from_token(token: str) -> Optional[AuthedUser]:
     user = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0})
     if not user:
         return None
+    # Backfill company_id lazily for legacy users created before
+    # multi-tenancy landed.
+    company_id = user.get("company_id") or derive_company_id(user.get("email", ""))
+    if not user.get("company_id"):
+        try:
+            await db.users.update_one(
+                {"user_id": user["user_id"]},
+                {"$set": {"company_id": company_id}},
+            )
+        except Exception:  # noqa: BLE001
+            pass
     return AuthedUser(
         user_id=user["user_id"],
         email=user.get("email", ""),
         name=user.get("name", ""),
         picture=user.get("picture", ""),
         is_admin=bool(user.get("is_admin")),
+        company_id=company_id,
         session_token=token,
     )
 
@@ -336,6 +415,7 @@ async def auth_session(
             "name": user.get("name") or "",
             "picture": user.get("picture") or "",
             "is_admin": bool(user.get("is_admin")),
+            "company_id": user.get("company_id") or "",
         },
         # Returned so clients that can't read httpOnly cookies (e.g.
         # mobile webviews, native apps) can keep the token in localStorage
@@ -354,6 +434,7 @@ async def auth_me(user: AuthedUser = Depends(require_user)) -> Dict[str, Any]:
             "name": user.name,
             "picture": user.picture,
             "is_admin": user.is_admin,
+            "company_id": user.company_id,
         },
     }
 
