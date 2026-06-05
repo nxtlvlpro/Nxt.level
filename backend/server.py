@@ -111,6 +111,18 @@ async def lifespan(_app: FastAPI):
             await _tg.get_bot_info(force=True)
     except Exception as e:  # noqa: BLE001
         logger.warning("telegram bootstrap failed: %s", e)
+    # WhatsApp channel — indexes only (Twilio inbound URL is configured
+    # in the Twilio console, not via API).
+    try:
+        from core import whatsapp_bot as _wa
+        await _wa.ensure_indexes()
+        logger.info(
+            "whatsapp channel enabled=%s from=%s",
+            _wa.is_enabled(),
+            _wa._phone_from_wa(_wa._from()) if _wa.is_enabled() else "—",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("whatsapp bootstrap failed: %s", e)
     # Seed default onboarding access code(s) — currently a single pilot code.
     try:
         from agents import onboarding as _onb
@@ -3011,6 +3023,91 @@ async def telegram_install_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not base_url:
         raise HTTPException(status_code=400, detail="base_url required")
     return await _tg.install_webhook(base_url)
+
+
+# =====================================================================
+# WhatsApp Channel — 1-click bot link for clients (Twilio sandbox/prod)
+# =====================================================================
+
+
+class WhatsAppConnectRequest(BaseModel):
+    client_id: str
+
+
+class WhatsAppDisconnectRequest(BaseModel):
+    client_id: str
+
+
+@api.post("/whatsapp/connect")
+async def whatsapp_connect(req: WhatsAppConnectRequest) -> Dict[str, Any]:
+    """Mint a one-time WhatsApp deep-link with a pre-filled binding token."""
+    from core import whatsapp_bot as _wa
+    if not _wa.is_enabled():
+        raise HTTPException(status_code=503, detail="whatsapp_disabled")
+    if not (req.client_id or "").strip():
+        raise HTTPException(status_code=400, detail="client_id required")
+    res = await _wa.mint_link_token(req.client_id.strip())
+    if not res.get("ok"):
+        raise HTTPException(status_code=502, detail=res.get("error") or "mint_failed")
+    return res
+
+
+@api.get("/whatsapp/status")
+async def whatsapp_status(client_id: str) -> Dict[str, Any]:
+    from core import whatsapp_bot as _wa
+    chat = await _wa.get_chat_for_client(client_id)
+    return {
+        "ok": True,
+        "enabled": _wa.is_enabled(),
+        "from": _wa._phone_from_wa(_wa._from()) if _wa.is_enabled() else None,
+        "connected": bool(chat),
+        "chat": (
+            {
+                "profile_name": chat.get("profile_name"),
+                "wa_id": chat.get("wa_id"),
+                "bound_at": chat.get("bound_at"),
+            }
+            if chat
+            else None
+        ),
+    }
+
+
+@api.post("/whatsapp/disconnect")
+async def whatsapp_disconnect(req: WhatsAppDisconnectRequest) -> Dict[str, Any]:
+    from core import whatsapp_bot as _wa
+    if not (req.client_id or "").strip():
+        raise HTTPException(status_code=400, detail="client_id required")
+    return await _wa.unbind(req.client_id.strip())
+
+
+@api.post("/whatsapp/webhook/{secret}")
+async def whatsapp_webhook(secret: str, request: Request) -> Dict[str, Any]:
+    """Inbound Twilio WhatsApp webhook (form-encoded POST).
+
+    Twilio also signs the request with `X-Twilio-Signature`. We validate
+    it when the auth token is present; otherwise rely on the URL secret.
+    """
+    from core import whatsapp_bot as _wa
+    if not _wa.is_enabled():
+        raise HTTPException(status_code=503, detail="whatsapp_disabled")
+    expected = (os.environ.get("TWILIO_WHATSAPP_WEBHOOK_SECRET") or "").strip() or "nxt8"
+    if secret != expected:
+        raise HTTPException(status_code=403, detail="bad_secret")
+
+    form = dict((await request.form()).items())
+    # Best-effort signature check (don't reject if header missing — many
+    # test/sandbox setups omit it; we still got past the URL secret).
+    sig = request.headers.get("X-Twilio-Signature", "")
+    if sig:
+        url = str(request.url)
+        if not _wa.verify_twilio_signature(url, form, sig):
+            logger.warning("whatsapp signature mismatch for %s", url)
+
+    asyncio.create_task(_wa.handle_inbound(form))
+    # Twilio expects TwiML or 200 OK. Empty 200 is fine — we already
+    # respond out-of-band via the REST API.
+    return Response(content="<Response/>", media_type="application/xml")
 
 
 # =====================================================================

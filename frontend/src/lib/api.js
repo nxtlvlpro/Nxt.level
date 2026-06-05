@@ -187,6 +187,20 @@ export const api = {
       .post("/telegram/disconnect", { client_id })
       .then((r) => r.data),
 
+  // WhatsApp channel — 1-click bind via wa.me deep-link (Twilio)
+  whatsappStatus: (client_id) =>
+    http
+      .get(`/whatsapp/status?client_id=${encodeURIComponent(client_id)}`)
+      .then((r) => r.data),
+  whatsappConnect: (client_id) =>
+    http
+      .post("/whatsapp/connect", { client_id })
+      .then((r) => r.data),
+  whatsappDisconnect: (client_id) =>
+    http
+      .post("/whatsapp/disconnect", { client_id })
+      .then((r) => r.data),
+
   // Documents (Compliance persona)
   documentsList: (company_id, limit = 50) =>
     http

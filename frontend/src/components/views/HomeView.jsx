@@ -22,6 +22,7 @@ import OnboardingFlow from "../OnboardingFlow";
 import { playStreamedTts } from "../../lib/playStreamedTts";
 import { hermesTalk } from "../../lib/hermesTalk";
 import HermesTelegramButton from "./HermesTelegramButton";
+import HermesWhatsAppButton from "./HermesWhatsAppButton";
 
 // ============================================================
 // Static content keys (texts come from i18n dictionary)
@@ -1252,6 +1253,7 @@ function HermesChat({ t, lang }) {
 
         <div className="inline-flex items-center gap-2 shrink-0">
           <HermesTelegramButton />
+          <HermesWhatsAppButton />
           <div className="inline-flex rounded-full border border-white/10 bg-brand-dark/60 p-1 backdrop-blur-md">
             <button
               type="button"

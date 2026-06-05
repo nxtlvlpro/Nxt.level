@@ -2,6 +2,16 @@
 
 **Текущая версия:** v1.10.0-telegram-channel (2026-06-04)
 
+## ✅ Done — WhatsApp Channel via Twilio (2026-06-05)
+- `core/whatsapp_bot.py` + `/api/whatsapp/*` endpoints (connect/status/disconnect/webhook)
+- HermesChat toolbar: pill «В WhatsApp» (зелёная) рядом с Telegram-кнопкой
+- WhatsAppConnectCard в AgentsView
+- Identity unification: тот же `nxt8.user_id` для web/Telegram/WhatsApp
+- Approve/Reject через `A <id>` / `R <id>` (WhatsApp inline-кнопок нет → текстовые команды)
+- Push approval-карточек в WhatsApp owner'а
+- 13 регрессионных тестов passing
+- Production-номер: `+13253263849`. **NB:** в Twilio Console нужно прописать inbound webhook URL до prod-деплоя
+
 ## ✅ Done — Share SSR + Hermes Telegram Button (2026-06-04)
 - `/api/s/{share_id}` SSR HTML с `og:image`, `twitter:card`, redirect → SPA
 - HermesChat toolbar: pill-кнопка «В Telegram» (active/connected состояния)

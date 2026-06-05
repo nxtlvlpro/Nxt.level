@@ -95,6 +95,15 @@ async def request_approval(
             _asyncio.create_task(_tg.notify_pending_approval(doc))
     except Exception as e:  # noqa: BLE001
         logger.warning("telegram approval push failed: %s", e)
+
+    # Same for WhatsApp.
+    try:
+        from core import whatsapp_bot as _wa
+        if _wa.is_enabled():
+            import asyncio as _asyncio
+            _asyncio.create_task(_wa.notify_pending_approval(doc))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("whatsapp approval push failed: %s", e)
     return {
         "ok": True,
         "pending": True,

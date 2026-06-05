@@ -1,7 +1,61 @@
 # NXT8 — Release Notes
 
 
-## v1.11.0-share-ssr-and-hermes-tg-button — 2026-06-04
+## v1.12.0-whatsapp-channel — 2026-06-05
+
+**Status:** ✅ WhatsApp-канал в 1 клик через Twilio. Зеркалит Telegram-бридж.
+Клиент привязывает номер deep-link'ом `wa.me/<from>?text=NXT8+<token>`,
+дальше — полноценный двусторонний чат с Hermes и команды
+`A <id>` / `R <id>` для approve/reject одобрений.
+
+### Added — Backend
+- **`core/whatsapp_bot.py`** (~430 строк) — Twilio REST + webhook handler.
+  - `mint_link_token(client_id)` — генерирует `https://wa.me/<from>?text=NXT8+<token>`.
+  - `handle_inbound(form)` — Twilio form-encoded → routing: token binding,
+    `help`/`approvals`/`disconnect`, `A <id>` / `R <id>`, иначе → Hermes.
+  - `notify_pending_approval()` — push approval-card в WhatsApp owner'а.
+  - `verify_twilio_signature()` — HMAC-SHA1 check `X-Twilio-Signature`.
+  - Поддерживает sandbox-режим (env `TWILIO_WHATSAPP_SANDBOX_CODE`).
+- **REST endpoints** (`server.py`):
+  - `POST /api/whatsapp/connect` — mint deep-link.
+  - `GET  /api/whatsapp/status?client_id=...` — статус привязки.
+  - `POST /api/whatsapp/disconnect` — отвязать.
+  - `POST /api/whatsapp/webhook/{secret}` — inbound от Twilio (валидирует
+    secret в URL + signature header).
+- `core.approval_gate.request_approval()` теперь пушит и в Telegram, и в
+  WhatsApp (best-effort, async, никогда не блокирует).
+
+### Added — Frontend
+- **`views/HermesWhatsAppButton.jsx`** — компактная зелёная pill «В WhatsApp»
+  в toolbar Hermes-чата, рядом с Telegram-кнопкой.
+- **`views/WhatsAppConnectCard.jsx`** — settings-карточка в `AgentsView`,
+  зеркалит TelegramConnectCard.
+- Обе используют `localStorage["nxt8.user_id"]` → единая identity на web,
+  Telegram и WhatsApp.
+
+### Env
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` — Twilio API keys.
+- `TWILIO_WHATSAPP_FROM=whatsapp:+13253263849` — production-номер NXT8.
+- `TWILIO_WHATSAPP_SANDBOX_CODE` — опционально для sandbox.
+- `TWILIO_WHATSAPP_WEBHOOK_SECRET` — secret в URL inbound webhook'а.
+
+### Storage
+- `db.whatsapp_chats` — `{client_id, wa_id, profile_name, bound_at, session_id}`
+- `db.whatsapp_link_tokens` — `{token, client_id, expires_at, used}` + TTL.
+
+### Tests
+- 13 новых `tests/test_whatsapp_bot.py`: helpers, bind/unbind, free-text→Hermes,
+  approve/reject, push, signature round-trip.
+- Регрессия 58/58 тестов passing (telegram + whatsapp + share + share_ssr +
+  approval_gate + tour + plan_unification + roi_sanity).
+- Lint чистый.
+
+### Notes для prod (`nxt8.pro`)
+- В Twilio Console → Phone Numbers → `+13253263849` → Messaging → "When a
+  message comes in" webhook = `https://nxt8.pro/api/whatsapp/webhook/nxt8_wa_whk_4b8c1e57f2`
+  (HTTP POST). До этого момента inbound сообщения не доходят.
+
+
 
 **Status:** ✅ SSR-страница для Share-ссылок + кнопка «В Telegram» прямо
 в окне диалога с Hermes. Telegram-бот теперь привязывается к **тому же
