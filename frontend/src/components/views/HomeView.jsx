@@ -816,6 +816,9 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
       recorderRef.current = rec;
       rec.start();
       setState("recording");
+      // Auto-stop after 2s of silence. The user can also tap the mic to
+      // stop manually — both paths converge at `rec.stop()`.
+      startVad(stream);
     } catch (e) {
       const msg = t("voice.error.mic");
       setErrorMsg(msg);
