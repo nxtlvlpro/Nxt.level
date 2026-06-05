@@ -386,25 +386,31 @@ async def seed_demo(
                 "interaction_type": "touch",
                 "interaction_time": (base - timedelta(days=day + 1, hours=i)).isoformat(),
                 "attributed_revenue": None,
+                "company_id": _admin.company_id,
             })
         await roi_agent.record_deal(
             deal_id=deal_id,
             value_usd=float(value),
             team="sales",
             closed_at=(base - timedelta(hours=i)).isoformat(),
+            company_id=_admin.company_id,
         )
 
     # synthetic costs over last hour to make ROI non-zero
     for _ in range(40):
-        await roi_agent.record_api_cost("orchestrator", tokens=15000)
+        await roi_agent.record_api_cost(
+            "orchestrator", tokens=15000, company_id=_admin.company_id
+        )
     for _ in range(8):
-        await roi_agent.record_escalation_cost("support", minutes=5.0)
+        await roi_agent.record_escalation_cost(
+            "support", minutes=5.0, company_id=_admin.company_id
+        )
 
     # detect weak patterns for junior
     await mentor_agent.detect_weak_patterns("emp_jr")
 
     # generate first roi snapshot
-    await roi_agent.calculate_hourly_roi()
+    await roi_agent.calculate_hourly_roi(company_id=_admin.company_id)
 
     # seed market signals + first digest
     try:
@@ -642,19 +648,37 @@ async def mentor_recommendation(employee_id: str, pattern: str) -> Dict[str, Any
 # =====================================================================
 
 
+def _roi_company_filter(user: "_auth_mod.AuthedUser") -> Optional[str]:
+    """Resolve the tenant filter for ROI reads.
+
+    Admins see global aggregates (`None`). All other users are strictly
+    scoped to their own `company_id`.
+    """
+    return None if user.is_admin else user.company_id
+
+
 @api.get("/roi/dashboard")
-async def roi_dashboard() -> Dict[str, Any]:
-    return await roi_agent.dashboard_summary()
+async def roi_dashboard(
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    return await roi_agent.dashboard_summary(company_id=_roi_company_filter(user))
 
 
 @api.get("/roi/current")
-async def roi_current() -> Dict[str, Any]:
-    return await roi_agent.calculate_hourly_roi()
+async def roi_current(
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    return await roi_agent.calculate_hourly_roi(company_id=_roi_company_filter(user))
 
 
 @api.get("/roi/trend")
-async def roi_trend(hours: int = 24) -> Dict[str, Any]:
-    items = await roi_agent.roi_trend(hours=hours)
+async def roi_trend(
+    hours: int = 24,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    items = await roi_agent.roi_trend(
+        hours=hours, company_id=_roi_company_filter(user)
+    )
     return {"count": len(items), "items": items}
 
 
@@ -663,18 +687,13 @@ async def roi_create_deal(
     req: DealRequest,
     user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
-    res = await roi_agent.record_deal(
-        deal_id=req.deal_id, value_usd=req.value_usd, team=req.team, closed_at=req.closed_at
+    return await roi_agent.record_deal(
+        deal_id=req.deal_id,
+        value_usd=req.value_usd,
+        team=req.team,
+        closed_at=req.closed_at,
+        company_id=user.company_id,
     )
-    # Tenant tag (post-write). Aggregate dashboards stay global for now —
-    # per-tenant ROI breakdown is P1 (foundation laid here).
-    try:
-        await get_db().deals.update_one(
-            {"deal_id": req.deal_id}, {"$set": {"company_id": user.company_id}}
-        )
-    except Exception:  # noqa: BLE001
-        pass
-    return res
 
 
 @api.post("/roi/interactions")
@@ -683,16 +702,11 @@ async def roi_record_interaction(
     user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
     await roi_agent.record_interaction(
-        deal_id=req.deal_id, agent=req.agent, interaction_type=req.interaction_type
+        deal_id=req.deal_id,
+        agent=req.agent,
+        interaction_type=req.interaction_type,
+        company_id=user.company_id,
     )
-    # Tag the most recent interaction for this deal with the tenant.
-    try:
-        await get_db().interactions.update_many(
-            {"deal_id": req.deal_id, "agent": req.agent, "company_id": {"$exists": False}},
-            {"$set": {"company_id": user.company_id}},
-        )
-    except Exception:  # noqa: BLE001
-        pass
     return {"status": "recorded"}
 
 
