@@ -657,6 +657,32 @@ def _roi_company_filter(user: "_auth_mod.AuthedUser") -> Optional[str]:
     return None if user.is_admin else user.company_id
 
 
+async def _resolve_company_id(
+    user_id: Optional[str], explicit: Optional[str] = None
+) -> Optional[str]:
+    """Best-effort tenant resolver for unauthenticated streaming endpoints.
+
+    Order: explicit value → DB lookup by `user_id` → derive from email →
+    `None` (global / untagged).
+    """
+    if explicit:
+        return explicit
+    if not user_id or user_id == "anonymous":
+        return None
+    try:
+        u = await get_db().users.find_one({"user_id": user_id}, {"_id": 0})
+        if u:
+            cid = u.get("company_id")
+            if cid:
+                return cid
+            email = u.get("email") or ""
+            if email:
+                return _auth_mod.derive_company_id(email)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 @api.get("/roi/dashboard")
 async def roi_dashboard(
     user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
@@ -1221,10 +1247,12 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
             ]
 
             full_chunks: list[str] = []
+            stream_usage: Dict[str, int] = {}
             async for delta in deepseek.chat_stream(
                 messages=messages_for_llm,
                 temperature=0.6,
                 max_tokens=1024,
+                usage_out=stream_usage,
             ):
                 full_chunks.append(delta)
                 yield f"event: delta\ndata: {_json.dumps({'text': delta})}\n\n"
@@ -1252,11 +1280,23 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
             except Exception as _mp_err:  # noqa: BLE001
                 logger.debug("mempalace autosave skipped: %s", _mp_err)
 
-            # post-stream reliability + cost + unified audit via hook
+            # post-stream reliability + cost + unified audit via hook.
+            # Token accounting (Sprint A · Fix 2):
+            #   real_stream_tokens — from `stream_options: include_usage`.
+            #   intent_tokens      — quick classifier call.
+            #   fallback estimate  — (prompt_chars + reply_chars) / 4 when
+            #                        provider didn't emit a usage chunk.
             past = [m["content"] for m in (await mem.get_session(session_id, limit=10))
                     if m.get("role") == "assistant"]
             mem_ctx_texts = [r.get("content", "") for r in ctx.get("retrieved", [])]
             latency_ms = int((_time.time() - t0) * 1000)
+            intent_tokens = int(intent_resp.get("tokens_total", 0) or 0)
+            stream_tokens = int(stream_usage.get("total_tokens", 0) or 0)
+            if stream_tokens == 0:
+                prompt_chars = sum(len(m.get("content", "")) for m in messages_for_llm)
+                stream_tokens = max(1, (prompt_chars + len(full)) // 4)
+            total_tokens = intent_tokens + stream_tokens
+            company_id = await _resolve_company_id(req.user_id)
             hook_res = await finalize_llm_turn(
                 channel="stream",
                 agent="orchestrator_stream",
@@ -1264,7 +1304,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                 session_id=session_id,
                 message=req.message,
                 response_text=full,
-                tokens_total=int(intent_resp.get("tokens_total", 0) or 0),
+                tokens_total=total_tokens,
                 deepseek_confidence=0.78,  # streamed; no logprobs aggregate
                 evidence_count=len(mem_ctx_texts),
                 past_responses=past,
@@ -1273,6 +1313,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                 agent_chain=["orchestrator(stream)"],
                 mock=False,
                 latency_ms=latency_ms,
+                company_id=company_id,
             )
 
             done_payload = {
@@ -1381,6 +1422,7 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
             full_chunks: List[str] = []
             buf = ""
             sent_idx = 0
+            stream_usage: Dict[str, int] = {}
 
             async def tts_and_emit(sentence: str, idx: int):
                 try:
@@ -1395,6 +1437,7 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
                 messages=sys_msgs + [{"role": "user", "content": req.message}],
                 temperature=0.4,
                 max_tokens=1200,
+                usage_out=stream_usage,
             ):
                 full_chunks.append(delta)
                 buf += delta
@@ -1417,6 +1460,43 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
             await mem.append_message(session_id, "assistant", full, user_id=req.user_id)
 
             latency_ms = int((_time.time() - t0) * 1000)
+
+            # Universal pipeline hook (Sprint A · Fix 2):
+            # voice/talk was the last LLM channel bypassing audit + ROI.
+            # Without this, ~all voice traffic was missing from the ROI
+            # dashboard and from /api/requests.
+            try:
+                prompt_chars = sum(len(m.get("content", "")) for m in sys_msgs) + len(req.message)
+                stream_tokens = int(stream_usage.get("total_tokens", 0) or 0)
+                if stream_tokens == 0:
+                    stream_tokens = max(1, (prompt_chars + len(full)) // 4)
+                past = [
+                    m["content"] for m in (await mem.get_session(session_id, limit=10))
+                    if m.get("role") == "assistant"
+                ]
+                company_id = await _resolve_company_id(req.user_id, req.company_id)
+                await finalize_llm_turn(
+                    channel="talk",
+                    agent="hermes_talk",
+                    user_id=req.user_id or "anonymous",
+                    session_id=session_id,
+                    message=req.message,
+                    response_text=full,
+                    tokens_total=stream_tokens,
+                    deepseek_confidence=0.78,
+                    evidence_count=0,
+                    past_responses=past,
+                    memory_context=[],
+                    intent="voice",
+                    agent_chain=["hermes_talk(stream)", "voice_tts"],
+                    mock=False,
+                    latency_ms=latency_ms,
+                    extra={"sentences": sent_idx, "lang": req.lang},
+                    company_id=company_id,
+                )
+            except Exception as _hook_err:  # noqa: BLE001
+                logger.warning("hermes_talk finalize_llm_turn failed: %s", _hook_err)
+
             yield f"event: done\ndata: {_json.dumps({'latency_ms': latency_ms, 'sentences': sent_idx})}\n\n"
 
         except Exception as e:  # noqa: BLE001

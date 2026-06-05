@@ -58,11 +58,15 @@ async def finalize_llm_turn(
     mock: bool = False,
     extra: Optional[Dict[str, Any]] = None,
     latency_ms: Optional[int] = None,
+    company_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Single cross-cutting hook for every LLM endpoint.
 
     Returns a dict with audit + reliability fields the endpoint should merge
     into its HTTP response. Returns {} on internal failure (never raises).
+
+    `company_id` is propagated into `db.costs`, `db.requests`, and
+    `db.alerts` so ROI/audit views stay tenant-scoped.
     """
     if past_responses is None:
         past_responses = []
@@ -74,7 +78,9 @@ async def finalize_llm_turn(
     # 1. Cost accounting (real LLM tokens) ----------------------------
     try:
         if tokens_total and tokens_total > 0:
-            await roi_agent.record_api_cost(agent, int(tokens_total))
+            await roi_agent.record_api_cost(
+                agent, int(tokens_total), company_id=company_id
+            )
     except Exception as e:  # noqa: BLE001
         logger.warning("[hook] record_api_cost failed: %s", e)
 
@@ -113,7 +119,9 @@ async def finalize_llm_turn(
     # 3. Escalation cost + alert --------------------------------------
     try:
         if rel_payload["should_escalate"]:
-            await roi_agent.record_escalation_cost(agent, minutes=5.0)
+            await roi_agent.record_escalation_cost(
+                agent, minutes=5.0, company_id=company_id
+            )
             await get_db().alerts.insert_one(
                 {
                     "id": str(uuid.uuid4()),
@@ -128,6 +136,7 @@ async def finalize_llm_turn(
                         "channel": channel,
                         "agent": agent,
                     },
+                    "company_id": company_id,
                     "created_at": _now(),
                 }
             )
@@ -152,6 +161,7 @@ async def finalize_llm_turn(
         "tokens_total": int(tokens_total or 0),
         "latency_ms": int(latency_ms) if latency_ms is not None else None,
         "mock": bool(mock),
+        "company_id": company_id,
         "created_at": _now(),
     }
     if extra and isinstance(extra, dict):

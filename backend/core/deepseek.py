@@ -181,22 +181,41 @@ class DeepSeekClient:
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        usage_out: Optional[Dict[str, int]] = None,
     ):
         """Async generator yielding incremental content chunks (strings).
 
         First successful provider streams its delta tokens. On total failure
         falls back to a single mock chunk to keep client UX consistent.
+
+        If `usage_out` is a mutable dict, the final `usage` block from the
+        provider (`prompt_tokens` / `completion_tokens` / `total_tokens`)
+        is stored there. This is the only way to recover real token counts
+        from a streaming call (the streamed chunks themselves carry no
+        usage metadata). Used by ROI accounting in /chat/stream so we
+        stop under-counting LLM cost by ~98%.
         """
         if self.mock_mode:
             if _allow_mock():
-                yield self._mock_response(messages)["content"]
+                content = self._mock_response(messages)["content"]
+                if usage_out is not None:
+                    # rough mock parity with non-stream path
+                    last_user = ""
+                    for m in reversed(messages):
+                        if m.get("role") == "user":
+                            last_user = m.get("content", "")
+                            break
+                    usage_out["total_tokens"] = max(40, (len(last_user) + len(content)) // 4)
+                yield content
                 return
             raise LLMUnavailable("no providers configured", note="llm_no_providers")
 
         errors: List[str] = []
         for p in self.providers:
             try:
-                async for chunk in self._call_stream(p, messages, temperature, max_tokens):
+                async for chunk in self._call_stream(
+                    p, messages, temperature, max_tokens, usage_out=usage_out
+                ):
                     if chunk:
                         yield chunk
                 self.last_error = None
@@ -269,6 +288,7 @@ class DeepSeekClient:
         messages: List[Dict[str, str]],
         temperature: float,
         max_tokens: int,
+        usage_out: Optional[Dict[str, int]] = None,
     ):
         """Async generator: yields delta content strings via SSE from provider."""
         import json as _json
@@ -280,6 +300,9 @@ class DeepSeekClient:
             "max_tokens": max_tokens,
             "stream": True,
         }
+        if usage_out is not None:
+            # OpenAI/DeepSeek-compatible: emit a final SSE chunk carrying usage.
+            payload["stream_options"] = {"include_usage": True}
         headers = {
             "Authorization": f"Bearer {p.api_key}",
             "Content-Type": "application/json",
@@ -304,6 +327,12 @@ class DeepSeekClient:
                         obj = _json.loads(data)
                     except _json.JSONDecodeError:
                         continue
+                    # Final usage chunk: empty choices + usage block.
+                    usage = obj.get("usage")
+                    if usage and usage_out is not None:
+                        usage_out["prompt_tokens"] = int(usage.get("prompt_tokens", 0) or 0)
+                        usage_out["completion_tokens"] = int(usage.get("completion_tokens", 0) or 0)
+                        usage_out["total_tokens"] = int(usage.get("total_tokens", 0) or 0)
                     choices = obj.get("choices") or []
                     if not choices:
                         continue
