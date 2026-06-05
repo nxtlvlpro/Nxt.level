@@ -38,23 +38,10 @@ http.interceptors.response.use(
   (error) => {
     const status = error?.response?.status;
     const url = error?.config?.url || "";
-    // Don't redirect during the OAuth bootstrap calls themselves —
-    // that would create a loop.
-    const isAuthCall = url.startsWith("/auth/");
 
     if (status === 401) {
-      if (!isAuthCall && typeof window !== "undefined") {
-        try {
-          localStorage.removeItem(SESSION_TOKEN_KEY);
-        } catch {
-          /* ignore */
-        }
-        const path = window.location.pathname || "";
-        if (!path.startsWith("/login") && !path.startsWith("/auth/")) {
-          window.location.replace("/login");
-        }
-      }
-      // Never toast on 401 — the redirect IS the UX signal.
+      // Test mode: NO auto-redirect to /login. The landing/app is fully
+      // open. Components that need auth handle their own UX state.
       return Promise.reject(error);
     }
 

@@ -23,7 +23,6 @@ import { HEADER_LOCKED } from "./config/header.locked";
 import { AuthProvider, useUser } from "./auth/AuthContext";
 import AuthCallback from "./auth/AuthCallback";
 import LoginPage from "./auth/LoginPage";
-import ProtectedRoute from "./auth/ProtectedRoute";
 import AppErrorBoundary from "./components/AppErrorBoundary";
 import { Toaster } from "./components/ui/sonner";
 
@@ -217,11 +216,11 @@ function AppRouter() {
   ) {
     return <AppShell />;
   }
-  return (
-    <ProtectedRoute>
-      <AppShell />
-    </ProtectedRoute>
-  );
+  // Test-mode entry: the site lands DIRECTLY on the home/landing view —
+  // no auth wall, no redirect to /login. /login still exists for any
+  // user who wants to sign in (CTA in the header), but the landing is
+  // fully public.
+  return <AppShell />;
 }
 
 function App() {
