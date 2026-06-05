@@ -226,6 +226,25 @@ async def get_status(*, session_id: str, host_url: str) -> Dict[str, Any]:
 
 
 async def handle_webhook(body: bytes, signature: Optional[str], host_url: str) -> Dict[str, Any]:
+    # Hard signature check — defends against forged webhooks that would
+    # otherwise flip a transaction to `paid` for free. Per Stripe docs:
+    # `stripe.Webhook.construct_event` raises SignatureVerificationError
+    # if the signature is missing, expired, or doesn't match the secret.
+    webhook_secret = (os.environ.get("STRIPE_WEBHOOK_SECRET") or "").strip()
+    if not webhook_secret:
+        logger.error("STRIPE_WEBHOOK_SECRET is not configured — rejecting webhook")
+        raise ValueError("webhook_secret_not_configured")
+    if not signature:
+        raise ValueError("missing_stripe_signature_header")
+    import stripe
+    try:
+        event = stripe.Webhook.construct_event(
+            payload=body, sig_header=signature, secret=webhook_secret
+        )
+    except Exception as e:  # stripe.error.SignatureVerificationError + others
+        logger.warning("stripe webhook signature invalid: %s", e)
+        raise ValueError(f"invalid_signature: {e}")
+
     sc = _get_checkout(host_url)
     resp = await sc.handle_webhook(body, signature)
     # Best-effort persist — webhook is supplementary; the poll-based
@@ -244,10 +263,11 @@ async def handle_webhook(body: bytes, signature: Optional[str], host_url: str) -
     except Exception as e:  # noqa: BLE001
         logger.warning("payments webhook persist failed: %s", e)
     return {
-        "event_type":     resp.event_type,
-        "event_id":       resp.event_id,
+        "event_type":     resp.event_type or event.get("type"),
+        "event_id":       resp.event_id or event.get("id"),
         "session_id":     resp.session_id,
         "payment_status": resp.payment_status,
+        "verified":       True,
     }
 
 

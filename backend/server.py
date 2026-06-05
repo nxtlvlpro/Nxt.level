@@ -687,6 +687,24 @@ async def _resolve_company_id(
     return None
 
 
+def _tenant_for_public_chat(
+    authed_user: "Optional[_auth_mod.AuthedUser]", session_id: str
+) -> str:
+    """Tenant scope for OPEN (anonymous-allowed) chat/voice endpoints.
+
+    NEVER trusts `company_id` from request body or form — that's a
+    cross-tenant leak vector. Resolution order:
+      1. Logged-in user → `user.company_id` (JWT-derived).
+      2. Anonymous → session-isolated pool `anon_<session_id>` so each
+         browser session is its own private tenant and cannot read another
+         visitor's data even if they guess the session_id.
+    """
+    if authed_user and authed_user.company_id:
+        return authed_user.company_id
+    safe_sid = re.sub(r"[^a-zA-Z0-9_\-]", "_", session_id or "")[:64] or "session"
+    return f"anon_{safe_sid}"
+
+
 @api.get("/roi/dashboard")
 async def roi_dashboard(
     user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
@@ -892,7 +910,7 @@ async def voice_converse(
     session_id: Optional[str] = Form(None),
     language: Optional[str] = Form(None),
     voice: str = Form("onyx"),
-    company_id: Optional[str] = Form(None),
+    authed: "Optional[_auth_mod.AuthedUser]" = Depends(_auth_mod.optional_user),
 ) -> Dict[str, Any]:
     """One-shot voice loop: STT → Hermes COO (tools) → trim → TTS (base64 mp3)."""
     import base64
@@ -917,6 +935,8 @@ async def voice_converse(
         raise HTTPException(status_code=422, detail="no speech detected")
 
     sid = session_id or f"sess_{uuid.uuid4().hex[:12]}"
+    # Tenant from JWT or session-isolated for anon — NEVER from request body.
+    v_company_id = _tenant_for_public_chat(authed, sid)
 
     # Build conversation: prior session memory + voice hint + current turn
     history: List[Dict[str, Any]] = []
@@ -940,7 +960,7 @@ async def voice_converse(
     try:
         chat_resp = await hermes_coo_agent.enhanced_chat(
             messages=messages,
-            company_id=company_id,
+            company_id=v_company_id,
             user_id=user_id,
             mode="operational",
             temperature=0.3,
@@ -955,7 +975,6 @@ async def voice_converse(
     # Persist to short-term memory (best effort)
     try:
         mem = memory_agent.get_memory()
-        v_company_id = await _resolve_company_id(user_id)
         await mem.append_message(sid, "user", user_text,
                                  user_id=user_id, company_id=v_company_id)
         if reply_text:
@@ -1060,7 +1079,7 @@ async def voice_converse_stream(
     session_id: Optional[str] = Form(None),
     language: Optional[str] = Form(None),
     voice: str = Form("onyx"),
-    company_id: Optional[str] = Form(None),
+    authed: "Optional[_auth_mod.AuthedUser]" = Depends(_auth_mod.optional_user),
 ) -> StreamingResponse:
     """Same as /voice/converse but streams sentence-by-sentence audio chunks."""
     import asyncio
@@ -1073,6 +1092,10 @@ async def voice_converse_stream(
     if not raw:
         raise HTTPException(status_code=400, detail="empty audio file")
     filename = file.filename or "audio.webm"
+    # Session id is needed up-front so we can lock the anonymous tenant
+    # scope BEFORE entering the stream generator (where Depends can't run).
+    sid_locked = session_id or f"sess_{uuid.uuid4().hex[:12]}"
+    vs_company_id = _tenant_for_public_chat(authed, sid_locked)
 
     async def event_stream():
         try:
@@ -1089,7 +1112,7 @@ async def voice_converse_stream(
             yield json.dumps({"type": "error", "message": "no speech detected"}) + "\n"
             return
 
-        sid = session_id or f"sess_{uuid.uuid4().hex[:12]}"
+        sid = sid_locked
         yield json.dumps({"type": "meta", "session_id": sid}) + "\n"
         yield json.dumps({"type": "transcript", "text": user_text}) + "\n"
 
@@ -1115,7 +1138,7 @@ async def voice_converse_stream(
         try:
             chat_resp = await hermes_coo_agent.enhanced_chat(
                 messages=messages,
-                company_id=company_id,
+                company_id=vs_company_id,
                 user_id=user_id,
                 mode="operational",
                 temperature=0.3,
@@ -1132,7 +1155,6 @@ async def voice_converse_stream(
         # Persist memory.
         try:
             mem = memory_agent.get_memory()
-            vs_company_id = await _resolve_company_id(user_id)
             await mem.append_message(sid, "user", user_text,
                                      user_id=user_id, company_id=vs_company_id)
             if reply_text:
@@ -1375,7 +1397,6 @@ class HermesTalkRequest(BaseModel):
     message: str
     user_id: Optional[str] = None
     session_id: Optional[str] = None
-    company_id: Optional[str] = None
     lang: Optional[str] = None
 
 
@@ -1397,7 +1418,10 @@ def _flush_sentence(buf: str) -> tuple:
 
 
 @api.post("/hermes/talk")
-async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
+async def hermes_talk(
+    req: HermesTalkRequest,
+    authed: "Optional[_auth_mod.AuthedUser]" = Depends(_auth_mod.optional_user),
+) -> StreamingResponse:
     """Real-time talk: streams LLM tokens AND Fish-Audio TTS chunks of each
     completed sentence as they're generated. Designed for live voice/chat UX
     where the first audio plays in ~300 ms."""
@@ -1406,6 +1430,9 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
     import time as _time
 
     session_id = req.session_id or f"talk_{uuid.uuid4().hex[:10]}"
+    # Tenant is derived from JWT for logged-in users, or session-isolated for
+    # anonymous visitors. `company_id` is NEVER read from the request body.
+    talk_company_id = _tenant_for_public_chat(authed, session_id)
 
     async def gen():
         t0 = _time.time()
@@ -1413,7 +1440,6 @@ async def hermes_talk(req: HermesTalkRequest) -> StreamingResponse:
         mem = memory_agent.get_memory()
 
         try:
-            talk_company_id = await _resolve_company_id(req.user_id, req.company_id)
             await mem.append_message(session_id, "user", req.message,
                                      user_id=req.user_id, company_id=talk_company_id)
 
@@ -2953,6 +2979,10 @@ async def stripe_webhook(http_request: Request) -> Dict[str, Any]:
     host_url = str(http_request.base_url)
     try:
         return await _pay.handle_webhook(body, sig, host_url)
+    except ValueError as e:
+        # Signature failure / missing header / missing secret → 400.
+        logger.warning("stripe webhook rejected: %s", e)
+        raise HTTPException(status_code=400, detail=f"webhook_invalid: {e}")
     except Exception as e:  # noqa: BLE001
         logger.exception("stripe webhook failed: %s", e)
         raise HTTPException(status_code=400, detail=f"webhook_invalid: {e}")
@@ -3534,10 +3564,15 @@ app.include_router(api)
 # Install the auth middleware AFTER routes are mounted so it intercepts
 # everything. Public paths and webhooks are whitelisted inside the gate.
 _auth_mod.install_auth_middleware(app)
+_cors_raw = os.environ.get("CORS_ORIGINS", "https://nxt8.pro").strip()
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip() and o.strip() != "*"]
+if not _cors_origins:
+    # Fail-closed default — production domain only. NEVER `*` with credentials.
+    _cors_origins = ["https://nxt8.pro"]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
