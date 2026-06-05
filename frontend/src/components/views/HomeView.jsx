@@ -1238,18 +1238,16 @@ function HermesChat({ t, lang }) {
 
   return (
     <section className="relative py-2 lg:py-6" data-testid="home-hermes-chat">
-      {/* Header: compact on mobile (single tight row), spacious on desktop. */}
+      {/* Header: hidden on mobile (chat speaks for itself), full block on desktop. */}
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-3 lg:mb-4 gap-2 lg:gap-3">
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-2 lg:block">
-            <div className="text-[9px] lg:text-[10px] uppercase tracking-[0.25em] lg:tracking-[0.3em] text-brand-turquoise lg:mb-1.5 shrink-0">
-              {t("home.hermes.eyebrow")}
-            </div>
-            <h2 className="text-base lg:text-2xl font-light text-slate-100 truncate lg:whitespace-normal">
-              {t("home.hermes.title")}
-            </h2>
+        <div className="hidden lg:block min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-1.5">
+            {t("home.hermes.eyebrow")}
           </div>
-          <p className="hidden lg:block text-[11px] text-slate-500 mt-1">
+          <h2 className="text-xl lg:text-2xl font-light text-slate-100">
+            {t("home.hermes.title")}
+          </h2>
+          <p className="text-[11px] text-slate-500 mt-1">
             {t("home.hermes.subtitle")}
           </p>
         </div>
