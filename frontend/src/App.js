@@ -154,7 +154,7 @@ function AppShell() {
             className={`shrink-0 z-20 w-full max-w-md lg:max-w-screen-2xl mx-auto px-4 lg:px-8 ${HEADER_LOCKED.shellTopPaddingClass}`}
             data-testid="app-shell-header"
           >
-            <Header aiIndex={8.1} streakDays={14} onNavigate={setView} />
+            <Header aiIndex={8.1} streakDays={14} />
             {seedStatus === "error" && (
               <div
                 className="text-[10px] text-red-400 border border-red-500/30 bg-red-500/5 rounded-md p-2 mt-2"

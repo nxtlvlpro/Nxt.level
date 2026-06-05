@@ -23,7 +23,6 @@ import { playStreamedTts } from "../../lib/playStreamedTts";
 import { hermesTalk } from "../../lib/hermesTalk";
 import HermesTelegramButton from "./HermesTelegramButton";
 import HermesWhatsAppButton from "./HermesWhatsAppButton";
-import MobileChatView from "./MobileChatView";
 
 // ============================================================
 // Static content keys (texts come from i18n dictionary)
@@ -1238,24 +1237,27 @@ function HermesChat({ t, lang }) {
   };
 
   return (
-    <section className="relative py-6" data-testid="home-hermes-chat">
-      <div className="flex items-end justify-between mb-4 gap-3">
+    <section className="relative py-2 lg:py-6" data-testid="home-hermes-chat">
+      {/* Header: compact on mobile (single tight row), spacious on desktop. */}
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-3 lg:mb-4 gap-2 lg:gap-3">
         <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-brand-turquoise mb-1.5">
-            {t("home.hermes.eyebrow")}
+          <div className="flex items-baseline gap-2 lg:block">
+            <div className="text-[9px] lg:text-[10px] uppercase tracking-[0.25em] lg:tracking-[0.3em] text-brand-turquoise lg:mb-1.5 shrink-0">
+              {t("home.hermes.eyebrow")}
+            </div>
+            <h2 className="text-base lg:text-2xl font-light text-slate-100 truncate lg:whitespace-normal">
+              {t("home.hermes.title")}
+            </h2>
           </div>
-          <h2 className="text-xl lg:text-2xl font-light text-slate-100">
-            {t("home.hermes.title")}
-          </h2>
-          <p className="text-[11px] text-slate-500 mt-1">
+          <p className="hidden lg:block text-[11px] text-slate-500 mt-1">
             {t("home.hermes.subtitle")}
           </p>
         </div>
 
-        <div className="inline-flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 overflow-x-auto no-scrollbar -mx-1 px-1">
           <HermesTelegramButton />
           <HermesWhatsAppButton />
-          <div className="inline-flex rounded-full border border-white/10 bg-brand-dark/60 p-1 backdrop-blur-md">
+          <div className="inline-flex rounded-full border border-white/10 bg-brand-dark/60 p-1 backdrop-blur-md shrink-0">
             <button
               type="button"
               onClick={() => setMode("text")}
@@ -1284,12 +1286,14 @@ function HermesChat({ t, lang }) {
         </div>
       </div>
 
-      <div className="glass-card window-border glow-turquoise-subtle rounded-2xl p-4">
+      <div className="glass-card window-border glow-turquoise-subtle rounded-2xl p-3 lg:p-4">
         {/* Shared bubble feed — visible in both text & voice modes. New
-            messages appear at the bottom; older ones scroll upward. */}
+            messages appear at the bottom; older ones scroll upward.
+            Mobile gets a taller window so the chat dialog dominates the
+            viewport without forcing the page to scroll. */}
         <div
           ref={scrollRef}
-          className="h-[260px] overflow-y-auto pr-1 space-y-3 mb-3"
+          className="h-[55vh] min-h-[360px] max-h-[560px] lg:h-[260px] lg:min-h-0 lg:max-h-none overflow-y-auto pr-1 space-y-3 mb-3"
           data-testid="home-chat-thread"
         >
           {messages.map((m, i) => (
@@ -1697,18 +1701,10 @@ export default function HomeView() {
 
   return (
     <div data-testid="home-view">
-      {/* MOBILE: full-screen chat — no scrolling landing-page above. */}
-      <div className="lg:hidden" data-testid="home-mobile">
-        <MobileChatView />
-      </div>
-
-      {/* DESKTOP: rich landing page — untouched. */}
-      <div className="hidden lg:block" data-testid="home-desktop">
-        <AgentsSwipe t={t} />
-        <TestCTA t={t} />
-        <HermesChat t={t} lang={lang} />
-        <HowItWorks t={t} />
-      </div>
+      <AgentsSwipe t={t} />
+      <TestCTA t={t} />
+      <HermesChat t={t} lang={lang} />
+      <HowItWorks t={t} />
       <OnboardingFlow
         open={onboarding.open}
         planId={onboarding.planId}

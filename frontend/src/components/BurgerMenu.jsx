@@ -15,21 +15,8 @@ import {
   ChevronRight,
   ArrowLeft,
   Check,
-  Terminal,
-  LayoutGrid,
-  GitBranch,
-  Activity,
 } from "lucide-react";
 import { useT } from "../i18n/LanguageContext";
-
-// Secondary nav targets — these used to live in `BottomNav` but were
-// evicted to keep the mobile bottom bar at exactly 5 icons on 360 px.
-const NAV_TARGETS = [
-  { id: "cmd",   label: "Command line", icon: Terminal },
-  { id: "ops",   label: "Operations",   icon: LayoutGrid },
-  { id: "graph", label: "Graph",        icon: GitBranch },
-  { id: "os",    label: "Hermes OS",    icon: Activity },
-];
 
 const MENU_KEYS = [
   { key: "auth", labelKey: "menu.auth", icon: LogIn },
@@ -256,18 +243,13 @@ const SECTION_BLOCKS = {
   pricing: PricingBlock,
 };
 
-export default function BurgerMenu({ open, onOpenChange, onNavigate }) {
+export default function BurgerMenu({ open, onOpenChange }) {
   const [active, setActive] = useState(null);
   const { t, lang, setLang } = useT();
 
   const handleOpenChange = (next) => {
     if (!next) setActive(null);
     onOpenChange(next);
-  };
-
-  const handleNavigate = (viewId) => {
-    onNavigate?.(viewId);
-    handleOpenChange(false);
   };
 
   const ActiveBlock = active ? SECTION_BLOCKS[active] : null;
@@ -299,51 +281,11 @@ export default function BurgerMenu({ open, onOpenChange, onNavigate }) {
             </SheetTitle>
           </div>
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+        <div className="flex-1 overflow-y-auto px-5 py-5">
           {ActiveBlock ? (
             <ActiveBlock t={t} lang={lang} setLang={setLang} />
           ) : (
-            <>
-              {/* Secondary nav targets — only visible on mobile where
-                  BottomNav now caps at 5 icons. Hidden on lg+ since the
-                  sidebar exposes everything already. */}
-              {onNavigate && (
-                <div className="lg:hidden">
-                  <div className="text-[10px] uppercase tracking-[0.3em] text-slate-500 mb-2 px-1">
-                    Разделы
-                  </div>
-                  <ul className="space-y-1" data-testid="burger-nav-list">
-                    {NAV_TARGETS.map(({ id, label, icon: Icon }) => (
-                      <li key={id}>
-                        <button
-                          type="button"
-                          onClick={() => handleNavigate(id)}
-                          data-testid={`burger-nav-${id}`}
-                          className="w-full flex items-center justify-between px-4 py-3.5 text-left bg-white/[0.02] hover:bg-brand-turquoise/10 border border-white/5 hover:border-brand-turquoise/40 rounded-md transition-colors group"
-                        >
-                          <span className="flex items-center gap-3">
-                            <Icon className="w-4 h-4 text-brand-turquoise/80 group-hover:text-brand-turquoise" />
-                            <span className="tracking-wide text-slate-200 group-hover:text-white text-sm">
-                              {label}
-                            </span>
-                          </span>
-                          <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-brand-turquoise" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div>
-                {onNavigate && (
-                  <div className="text-[10px] uppercase tracking-[0.3em] text-slate-500 mb-2 px-1 lg:hidden">
-                    Настройки
-                  </div>
-                )}
-                <MenuList onSelect={setActive} t={t} />
-              </div>
-            </>
+            <MenuList onSelect={setActive} t={t} />
           )}
         </div>
       </SheetContent>

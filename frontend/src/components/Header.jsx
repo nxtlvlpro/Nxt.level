@@ -6,7 +6,7 @@ import { HEADER_LOCKED } from "../config/header.locked";
 // Do NOT edit logo size / margin / padding here. Update the locked config
 // instead, and only with explicit user approval.
 
-export default function Header({ aiIndex = 8.1, streakDays = 14, onNavigate }) {
+export default function Header({ aiIndex = 8.1, streakDays = 14 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <>
@@ -45,7 +45,7 @@ export default function Header({ aiIndex = 8.1, streakDays = 14, onNavigate }) {
           </button>
         </div>
       </header>
-      <BurgerMenu open={menuOpen} onOpenChange={setMenuOpen} onNavigate={onNavigate} />
+      <BurgerMenu open={menuOpen} onOpenChange={setMenuOpen} />
     </>
   );
 }
