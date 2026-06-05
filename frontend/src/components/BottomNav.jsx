@@ -1,35 +1,33 @@
 import React from "react";
 import {
   Home,
-  Terminal,
   Users,
   Map,
   Bell,
   Mic,
-  LayoutGrid,
-  GitBranch,
-  Activity,
 } from "lucide-react";
 
+// Mobile bottom navigation — strictly 5 items, designed to fit on a 360px
+// screen with no horizontal scroll.
+//
+// The other views (cmd, ops, graph, os) are now reachable from the header
+// burger menu (see `BurgerMenu`). On lg+ screens this component is hidden
+// anyway because `SideNav` takes over with the full 9-item list.
 const NAV_ITEMS = [
-  { id: "home", label: "HOME", icon: Home },
-  { id: "cmd", label: "CMD", icon: Terminal },
-  { id: "ops", label: "OPS", icon: LayoutGrid },
-  { id: "graph", label: "GRAPH", icon: GitBranch },
-  { id: "os", label: "OS", icon: Activity },
+  { id: "home",   label: "HOME",   icon: Home },
   { id: "agents", label: "AGENTS", icon: Users },
-  { id: "map", label: "MAP", icon: Map },
+  { id: "map",    label: "MAP",    icon: Map },
   { id: "alerts", label: "ALERTS", icon: Bell, badge: true },
-  { id: "mic", label: "MIC", icon: Mic },
+  { id: "mic",    label: "MIC",    icon: Mic },
 ];
 
 export default function BottomNav({ active, onChange, alertCount = 0 }) {
   return (
     <footer
-      className="relative mt-2 glass-card window-border glow-turquoise-subtle pt-3 pb-6 px-4 rounded-2xl"
+      className="relative mt-2 glass-card window-border glow-turquoise-subtle pt-3 pb-6 px-3 rounded-2xl"
       data-testid="bottom-nav"
     >
-      <div className="flex justify-between items-center max-w-md mx-auto">
+      <div className="flex justify-between items-center w-full max-w-md mx-auto">
         {NAV_ITEMS.map((it) => {
           const isActive = active === it.id;
           const Icon = it.icon;
@@ -39,7 +37,7 @@ export default function BottomNav({ active, onChange, alertCount = 0 }) {
               key={it.id}
               onClick={() => onChange(it.id)}
               data-testid={`nav-${it.id}`}
-              className={`flex flex-col items-center space-y-1 transition-colors ${
+              className={`flex flex-col items-center space-y-1 transition-colors min-w-0 flex-1 ${
                 isActive ? "text-brand-turquoise" : "text-slate-600"
               }`}
             >

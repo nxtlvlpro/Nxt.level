@@ -32,6 +32,8 @@ import {
   AlertTriangle,
   Loader2,
   Download,
+  Send as SendIcon,
+  MessageCircle,
 } from "lucide-react";
 import api from "../../lib/api";
 import { useT } from "../../i18n/LanguageContext";
@@ -663,22 +665,19 @@ export default function MobileChatView() {
   // The parent app shell already pins:
   //   • Header at the top (lg+ also shows sidebar)
   //   • BottomNav at the bottom on mobile
-  //   • Provides `main` scroll container with `overflow-y-auto`
   //
-  // We don't want `main` to scroll independently of our messages list —
-  // so we render into a flex column that owns its own scrolling and
-  // sits inside `main` flush to its edges (negative-margins eat the
-  // standard `px-4 py-4` so the chat goes edge-to-edge on mobile).
-  //
-  // dvh keeps the input above the soft keyboard on iOS / Android.
+  // We claim the full vertical real estate between them with `100dvh -
+  // shellChrome` so the input rides above the soft keyboard on iOS / Android.
+  // Negative margins eat the standard `main` padding so chat goes
+  // edge-to-edge on mobile.
 
   return (
     <div
       data-testid="mobile-chat-view"
       className="
-        -mx-4 -my-4
+        -mx-4 -mt-0 -mb-4
         flex flex-col
-        h-[calc(100dvh-180px)]
+        h-[calc(100dvh-148px)]
         min-h-[60vh]
         bg-zinc-950/40
       "
@@ -686,11 +685,53 @@ export default function MobileChatView() {
       {/* ── Conversation ─────────────────────────────────────────────── */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto overscroll-contain px-3 pt-3 pb-2 space-y-3"
+        className="flex-1 overflow-y-auto overscroll-contain px-3 pt-2 pb-2 space-y-3"
         data-testid="mobile-chat-scroll"
       >
-        {messages.map((m) => (
-          <MessageBubble key={m.id} msg={m} />
+        {messages.map((m, i) => (
+          <React.Fragment key={m.id}>
+            <MessageBubble msg={m} />
+            {/* Quick actions render once, right after the welcome bubble. */}
+            {i === 0 && m.id === "welcome" && (
+              <div
+                className="pl-9 pr-1 flex gap-2 overflow-x-auto no-scrollbar pb-1"
+                data-testid="mobile-chat-quick-actions"
+              >
+                <a
+                  href="https://t.me/nxt8ceo_bot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="quick-telegram"
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                             bg-sky-500/10 ring-1 ring-sky-400/40 text-sky-200 text-[11px] font-mono
+                             active:scale-95 transition"
+                >
+                  <SendIcon className="w-3 h-3" /> Telegram
+                </a>
+                <a
+                  href="https://wa.me/13253263849"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="quick-whatsapp"
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                             bg-emerald-500/10 ring-1 ring-emerald-400/40 text-emerald-200 text-[11px] font-mono
+                             active:scale-95 transition"
+                >
+                  <MessageCircle className="w-3 h-3" /> WhatsApp
+                </a>
+                <button
+                  type="button"
+                  onClick={() => textareaRef.current?.focus()}
+                  data-testid="quick-text"
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                             bg-brand-turquoise/15 ring-1 ring-brand-turquoise/50 text-brand-turquoise text-[11px] font-mono
+                             active:scale-95 transition"
+                >
+                  <SendIcon className="w-3 h-3" /> Текст
+                </button>
+              </div>
+            )}
+          </React.Fragment>
         ))}
         <div ref={endRef} />
       </div>

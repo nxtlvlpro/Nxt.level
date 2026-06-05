@@ -23,6 +23,7 @@ import { playStreamedTts } from "../../lib/playStreamedTts";
 import { hermesTalk } from "../../lib/hermesTalk";
 import HermesTelegramButton from "./HermesTelegramButton";
 import HermesWhatsAppButton from "./HermesWhatsAppButton";
+import MobileChatView from "./MobileChatView";
 
 // ============================================================
 // Static content keys (texts come from i18n dictionary)
@@ -1696,10 +1697,18 @@ export default function HomeView() {
 
   return (
     <div data-testid="home-view">
-      <AgentsSwipe t={t} />
-      <TestCTA t={t} />
-      <HermesChat t={t} lang={lang} />
-      <HowItWorks t={t} />
+      {/* MOBILE: full-screen chat — no scrolling landing-page above. */}
+      <div className="lg:hidden" data-testid="home-mobile">
+        <MobileChatView />
+      </div>
+
+      {/* DESKTOP: rich landing page — untouched. */}
+      <div className="hidden lg:block" data-testid="home-desktop">
+        <AgentsSwipe t={t} />
+        <TestCTA t={t} />
+        <HermesChat t={t} lang={lang} />
+        <HowItWorks t={t} />
+      </div>
       <OnboardingFlow
         open={onboarding.open}
         planId={onboarding.planId}
