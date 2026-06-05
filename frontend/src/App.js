@@ -24,6 +24,8 @@ import { AuthProvider, useUser } from "./auth/AuthContext";
 import AuthCallback from "./auth/AuthCallback";
 import LoginPage from "./auth/LoginPage";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import AppErrorBoundary from "./components/AppErrorBoundary";
+import { Toaster } from "./components/ui/sonner";
 
 function AppShell() {
   const { t } = useT();
@@ -231,9 +233,13 @@ function AppRouter() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppRouter />
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <AppRouter />
+      </AuthProvider>
+      {/* Sonner toast portal — rendered once, used by lib/api.js interceptor */}
+      <Toaster richColors closeButton position="top-right" />
+    </AppErrorBoundary>
   );
 }
 

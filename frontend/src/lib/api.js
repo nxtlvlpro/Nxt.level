@@ -1,4 +1,5 @@
 import axios from "axios";
+import { toast } from "sonner";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -29,9 +30,9 @@ http.interceptors.request.use((config) => {
 });
 
 // Global response interceptor:
-//   • 401 → drop local token + send the visitor back to /login.
-//   • All other errors are propagated; toast handling lives in
-//     `src/components/AppErrorBoundary` + per-screen handlers.
+//   • 401 → silent redirect to /login (no toast).
+//   • 4xx / 5xx → user-friendly toast.error (Russian copy by default;
+//     uses `error.response.data.detail` when the backend supplied one).
 http.interceptors.response.use(
   (r) => r,
   (error) => {
@@ -40,17 +41,49 @@ http.interceptors.response.use(
     // Don't redirect during the OAuth bootstrap calls themselves —
     // that would create a loop.
     const isAuthCall = url.startsWith("/auth/");
-    if (status === 401 && !isAuthCall && typeof window !== "undefined") {
-      try {
-        localStorage.removeItem(SESSION_TOKEN_KEY);
-      } catch {
-        /* ignore */
+
+    if (status === 401) {
+      if (!isAuthCall && typeof window !== "undefined") {
+        try {
+          localStorage.removeItem(SESSION_TOKEN_KEY);
+        } catch {
+          /* ignore */
+        }
+        const path = window.location.pathname || "";
+        if (!path.startsWith("/login") && !path.startsWith("/auth/")) {
+          window.location.replace("/login");
+        }
       }
-      const path = window.location.pathname || "";
-      if (!path.startsWith("/login") && !path.startsWith("/auth/")) {
-        window.location.replace("/login");
+      // Never toast on 401 — the redirect IS the UX signal.
+      return Promise.reject(error);
+    }
+
+    // Skip toasts for cancelled / network-aborted requests — they're
+    // usually the result of route changes, not real failures.
+    if (!status || error?.code === "ERR_CANCELED") {
+      return Promise.reject(error);
+    }
+
+    const detail = error?.response?.data?.detail;
+    const detailStr =
+      typeof detail === "string" && detail.trim() ? detail.trim() : null;
+
+    let message = null;
+    if (status === 400) message = detailStr || "Проверьте данные";
+    else if (status === 403) message = detailStr || "Нет доступа";
+    else if (status === 404) message = detailStr || "Не найдено";
+    else if (status === 429)
+      message = "Слишком много запросов, подождите минуту";
+    else if (status >= 500) message = "Ошибка сервера, попробуйте позже";
+
+    if (message) {
+      try {
+        toast.error(message);
+      } catch {
+        /* sonner not mounted yet — silent */
       }
     }
+
     return Promise.reject(error);
   }
 );
