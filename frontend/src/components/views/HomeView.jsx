@@ -1254,35 +1254,41 @@ function HermesChat({ t, lang }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 overflow-x-auto no-scrollbar -mx-1 px-1">
+        <div
+          className="
+            grid grid-cols-4 gap-1.5 shrink-0
+            lg:flex lg:items-center lg:gap-2 lg:w-auto
+            [&>*]:min-w-0
+            [&_button]:w-full [&_button]:justify-center [&_button]:px-2
+            lg:[&_button]:w-auto lg:[&_button]:px-3
+          "
+        >
           <HermesTelegramButton />
           <HermesWhatsAppButton />
-          <div className="inline-flex rounded-full border border-white/10 bg-brand-dark/60 p-1 backdrop-blur-md shrink-0">
-            <button
-              type="button"
-              onClick={() => setMode("text")}
-              className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors ${
-                mode === "text"
-                  ? "bg-brand-turquoise/15 text-brand-turquoise"
-                  : "text-slate-500 hover:text-slate-300"
-              }`}
-              data-testid="home-chat-mode-text"
-            >
-              <MessageSquare className="w-3 h-3" /> {t("home.hermes.mode.text")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("voice")}
-              className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors ${
-                mode === "voice"
-                  ? "bg-brand-turquoise/15 text-brand-turquoise"
-                  : "text-slate-500 hover:text-slate-300"
-              }`}
-              data-testid="home-chat-mode-voice"
-            >
-              <Mic className="w-3 h-3" /> {t("home.hermes.mode.voice")}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setMode("text")}
+            className={`px-2 py-1.5 rounded-full text-[10px] uppercase tracking-widest flex items-center gap-1.5 justify-center transition-colors border ${
+              mode === "text"
+                ? "border-brand-turquoise/40 bg-brand-turquoise/15 text-brand-turquoise"
+                : "border-white/10 bg-brand-dark/60 text-slate-400 hover:text-slate-200"
+            }`}
+            data-testid="home-chat-mode-text"
+          >
+            <MessageSquare className="w-3 h-3 shrink-0" /> {t("home.hermes.mode.text")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("voice")}
+            className={`px-2 py-1.5 rounded-full text-[10px] uppercase tracking-widest flex items-center gap-1.5 justify-center transition-colors border ${
+              mode === "voice"
+                ? "border-brand-turquoise/40 bg-brand-turquoise/15 text-brand-turquoise"
+                : "border-white/10 bg-brand-dark/60 text-slate-400 hover:text-slate-200"
+            }`}
+            data-testid="home-chat-mode-voice"
+          >
+            <Mic className="w-3 h-3 shrink-0" /> {t("home.hermes.mode.voice")}
+          </button>
         </div>
       </div>
 
