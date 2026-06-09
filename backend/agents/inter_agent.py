@@ -25,6 +25,7 @@ behave as a company instead of 7 isolated chat windows.
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -33,6 +34,9 @@ from typing import Any, Dict, List, Optional
 from core.db import get_db
 
 logger = logging.getLogger("nxt8.inter_agent")
+
+delegation_depth = contextvars.ContextVar("delegation_depth", default=0)
+MAX_DELEGATION_DEPTH = 3
 
 
 def _now() -> str:
@@ -117,45 +121,54 @@ async def delegate_to_agent(args: Dict[str, Any]) -> Dict[str, Any]:
     company_id = args.get("company_id") or "default"
     user_id = args.get("user_id") or "hermes-delegation"
 
+    depth = delegation_depth.get()
+    if depth >= MAX_DELEGATION_DEPTH:
+        return {"ok": False, "error": f"Max delegation depth ({MAX_DELEGATION_DEPTH}) reached"}
+
+    token = delegation_depth.set(depth + 1)
+
     try:
-        result = await run_persona(
-            persona_id=agent_id,
-            message=user_message,
+        try:
+            result = await run_persona(
+                persona_id=agent_id,
+                message=user_message,
+                company_id=company_id,
+                user_id=user_id,
+                plan_id="enterprise",   # Hermes always sees the full team
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("delegate_to_agent run_persona failed")
+            return {"ok": False, "error": f"delegation_failed: {e}"}
+
+        content = (result.get("content") or "").strip()
+        dialog_id = await _log_dialogue(
+            kind="delegate",
+            from_agent=from_agent,
+            to_agent=agent_id,
+            topic=task[:200],
+            request=user_message,
+            response=content,
             company_id=company_id,
             user_id=user_id,
-            plan_id="enterprise",   # Hermes always sees the full team
+            extra={
+                "confidence": result.get("confidence"),
+                "tokens_total": result.get("tokens_total"),
+                "tool_traces_count": len(result.get("tool_traces") or []),
+            },
         )
-    except Exception as e:  # noqa: BLE001
-        logger.exception("delegate_to_agent run_persona failed")
-        return {"ok": False, "error": f"delegation_failed: {e}"}
 
-    content = (result.get("content") or "").strip()
-    dialog_id = await _log_dialogue(
-        kind="delegate",
-        from_agent=from_agent,
-        to_agent=agent_id,
-        topic=task[:200],
-        request=user_message,
-        response=content,
-        company_id=company_id,
-        user_id=user_id,
-        extra={
+        return {
+            "ok": True,
+            "dialog_id": dialog_id,
+            "agent_id": agent_id,
+            "agent_name": PERSONAS[agent_id]["name"],
+            "task": task,
+            "response": content,
             "confidence": result.get("confidence"),
             "tokens_total": result.get("tokens_total"),
-            "tool_traces_count": len(result.get("tool_traces") or []),
-        },
-    )
-
-    return {
-        "ok": True,
-        "dialog_id": dialog_id,
-        "agent_id": agent_id,
-        "agent_name": PERSONAS[agent_id]["name"],
-        "task": task,
-        "response": content,
-        "confidence": result.get("confidence"),
-        "tokens_total": result.get("tokens_total"),
-    }
+        }
+    finally:
+        delegation_depth.reset(token)
 
 
 # =====================================================================
@@ -334,45 +347,54 @@ async def ask_colleague(args: Dict[str, Any]) -> Dict[str, Any]:
     company_id = args.get("company_id") or "default"
     user_id = args.get("user_id") or f"peer-{from_agent}"
 
+    depth = delegation_depth.get()
+    if depth >= MAX_DELEGATION_DEPTH:
+        return {"ok": False, "error": f"Max delegation depth ({MAX_DELEGATION_DEPTH}) reached"}
+
+    token = delegation_depth.set(depth + 1)
+
     try:
-        result = await run_persona(
-            persona_id=agent_id,
-            message=framed,
+        try:
+            result = await run_persona(
+                persona_id=agent_id,
+                message=framed,
+                company_id=company_id,
+                user_id=user_id,
+                plan_id="enterprise",
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("ask_colleague run_persona failed")
+            return {"ok": False, "error": f"ask_failed: {e}"}
+
+        content = (result.get("content") or "").strip()
+        dialog_id = await _log_dialogue(
+            kind="ask",
+            from_agent=from_agent,
+            to_agent=agent_id,
+            topic=question[:200],
+            request=framed,
+            response=content,
             company_id=company_id,
             user_id=user_id,
-            plan_id="enterprise",
+            extra={
+                "confidence": result.get("confidence"),
+                "tokens_total": result.get("tokens_total"),
+            },
         )
-    except Exception as e:  # noqa: BLE001
-        logger.exception("ask_colleague run_persona failed")
-        return {"ok": False, "error": f"ask_failed: {e}"}
 
-    content = (result.get("content") or "").strip()
-    dialog_id = await _log_dialogue(
-        kind="ask",
-        from_agent=from_agent,
-        to_agent=agent_id,
-        topic=question[:200],
-        request=framed,
-        response=content,
-        company_id=company_id,
-        user_id=user_id,
-        extra={
+        return {
+            "ok": True,
+            "dialog_id": dialog_id,
+            "from_agent": from_agent,
+            "to_agent": agent_id,
+            "agent_name": PERSONAS[agent_id]["name"],
+            "question": question,
+            "response": content,
             "confidence": result.get("confidence"),
             "tokens_total": result.get("tokens_total"),
-        },
-    )
-
-    return {
-        "ok": True,
-        "dialog_id": dialog_id,
-        "from_agent": from_agent,
-        "to_agent": agent_id,
-        "agent_name": PERSONAS[agent_id]["name"],
-        "question": question,
-        "response": content,
-        "confidence": result.get("confidence"),
-        "tokens_total": result.get("tokens_total"),
-    }
+        }
+    finally:
+        delegation_depth.reset(token)
 
 
 # =====================================================================
