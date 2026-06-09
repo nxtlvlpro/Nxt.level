@@ -1,4 +1,7 @@
+import json
 import logging
+import re
+import uuid
 from pathlib import Path
 from typing import TypedDict, List, Dict, Any
 
@@ -6,6 +9,7 @@ import yaml
 
 from langgraph.graph import StateGraph, END
 
+from agents.hermes import HERMES_TOOLS
 from core.deepseek import get_deepseek
 
 logger = logging.getLogger("nxt8.graph")
@@ -20,9 +24,36 @@ class AgentState(TypedDict, total=False):
     tokens_total: int
     confidence: float
     allowed_tools: List[str]
+    iterations: int
+    mock: bool
 
 
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
+_TOOL_JSON_RE = re.compile(
+    r"```(?:json)?\s*(\{.*?\"tool\".*?\})\s*```",
+    re.DOTALL | re.IGNORECASE,
+)
+MAX_ITERATIONS = 3
+
+
+def _extract_tool_calls(content: str, allowed_tools: List[str]) -> List[Dict[str, Any]]:
+    if not content:
+        return []
+    calls: List[Dict[str, Any]] = []
+    for match in _TOOL_JSON_RE.findall(content):
+        try:
+            obj = json.loads(match)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and obj.get("tool") in allowed_tools:
+            calls.append(
+                {
+                    "id": str(uuid.uuid4())[:8],
+                    "name": obj["tool"],
+                    "args": obj.get("args") or {},
+                }
+            )
+    return calls
 
 
 def load_skill(skill_id: str) -> tuple[str, dict]:
@@ -57,17 +88,36 @@ def load_skill(skill_id: str) -> tuple[str, dict]:
 async def execute_node(state: AgentState) -> Dict[str, Any]:
     skill_id = state.get("skill_id", "general")
     prompt_text, metadata = load_skill(skill_id)
-    allowed_tools = metadata.get("allowed_tools", [])
+    allowed_tools = list(metadata.get("allowed_tools") or [])
+    iteration = state.get("iterations", 0) + 1
 
     logger.info(
-        "Skill '%s' loaded. Prompt length: %d chars (~%d tokens). Allowed tools: %s",
+        "Skill '%s' loaded. Prompt length: %d chars (~%d tokens). Allowed tools: %s. iteration=%d",
         skill_id,
         len(prompt_text),
         len(prompt_text) // 4,
         allowed_tools,
+        iteration,
     )
 
-    messages = [{"role": "system", "content": prompt_text}] + state.get("messages", [])
+    tool_instruction = ""
+    if allowed_tools:
+        tool_instruction = (
+            "## TOOL CONTRACT\n"
+            f"Разрешённые инструменты: {', '.join(allowed_tools)}\n"
+            "Если для ответа нужен инструмент, СНАЧАЛА вызови его и НЕ притворяйся, что действие уже выполнено. "
+            "Выводи вызов строго одним fenced JSON блоком:\n"
+            "```json\n"
+            '{"tool":"имя_инструмента","args":{...}}\n'
+            "```\n"
+            "Для HR Mentor: если пользователь просит начислить очки/подтвердить прогресс, обязательно используй `award_skill_points` перед финальным ответом.\n"
+            "После получения результата инструмента дай короткий финальный ответ обычным текстом."
+        )
+
+    messages = [{"role": "system", "content": prompt_text}]
+    if tool_instruction:
+        messages.append({"role": "system", "content": tool_instruction})
+    messages += state.get("messages", [])
 
     ds = get_deepseek()
     response = await ds.chat(
@@ -78,17 +128,86 @@ async def execute_node(state: AgentState) -> Dict[str, Any]:
     )
 
     return {
-        "messages": [{"role": "assistant", "content": response.get("content", "")}],
-        "tokens_total": response.get("tokens_total", 0),
+        "messages": state.get("messages", [])
+        + [{"role": "assistant", "content": response.get("content", "")}],
+        "skill_id": skill_id,
+        "tokens_total": state.get("tokens_total", 0) + int(response.get("tokens_total", 0)),
         "confidence": response.get("confidence", 0.7),
+        "allowed_tools": allowed_tools,
+        "iterations": iteration,
+        "mock": bool(response.get("mock", False)),
+    }
+
+
+async def tools_node(state: AgentState) -> Dict[str, Any]:
+    last_msg = state["messages"][-1]
+    content = last_msg.get("content", "")
+    allowed_tools = state.get("allowed_tools", [])
+    company_id = state.get("company_id", "default")
+    user_id = state.get("user_id", "anonymous")
+    session_id = state.get("session_id", "")
+
+    tool_calls = _extract_tool_calls(content, allowed_tools)
+    if not tool_calls:
+        return {"messages": state.get("messages", [])}
+
+    tool_messages = []
+    for tc in tool_calls:
+        name = tc["name"]
+        args = dict(tc.get("args") or {})
+        args.setdefault("company_id", company_id)
+        args.setdefault("user_id", user_id)
+        args.setdefault("session_id", session_id)
+
+        fn = HERMES_TOOLS.get(name)
+        if not fn:
+            result = {"ok": False, "error": f"unknown tool: {name}"}
+        else:
+            try:
+                logger.info("tool %s executing with args=%s", name, args)
+                result = await fn(args)
+                logger.info("tool %s completed ok=%s", name, result.get("ok"))
+            except Exception as e:  # noqa: BLE001
+                logger.exception("tool %s failed", name)
+                result = {"ok": False, "error": str(e)}
+
+        tool_messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "name": name,
+                "content": json.dumps(result, ensure_ascii=False),
+            }
+        )
+
+    return {
+        "messages": state.get("messages", []) + tool_messages,
+        "iterations": state.get("iterations", 0),
         "allowed_tools": allowed_tools,
     }
 
 
+def route_after_execute(state: AgentState):
+    iterations = state.get("iterations", 0)
+    if iterations >= MAX_ITERATIONS:
+        return "end"
+
+    last_msg = state["messages"][-1]
+    content = last_msg.get("content", "")
+    allowed_tools = state.get("allowed_tools", [])
+
+    if _extract_tool_calls(content, allowed_tools):
+        return "tools"
+    return "end"
+
+
 workflow = StateGraph(AgentState)
 workflow.add_node("execute", execute_node)
+workflow.add_node("tools", tools_node)
+
 workflow.set_entry_point("execute")
-workflow.add_edge("execute", END)
+workflow.add_conditional_edges("execute", route_after_execute, {"tools": "tools", "end": END})
+workflow.add_edge("tools", "execute")
 
 try:
     from langgraph.checkpoint.memory import MemorySaver
