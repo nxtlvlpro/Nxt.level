@@ -1,5 +1,41 @@
 # NXT8 — Release Notes
 
+## v1.18.1-scheduler-lease-lock — 2026-06-09
+
+**Status:** ✅ Scheduler защищён от duplicate execution при нескольких
+backend-инстансах без Redis и без миграции на новый scheduler-stack.
+
+### Added — Mongo lease-lock for cron jobs
+- **`backend/core/scheduler_lock.py`** — новый минимальный distributed-lock
+  слой поверх MongoDB:
+  - `get_owner_id()` → `hostname:pid:uuid8`
+  - `try_acquire(job_id, owner_id, lease_seconds)` → атомарный lease через
+    `find_one_and_update(..., upsert=True)`
+  - `release(job_id, owner_id)` → delete строго по owner
+  - `run_exclusive(...)` → единая обёртка «выполнить job только если lock взят»
+- **`backend/core/db.py`** — индекс `db.scheduler_locks.locked_until`
+  для lease-state / будущей observability.
+
+### Changed — Scheduler wiring
+- **`backend/core/scheduler.py`** теперь запускает через lock-обёртки только
+  глобальные задачи:
+  - `pulse_tick` → lease 30 min
+  - `daily_digest` → lease 2 h
+  - `session_cleanup` → lease 30 min
+- **`_refresh_tenants_cache` не тронут**: это process-local cache, и его
+  обновление каждым pod-ом независимо — корректное поведение.
+
+### Tests
+- Новый файл **`backend/tests/test_scheduler_lock.py`** — 6 тестов:
+  acquire, busy-owner, expired-takeover, owner-scoped release,
+  busy-skip в `run_exclusive`, race → executes once.
+- Регрессия: `pytest -q backend/tests/test_scheduler_lock.py` → **6/6 PASS**
+- Регрессия: `pytest -q backend/tests/test_memory_m3_session_limits.py -k scheduler_session_cleanup_job_registered` → **1/1 PASS**
+- Ручной smoke: 2 конкурентных owner на один `job_id` → `['ok', None]`,
+  `calls=1`.
+
+---
+
 ## v1.13.x-hotfix-onboarding-anon — 2026-02-XX
 
 **Status:** 🔥 Production hotfix — анонимный онбординг с лендинга снова работает.

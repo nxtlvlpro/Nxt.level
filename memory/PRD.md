@@ -1,7 +1,30 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.0-memory-m3 (additive over v1.17.0-telegram-channel)
-**Last updated:** 2026-06-05 by E1
+**Current version:** v1.18.1-scheduler-lease-lock
+**Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.1 (2026-06-09)
+
+**Scheduler multi-instance safety via Mongo lease-lock.** Закрыт риск
+дублирования фоновых задач при горизонтальном масштабировании backend-а.
+Вместо ошибочного пути через `MongoDBJobStore` добавлен отдельный
+distributed lease-lock слой: `backend/core/scheduler_lock.py`.
+
+- Новый owner-id формируется как `hostname:pid:uuid8`.
+- `try_acquire(job_id, owner_id, lease_seconds)` использует атомарный
+  `find_one_and_update(..., upsert=True)` + защиту от `DuplicateKeyError`.
+- `release(job_id, owner_id)` удаляет lock строго по owner, чтобы не
+  сбить чужой lease после takeover.
+- В `core/scheduler.py` под эксклюзивный lock переведены только 3
+  глобальные job: `pulse_tick` (30 мин), `daily_digest` (2 часа),
+  `session_cleanup` (30 мин).
+- `_refresh_tenants_cache` намеренно НЕ обёрнут в global lock, потому что
+  это process-local cache и каждый инстанс должен обновлять его сам.
+- В `core/db.py` добавлен индекс `scheduler_locks.locked_until`.
+- Покрытие: `backend/tests/test_scheduler_lock.py` (6 тестов) + проверка
+  регистрации `session_cleanup` job в `test_memory_m3_session_limits.py`.
+- Ручной smoke с двумя конкурентными owner дал ожидаемый результат:
+  `{'results': ['ok', None], 'calls': 1}`.
 
 ## What's new — v1.18 (2026-06-05)
 
