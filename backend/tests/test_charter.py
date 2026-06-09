@@ -1,7 +1,7 @@
 """
-Tests for NXT8 Agent Charter — the two universal principles:
+Tests for NXT8 Agent Charter — universal principles:
 1) proactive business value
-2) strict no-hallucination + web_search fallback
+2) search-first / no-guessing protocol
 """
 
 from __future__ import annotations
@@ -18,10 +18,12 @@ def test_charter_contains_business_value_principle():
         assert keyword in CHARTER.lower(), f"charter missing keyword: {keyword}"
 
 
-def test_charter_contains_no_hallucination_principle():
-    assert "СТРОГИЙ ЗАПРЕТ НА ВЫМЫСЕЛ" in CHARTER
+def test_charter_contains_search_first_principle():
+    assert "SEARCH-FIRST PROTOCOL (БЕЗ ДОГАДОК)" in CHARTER
     assert "web_search" in CHARTER
-    assert "Не знаю" in CHARTER
+    assert "fetch_url" in CHARTER
+    assert "ЗАПРЕЩЕНО" in CHARTER
+    assert "Нет данных" in CHARTER
 
 
 def test_charter_contains_source_principle():
