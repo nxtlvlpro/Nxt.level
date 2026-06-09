@@ -1,5 +1,33 @@
 # NXT8 — Release Notes
 
+## v1.18.11-complexity-router-analyst-reasoner — 2026-06-09
+
+**Status:** ✅ Analyst/Bookkeeper heavy requests теперь корректнее роутятся на `deepseek-reasoner`.
+
+### Changed
+- **`backend/core/complexity_router.py`**
+  - добавлены intent hints для `analyst` и `bookkeeper`
+  - добавлены finance / metrics / debugging / code / Russian-language patterns
+  - добавлен numeric fragment detector
+  - эвристика переведена на score-based routing
+
+### Added
+- **`backend/tests/test_complexity_router.py`**
+  - cheap route regression
+  - finance reasoner regression
+  - code/debug reasoner regression
+  - integration check для `nxt8_graph.execute_node`
+
+### Validated
+- `pytest -q /app/backend/tests/test_complexity_router.py` → **4/4 PASS**
+- smoke:
+  - simple → `deepseek-chat`
+  - finance → `deepseek-reasoner`
+  - code → `deepseek-reasoner`
+- независимая backend-валидация → **35/35 PASS**
+
+---
+
 ## v1.18.10-hermes-self-audit-ui — 2026-06-09
 
 **Status:** ✅ Hermes Self-Audit выведен в Ops UI как операторский инструмент.

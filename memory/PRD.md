@@ -1,7 +1,34 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.10-hermes-self-audit-ui
+**Current version:** v1.18.11-complexity-router-analyst-reasoner
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.11 (2026-06-09)
+
+**Complexity Router tuned for Analyst / Bookkeeper heavy tasks.** Усилена
+эвристика маршрутизации, чтобы сложные финансовые, аналитические и кодовые
+запросы надёжнее уходили на `deepseek-reasoner`, а простые пинги оставались на
+`deepseek-chat`.
+
+- `backend/core/complexity_router.py`
+  - добавлены `ANALYTICAL_INTENTS = {"analyst", "bookkeeper"}`
+  - добавлены `INTENT_REASONER_HINTS = {"planner", "deep_reasoning", "validation", "analyst"}`
+  - добавлены finance / SaaS metrics / A/B / debug / code patterns
+  - добавлен `_NUMERIC_FRAGMENT_RE`
+  - введён score-based routing для Analyst / Bookkeeper intent
+- `backend/tests/test_complexity_router.py`
+  - cheap route для простого analyst ping
+  - reasoner route для cohort / MRR / CAC / LTV / churn / payback
+  - reasoner route для root cause / stack trace / SQL / refactor
+  - проверка, что `nxt8_graph.execute_node` реально передаёт `pick_model(...)` в `model_override`
+
+**Validated**
+- `pytest -q /app/backend/tests/test_complexity_router.py` → **4/4 PASS**
+- smoke examples:
+  - `simple` → `deepseek-chat`
+  - `finance` → `deepseek-reasoner`
+  - `code` → `deepseek-reasoner`
+- независимая backend-валидация → **35/35 PASS**
 
 ## What's new — v1.18.10 (2026-06-09)
 
