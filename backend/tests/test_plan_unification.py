@@ -14,6 +14,8 @@ from agents import personas as p
 from agents.manifests import MANIFESTS
 from agents.payments import PLANS as STRIPE_PLANS
 
+TEST_COMPANY_ID = "test_company_123"
+
 
 def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
@@ -112,6 +114,7 @@ def test_run_persona_rejects_persona_above_plan():
             persona_id="analyst",
             message="ping",
             plan_id="team",
+            company_id=TEST_COMPANY_ID,
         )
         assert res["success"] is False
         # required_plan must be canonical

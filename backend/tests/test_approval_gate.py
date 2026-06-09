@@ -12,7 +12,9 @@ from datetime import datetime, timedelta, timezone
 
 from agents import manifests as m
 from core import approval_gate as ag
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db, reset_request_company_context, set_request_company_context
+
+TEST_COMPANY_ID = "test_company_123"
 
 
 def _run(coro):
@@ -41,13 +43,13 @@ def test_request_approve_execute_flow():
             agent_id="client_manager",
             action="create_task",
             args={"title": "AG_TEST_FLOW", "priority": "high"},
-            company_id="ag_test_co",
+            company_id=TEST_COMPANY_ID,
             user_id="ag_tester",
         )
         assert rec["ok"] is True and rec["pending"] is True
         pid = rec["approval_id"]
 
-        items = await ag.list_pending(company_id="ag_test_co")
+        items = await ag.list_pending(company_id=TEST_COMPANY_ID)
         assert any(i["id"] == pid for i in items)
 
         executed = []
@@ -62,7 +64,7 @@ def test_request_approve_execute_flow():
         assert r["result"]["task_id"] == "fake_id_42"
         assert executed == [("create_task", {"title": "AG_TEST_FLOW", "priority": "high"})]
 
-        await get_db().pending_approvals.delete_one({"id": pid})
+        await TenantAwareCRUD(get_db().pending_approvals, company_id=TEST_COMPANY_ID).delete_one({"id": pid})
 
     _run(_go())
 
@@ -73,7 +75,7 @@ def test_reject_flow():
             agent_id="bookkeeper",
             action="update_task",
             args={"task_id": "abc", "status": "done"},
-            company_id="ag_test_co",
+            company_id=TEST_COMPANY_ID,
         )
         pid = rec["approval_id"]
         r = await ag.reject(pid, decided_by="hermes_test", reason="not now")
@@ -83,7 +85,7 @@ def test_reject_flow():
         r2 = await ag.reject(pid)
         assert r2["ok"] is False
 
-        await get_db().pending_approvals.delete_one({"id": pid})
+        await TenantAwareCRUD(get_db().pending_approvals, company_id=TEST_COMPANY_ID).delete_one({"id": pid})
 
     _run(_go())
 
@@ -95,15 +97,23 @@ def test_create_task_sanitizes_past_due_at():
         past = "2024-01-01T00:00:00Z"
         res = await _t_create_task({
             "title": "AG_TEST_PAST_DATE",
-            "company_id": "ag_test_co",
+            "company_id": TEST_COMPANY_ID,
             "due_at": past,
         })
         assert res["ok"] is True
-        doc = await get_db().tasks.find_one({"id": res["task_id"]}, {"_id": 0})
+        tokens = set_request_company_context(None, force_admin=True)
+        try:
+            doc = await get_db().tasks.find_one({"id": res["task_id"]}, {"_id": 0})
+        finally:
+            reset_request_company_context(tokens)
         assert doc is not None
         saved_due = datetime.fromisoformat(doc["due_at"].replace("Z", "+00:00"))
         assert saved_due > datetime.now(timezone.utc), "past date was not bumped"
-        await get_db().tasks.delete_one({"id": res["task_id"]})
+        tokens = set_request_company_context(None, force_admin=True)
+        try:
+            await get_db().tasks.delete_one({"id": res["task_id"]})
+        finally:
+            reset_request_company_context(tokens)
 
     _run(_go())
 
@@ -114,12 +124,20 @@ def test_create_task_future_due_at_untouched():
         future = (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
         res = await _t_create_task({
             "title": "AG_TEST_FUTURE_DATE",
-            "company_id": "ag_test_co",
+            "company_id": TEST_COMPANY_ID,
             "due_at": future,
         })
         assert res["ok"] is True
-        doc = await get_db().tasks.find_one({"id": res["task_id"]}, {"_id": 0})
+        tokens = set_request_company_context(None, force_admin=True)
+        try:
+            doc = await get_db().tasks.find_one({"id": res["task_id"]}, {"_id": 0})
+        finally:
+            reset_request_company_context(tokens)
         assert doc["due_at"] == future
-        await get_db().tasks.delete_one({"id": res["task_id"]})
+        tokens = set_request_company_context(None, force_admin=True)
+        try:
+            await get_db().tasks.delete_one({"id": res["task_id"]})
+        finally:
+            reset_request_company_context(tokens)
 
     _run(_go())
