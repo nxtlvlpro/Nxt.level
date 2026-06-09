@@ -1,22 +1,76 @@
-"""Compatibility shim for the legacy persona layer during Phase 1 cleanup."""
+"""
+NXT8 Personas Layer — маркетинговые 8 агентов поверх инфраструктуры.
+
+Каждая персона = (system_prompt + allowed_tools + контекстные fetcher'ы).
+Тонкий слой над `HERMES_TOOLS` + базовыми агентами (mentor, roi, diagnostics,
+market_radar). Не дублирует логику — переиспользует уже работающие модули.
+
+Архитектура run_persona():
+  1. Pre-context fetch: персона забирает data из своих agents (ROI snapshot,
+     mentor patterns, diagnostics summary и т.д.)
+  2. Persona-specific system prompt
+  3. DeepSeek (через единый core/deepseek.py)
+  4. Парсим fenced-JSON tool_calls
+  5. Выполняем только tools из allowed_tools (allow-list)
+  6. Если были tool_calls — второй проход с tool-results для финального ответа
+     (тот же паттерн, что в LangGraph Ultra после фикса router-bug).
+
+Тарифные ворота: PLANS отдельная карта plan_id → list[persona_id].
+"""
 
 from __future__ import annotations
 
-from agents.legacy import personas_legacy as _legacy
+import json
+import logging
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-PERSONAS = _legacy.PERSONAS
-PLANS = _legacy.PLANS
-MAX_ITER = _legacy.MAX_ITER
-get_plan = _legacy.get_plan
-list_personas = _legacy.list_personas
-run_persona = _legacy.run_persona
+from agents import diagnostics as diagnostics_agent
+from agents import market_radar as market_agent
+from agents import memory as memory_agent
+from agents import mentor as mentor_agent
+from agents import roi as roi_agent
+from agents.hermes_max_tools_and_coo import HERMES_TOOLS
+from agents.manifests import render_manifest_for_prompt
+from agents.persona_prompts import get_prompt as get_deep_prompt
+from agents.agent_charter import CHARTER
+from core.company_context import get_settings as get_company_settings, render_company_block
+from core.db import get_db
+from core.deepseek import get_deepseek
+
+logger = logging.getLogger("nxt8.personas")
+
+MAX_ITER = 3  # iterations of LLM → tools → LLM (must allow tools + final summary)
+
+# =====================================================================
+# Persona definitions
+# =====================================================================
 
 
-def __getattr__(name: str):
-    return getattr(_legacy, name)
-
-
-LEGACY_SOURCE_DISABLED = r'''
+def _tools_doc(allowed: List[str]) -> str:
+    """Render list of allowed tool signatures for the system prompt."""
+    descriptions = {
+        "search_memory": 'search_memory(query, top_k?) — поиск в корп. памяти',
+        "create_task": 'create_task(title, description?, assignee?, department?, priority?, due_at?) — создать задачу',
+        "update_task": 'update_task(task_id, status?, priority?, ...) — обновить задачу',
+        "generate_communication_summary": 'generate_communication_summary(summary, suggested_next_action?) — резюме переписки',
+        "suggest_next_best_action": 'suggest_next_best_action(action?, context?) — предложить NBA',
+        "find_opportunities_in_contact": 'find_opportunities_in_contact(contact_id) — найти upsell',
+        "create_cross_department_bridge": 'create_cross_department_bridge(from_dept, to_dept, description?) — мост между отделами',
+        "monitor_sla_violations": 'monitor_sla_violations() — посмотреть просроченные задачи',
+        "suggest_reply_template": 'suggest_reply_template(tone) — шаблон ответа',
+        "evaluate_action_roi": 'evaluate_action_roi(action) — оценить ROI действия',
+        "mempalace_search": 'mempalace_search(query, wing?, room?, top_k?) — поиск в долговременной памяти (wing=documents для договоров)',
+        "mempalace_store": 'mempalace_store(content, wing?, room?) — записать факт в долгосрочную память',
+        "web_search": 'web_search(query, max_results?, region?) — поиск свежей информации в интернете (DuckDuckGo). ИСПОЛЬЗУЙ когда не уверен в факте — лучше поиск, чем выдумывание',
+        "fetch_url": 'fetch_url(url, max_chars?) — открыть страницу из web_search и прочитать основной текст',
+        "delegate_to_agent": 'delegate_to_agent(agent_id, task, context?) — [ТОЛЬКО ДЛЯ HERMES] передать задачу подчинённому и получить его ответ',
+        "escalate_to_hermes": 'escalate_to_hermes(reason, evidence?, urgency?, from_agent, question?) — поднять ситуацию CEO. Используй когда вопрос вне твоей зоны / нужно его решение / видишь риск.',
+        "ask_colleague": 'ask_colleague(from_agent, agent_id, question, context?) — peer-to-peer спросить коллегу-агента до того, как ответить пользователю (не идёт через Hermes)',
+    }
+    return "\n".join(f"- `{name}` — {descriptions.get(name, '')}" for name in allowed)
 
 
 PERSONAS: Dict[str, Dict[str, Any]] = {
@@ -776,4 +830,3 @@ async def run_persona(
         "plan_id": plan["id"],
         "tokens_total": tokens_total,
     }
-'''

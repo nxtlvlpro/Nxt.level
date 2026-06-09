@@ -1,17 +1,49 @@
-"""Compatibility shim for the legacy graph v2 during Phase 1 cleanup."""
+"""
+NXT8 Hermes LangGraph v2 — faithful implementation of the
+HERMES LANGGRAPH EXECUTION CONSTITUTION v1.0.
+
+This module is the **execution and orchestration layer**.  It is NOT a
+decision-maker.  Hermes (a policy node + role-specific DeepSeek prompts)
+holds all authority over what is allowed, what is restricted, and what
+gets the final stamp of approval.
+
+Design choices
+--------------
+* **Single LLM, multiple roles.** All five constitutional roles
+  (planner, executor, reviewer, fixer, hermes-validator) run on the
+  same DeepSeek-V3 backend with role-specific system prompts.  This
+  matches the project's "everything through DeepSeek" policy and keeps
+  per-task cost predictable.
+* **State-first.** Every node returns ONLY a state delta dict; the
+  graph runtime (LangGraph if available, else a tiny built-in
+  fallback) merges deltas into the canonical `GraphState`.
+* **Deterministic routing.** `routing.next` is always set explicitly
+  by the node that produced the current state — never inferred.
+* **Hermes-first.** No node executes business work before
+  `hermes_check` has produced a policy.  No artifact is finalised
+  before `hermes_validation` approves.
+* **Parallel to v1.** Lives alongside `nxt8_langgraph_ultra.py`. The
+  legacy graph keeps powering production until v2 is battle-tested
+  via `/api/graph/v2/run`.
+
+Public API:
+    run_graph_v2(task_description, intent, context=None) -> GraphState
+"""
 
 from __future__ import annotations
 
-from agents.legacy import hermes_graph_v2_legacy as _legacy
+import json
+import logging
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
 
-run_graph_v2 = _legacy.run_graph_v2
+from core.deepseek import get_deepseek
+from agents.manifests import render_manifest_for_prompt
+from agents.agent_charter import CHARTER
 
-
-def __getattr__(name: str):
-    return getattr(_legacy, name)
-
-
-LEGACY_SOURCE_DISABLED = r'''
+logger = logging.getLogger("nxt8.graph_v2")
 
 
 # =====================================================================
@@ -637,4 +669,3 @@ async def run_graph_v2(
         hops += 1
 
     return state
-'''

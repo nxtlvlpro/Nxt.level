@@ -1,19 +1,56 @@
-"""Compatibility shim for the legacy orchestrator during Phase 1 cleanup."""
+"""
+Orchestrator Agent for NXT8 (Module 3, central).
+
+Single entry-point for all chat traffic. Per ТЗ pipeline:
+1. memory.get_optimal_context  → build short+long context
+2. deepseek classify intent
+3. specialised processing (knowledge / task / mentor / roi / general)
+4. reliability.assess (confidence + contradictions + hallucination)
+5. record cost (deepseek tokens) + memory.append_message
+6. persist request audit
+"""
 
 from __future__ import annotations
 
-from agents.legacy import orchestrator_legacy as _legacy
+import logging
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-route = _legacy.route
-list_recent_requests = _legacy.list_recent_requests
-list_alerts = _legacy.list_alerts
+from agents import memory as memory_agent
+from agents import reliability as reliability_agent
+from agents import roi as roi_agent
+from core.db import get_db
+from core.deepseek import get_deepseek
+
+logger = logging.getLogger("nxt8.orchestrator")
 
 
-def __getattr__(name: str):
-    return getattr(_legacy, name)
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-LEGACY_SOURCE_DISABLED = r'''
+INTENT_AGENT_MAP = {
+    "knowledge": "memory",
+    "task": "orchestrator",
+    "mentor": "mentor",
+    "roi": "roi",
+    "voice": "voice",
+    "general": "orchestrator",
+}
+
+
+SYSTEM_PROMPT = (
+    "Ты NXT8 — AI-операционная система компании. Отвечай по делу, на русском, "
+    "ссылайся на корпоративный контекст когда он есть. Не выдумывай факты. "
+    "Если не уверен — скажи об этом и предложи эскалацию."
+)
+
+CLASSIFY_SYSTEM = (
+    "Classify the user's request into ONE of: knowledge, task, mentor, roi, voice, general. "
+    "Respond with ONLY the category name."
+)
 
 
 async def route(
@@ -180,4 +217,3 @@ async def list_recent_requests(
 async def list_alerts(limit: int = 20) -> List[Dict[str, Any]]:
     db = get_db()
     return await db.alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=limit)
-'''

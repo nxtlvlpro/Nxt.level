@@ -1,18 +1,103 @@
-"""Compatibility shim for the legacy JOKER sandbox during Phase 1 cleanup."""
+"""
+NXT8 JOKER — isolated sandbox sub-agent (v1.0).
+
+Purpose
+-------
+JOKER absorbs **non-business** traffic that would otherwise pollute
+the operational core (jokes, memes, fantasy match-ups, trolling, idle
+small-talk).  It is a defensive perimeter, NOT an entertainment feature.
+
+Design principles
+-----------------
+1. **Zero trust.** JOKER does *not* import:
+   - `agents.memory`     (TF-IDF long-term memory)
+   - `agents.mempalace_bridge` (ChromaDB)
+   - `agents.documents`  (compliance corpus)
+   - `core.db`           (tasks / requests / roi)  — except for its own audit ledger
+   - any persona, reliability, mentor or orchestrator surface.
+   The only outbound calls are: DeepSeek chat + own audit ledger writes.
+
+2. **Cheap.** Uses the cheapest available DeepSeek (`:free` on OpenRouter),
+   tiny `max_tokens` (120 default, 40 when rate-limited), keeps only the
+   last 4 turns of history.  Target: ≤10 % of Hermes cost per turn.
+
+3. **Stateless to the business core.** Writes never reach MemPalace,
+   tasks, requests, or roi_history.  The only thing persisted is a
+   one-row `db.joker_audit` entry per turn (request_id, session_id,
+   tokens, ts) — purely for rate-limiting and dashboard counts.
+
+4. **Auto-return.** Re-routing is decided on EVERY user turn by the
+   classifier (`agents.classifier`).  JOKER never holds the conversation
+   hostage — the moment the user mentions sales/clients/projects/etc.,
+   the next turn lands back in Hermes automatically.
+
+5. **Rate limited.** If a session_id exceeds `RATE_LIMIT_MAX` turns
+   inside `RATE_LIMIT_WINDOW_MIN`, JOKER downgrades to a tiny model
+   budget (max_tokens=40, history=1) for the rest of the window.
+
+Public API:
+    respond(message, session_id, history=None, lang="en") -> dict
+"""
 
 from __future__ import annotations
 
-from agents.legacy import joker_legacy as _legacy
+import logging
+import uuid
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, List, Optional
 
-respond = _legacy.respond
-stats = _legacy.stats
+from core.db import get_db
+from core.deepseek import get_deepseek
 
+logger = logging.getLogger("nxt8.joker")
 
-def __getattr__(name: str):
-    return getattr(_legacy, name)
+# ---------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------
+MAX_HISTORY_TURNS = 4
+DEFAULT_MAX_TOKENS = 150
+DOWNGRADED_MAX_TOKENS = 40
+DOWNGRADED_HISTORY = 1
 
+RATE_LIMIT_WINDOW_MIN = 30
+RATE_LIMIT_MAX = 20  # turns inside the window before downgrade
 
-LEGACY_SOURCE_DISABLED = r'''
+_SYSTEM_PROMPTS = {
+    "en": (
+        "You are JOKER — a sandbox sub-agent of the NXT8 corporate AI OS.\n"
+        "Your role is a witty, slightly sarcastic cyber-jester that handles "
+        "off-topic, playful, or nonsense queries so they never touch the "
+        "operational core.\n\n"
+        "Rules — non-negotiable:\n"
+        "• You have ZERO access to company data, CRM, documents, analytics, "
+        "or memory. Do not pretend you do.\n"
+        "• Stay short and punchy: 1–3 sentences, max.\n"
+        "• If the user's message is actually business (sales, clients, "
+        "projects, documents, KPIs, finance, HR, strategy, analytics), "
+        "reply ONE short sentence like \"That's real work — handing you "
+        "back to Hermes\" and stop. Do NOT attempt the task yourself.\n"
+        "• Never invent facts about the company. Never quote 'data'. "
+        "Never claim to have run a tool.\n"
+        "• Light humour is welcome; insults, slurs, NSFW, or hostility are not."
+    ),
+    "ru": (
+        "Ты — JOKER, изолированный sandbox-субагент корпоративной AI OS NXT8.\n"
+        "Твоя роль — остроумный, чуть саркастичный кибер-шут, который "
+        "принимает на себя несерьёзные, провокационные и бессмысленные "
+        "запросы, чтобы они не попадали в операционное ядро.\n\n"
+        "Правила — без исключений:\n"
+        "• У тебя НЕТ доступа к данным компании, CRM, документам, аналитике "
+        "или памяти. Не делай вид, что есть.\n"
+        "• Отвечай коротко и хлёстко: 1–3 предложения, не больше.\n"
+        "• Если запрос на самом деле рабочий (продажи, клиенты, проекты, "
+        "документы, KPI, финансы, HR, стратегия, аналитика) — ответь одной "
+        "фразой типа «Это уже работа — передаю Гермесу» и остановись. "
+        "Не пытайся выполнить задачу сам.\n"
+        "• Не выдумывай факты о компании. Не цитируй «данные». "
+        "Не утверждай, что вызвал какой-то инструмент.\n"
+        "• Лёгкий юмор приветствуется; оскорбления, NSFW и враждебность — нет."
+    ),
+}
 
 # ---------------------------------------------------------------------
 # Rate limiting via own audit ledger
@@ -166,7 +251,7 @@ async def respond(
         "request_id": request_id,
         "session_id": sid,
     }
- 
+
 
 # Convenience: stats endpoint helper.
 async def stats(window_minutes: int = 60) -> Dict[str, Any]:
@@ -196,4 +281,3 @@ async def stats(window_minutes: int = 60) -> Dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         logger.warning("joker stats failed: %s", e)
         return {"turns": 0, "tokens": 0, "downgraded": 0, "window_minutes": window_minutes, "error": str(e)}
-'''

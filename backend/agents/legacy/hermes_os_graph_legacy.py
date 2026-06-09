@@ -1,18 +1,52 @@
-"""Compatibility shim for the legacy OS graph during Phase 1 cleanup."""
+"""
+NXT8 Hermes Operating Architecture — 10-node continuous StateGraph.
+
+This is **NOT** a one-shot task executor (that role belongs to
+`hermes_graph_v2.py`). This graph models Hermes as the company's
+operating system: every event in the business triggers one Observe →
+Understand → Validate → Reason → Route → Execute → Monitor → Learn →
+Improve → Evolve cycle.
+
+Each node:
+- Reads the current GraphState (a dict, mutated in-place + returned).
+- Writes its slice (state["observation"], state["context"], ...).
+- Sets state["routing"]["next"] explicitly. The runtime honours that.
+
+The runtime is a deterministic built-in loop with a MAX_HOPS cap so a
+misbehaving LLM call cannot stall the system. Every node failure is
+trapped and traced in `state["history"]` — the cycle always terminates.
+
+Public API:
+    run_os_cycle(event: dict, *, persist: bool = True) -> GraphState
+
+Where `event` is the trigger payload (e.g. an incoming channel
+webhook, a new document upload, a new task). The graph attaches a
+fresh cycle_id, runs all 10 nodes, persists the final state in
+`db.hermes_os_cycles`, and returns it for the caller / UI.
+
+Phase 1 scope:
+- 10 nodes implemented with DeepSeek-backed reasoning via shared LLM
+  helper.
+- Persistence in a single new collection (`hermes_os_cycles`).
+- A *skeleton* knowledge-graph write in the Learning node — Phase 2
+  will flesh out the full 4-layer memory.
+"""
 
 from __future__ import annotations
 
-from agents.legacy import hermes_os_graph_legacy as _legacy
+import json
+import logging
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
 
-run_os_cycle = _legacy.run_os_cycle
-list_node_order = _legacy.list_node_order
+from core.deepseek import get_deepseek
+from core.db import get_db
+from core import hermes_memory as hmem
+from agents.agent_charter import CHARTER
 
-
-def __getattr__(name: str):
-    return getattr(_legacy, name)
-
-
-LEGACY_SOURCE_DISABLED = r'''
+logger = logging.getLogger("nxt8.hermes_os")
 
 
 # =====================================================================
@@ -822,4 +856,3 @@ async def run_os_cycle(
 
 def list_node_order() -> List[str]:
     return list(NODE_ORDER)
-'''
