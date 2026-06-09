@@ -1,5 +1,38 @@
 # NXT8 — Release Notes
 
+## v1.18.4-bookkeeper-marketer-compliance-routed-to-nxt8-graph — 2026-06-09
+
+**Status:** ✅ `bookkeeper`, `marketer`, `compliance` переведены на skills-based
+`nxt8_graph` без регрессий в persona API.
+
+### Added
+- **`backend/skills/bookkeeper.md`** — краткий skill для unit economics,
+  ROI AI-операций и осторожного фин-анализа с источниками.
+- **`backend/skills/marketer.md`** — skill для market/growth signals,
+  next-best-action и benchmark-aware рекомендаций.
+- **`backend/skills/compliance.md`** — skill для policy/doc/risk анализа через
+  `mempalace_search`, `web_search`, `fetch_url`.
+
+### Changed
+- **`backend/agents/personas.py`**
+  - `SKILL_ROUTED_PERSONAS` расширен до 6 persona
+  - routing для `bookkeeper`, `marketer`, `compliance` идёт через `nxt8_graph`
+- **`backend/skills/compliance.md`**
+  - удалён `ask_colleague` из allowed tools
+  - добавлено правило: при пустом `mempalace_search` сразу просить документ,
+    а не запускать лишние внутренние tool-calls
+
+### Validated
+- `POST /api/personas/bookkeeper/chat` → provider=`nxt8_graph`
+- `POST /api/personas/marketer/chat` → tool=`suggest_next_best_action`
+- `POST /api/personas/compliance/chat` → tool=`mempalace_search`, при пустом
+  результате просит `document_id`/текст документа
+- `persona_requests.provider='nxt8_graph'` у всех трёх persona
+- plan-gate `operations+` сохранён
+- `project_coord` остаётся на legacy path
+
+---
+
 ## v1.18.3-analyst-client-manager-routed-to-nxt8-graph — 2026-06-09
 
 **Status:** ✅ `analyst` и `client_manager` безопасно переведены на новый

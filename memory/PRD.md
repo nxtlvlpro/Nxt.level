@@ -1,7 +1,28 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.3-analyst-client-manager-routed-to-nxt8-graph
+**Current version:** v1.18.4-bookkeeper-marketer-compliance-routed-to-nxt8-graph
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.4 (2026-06-09)
+
+**Phase 2 expanded further:** в skill-based путь через `nxt8_graph` переведены
+ещё три persona: `bookkeeper`, `marketer`, `compliance`.
+
+- Добавлены skill-файлы:
+  - `backend/skills/bookkeeper.md`
+  - `backend/skills/marketer.md`
+  - `backend/skills/compliance.md`
+- `SKILL_ROUTED_PERSONAS` теперь включает 6 persona:
+  - `hr_mentor`, `analyst`, `client_manager`, `bookkeeper`, `marketer`, `compliance`
+- Подтверждено поведение:
+  - `bookkeeper` корректно отвечает на основе контекста без обязательного tool-loop
+  - `marketer` вызывает `suggest_next_best_action`
+  - `compliance` сначала вызывает `mempalace_search`, а при пустом поиске запрашивает документ у пользователя
+- Исправлен compliance-prompt: убран провоцирующий `ask_colleague`, чтобы
+  при пустом поиске не было лишних invalid tool-calls.
+- Plan-gate для всех трёх persona сохранён на уровне `operations+`.
+- Нетронутыми остались legacy persona: как минимум `project_coord`, а также
+  оставшиеся не мигрированные роли.
 
 ## What's new — v1.18.3 (2026-06-09)
 
