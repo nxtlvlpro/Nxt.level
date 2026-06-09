@@ -10,6 +10,7 @@ import yaml
 from langgraph.graph import StateGraph, END
 
 from agents.hermes import HERMES_TOOLS
+from core.access_guard import check_access
 from core.deepseek import get_deepseek
 
 logger = logging.getLogger("nxt8.graph")
@@ -144,6 +145,7 @@ async def execute_node(state: AgentState) -> Dict[str, Any]:
 async def tools_node(state: AgentState) -> Dict[str, Any]:
     last_msg = state["messages"][-1]
     content = last_msg.get("content", "")
+    skill_id = state.get("skill_id", "general")
     allowed_tools = state.get("allowed_tools", [])
     company_id = state.get("company_id", "default")
     user_id = state.get("user_id", "anonymous")
@@ -160,6 +162,19 @@ async def tools_node(state: AgentState) -> Dict[str, Any]:
         args.setdefault("company_id", company_id)
         args.setdefault("user_id", user_id)
         args.setdefault("session_id", session_id)
+
+        allowed, reason = check_access(skill_id, name)
+        if not allowed:
+            result = {"ok": False, "error": reason}
+            tool_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "name": name,
+                    "content": json.dumps(result, ensure_ascii=False),
+                }
+            )
+            continue
 
         fn = HERMES_TOOLS.get(name)
         if not fn:
