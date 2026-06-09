@@ -203,9 +203,15 @@ async def _generate_answer(
     )
 
 
-async def list_recent_requests(limit: int = 20) -> List[Dict[str, Any]]:
+async def list_recent_requests(
+    limit: int = 20,
+    company_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     db = get_db()
-    return await db.requests.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=limit)
+    query: Dict[str, Any] = {}
+    if company_id:
+        query["company_id"] = company_id
+    return await db.requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(length=limit)
 
 
 async def list_alerts(limit: int = 20) -> List[Dict[str, Any]]:

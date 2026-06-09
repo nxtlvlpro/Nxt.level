@@ -452,8 +452,15 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
 
 
 @api.get("/requests")
-async def list_requests(limit: int = 20) -> List[Dict[str, Any]]:
-    return await orchestrator_agent.list_recent_requests(limit=limit)
+async def list_requests(
+    limit: int = 20,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> List[Dict[str, Any]]:
+    # Admin sees all tenants; regular users see only their company
+    company_filter = None if user.is_admin else user.company_id
+    return await orchestrator_agent.list_recent_requests(
+        limit=limit, company_id=company_filter,
+    )
 
 
 @api.get("/sessions/{session_id}")
