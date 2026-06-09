@@ -229,10 +229,6 @@ workflow.set_entry_point("execute")
 workflow.add_conditional_edges("execute", route_after_execute, {"tools": "tools", "end": END})
 workflow.add_edge("tools", "execute")
 
-try:
-    from langgraph.checkpoint.memory import MemorySaver
-
-    memory = MemorySaver()
-    nxt8_graph = workflow.compile(checkpointer=memory)
-except ImportError:
-    nxt8_graph = workflow.compile()
+# Убираем MemorySaver — работаем в stateless режиме.
+# История сессий контролируется явно через db.sessions + mempalace.
+nxt8_graph = workflow.compile()
