@@ -1,7 +1,44 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.5-project-coord-routed-to-nxt8-graph
+**Current version:** v1.18.6-p0-tenant-isolation-layer
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.6 (2026-06-09)
+
+**P0 tenant isolation infrastructure completed.** Добавлен единый
+tenant-aware слой для MongoDB и проведён проход по критичным модулям.
+
+- `core/db.py`
+  - добавлен `TenantAwareCRUD`
+  - добавлены request-context helpers (`set_request_company_context`, etc.)
+  - `get_db()` теперь возвращает tenant-aware proxy
+- `server.py`
+  - добавлен middleware `inject_company_context`
+  - критичные Mongo paths переведены на tenant-aware access
+- `core/auth.py`
+  - auth gate теперь выставляет `request.state.company_id` и `request.state.force_admin`
+- Пропатчены критичные модули с Mongo access:
+  - `agents/roi.py`
+  - `agents/memory.py`
+  - `agents/diagnostics.py`
+  - `agents/documents.py`
+  - `core/approval_gate.py`
+  - `agents/hermes_evolution.py`
+  - `agents/mentor.py`
+  - `agents/market_radar.py`
+  - `agents/skill_creator.py`
+  - `agents/pulse.py`
+  - `agents/digest.py`
+  - `agents/personas.py`
+  - `agents/onboarding.py`
+- Обновлены multi-tenancy tests: `backend/tests/test_multi_tenancy.py`
+- Независимая backend-валидация: **33/33 PASS**
+- `pytest -q backend/tests/test_multi_tenancy.py`: **17/17 PASS**
+- Ручные smoke logs подтвердили изоляцию:
+  - tenant A/B tasks separated
+  - documents separated
+  - ROI snapshots separated
+  - admin sees all
 
 ## What's new — v1.18.5 (2026-06-09)
 

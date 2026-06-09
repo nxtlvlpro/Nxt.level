@@ -1,5 +1,44 @@
 # NXT8 — Release Notes
 
+## v1.18.6-p0-tenant-isolation-layer — 2026-06-09
+
+**Status:** ✅ Критическая P0-изоляция тенантов закрыта на уровне инфраструктуры.
+
+### Added
+- **`TenantAwareCRUD`** в `backend/core/db.py`
+- request-context helpers для company/admin context
+- tenant-aware proxy поверх `get_db()`
+
+### Changed
+- **`backend/server.py`** — middleware `inject_company_context`
+- **`backend/core/auth.py`** — `request.state.company_id`, `request.state.force_admin`
+- Пропатчены критичные Mongo-модули:
+  - `agents/roi.py`
+  - `agents/memory.py`
+  - `agents/diagnostics.py`
+  - `agents/documents.py`
+  - `core/approval_gate.py`
+  - `agents/hermes_evolution.py`
+  - `agents/mentor.py`
+  - `agents/market_radar.py`
+  - `agents/skill_creator.py`
+  - `agents/pulse.py`
+  - `agents/digest.py`
+  - `agents/personas.py`
+  - `agents/onboarding.py`
+- **`backend/tests/test_multi_tenancy.py`** обновлён под новый слой
+
+### Validated
+- `pytest -q backend/tests/test_multi_tenancy.py` → **17/17 PASS**
+- Независимая backend-валидация → **33/33 PASS**
+- Ручной log:
+  - tenant A tasks ≠ tenant B tasks
+  - admin видит обе записи
+  - tenant A docs ≠ tenant B docs
+  - ROI snapshots раздельны по `company_id`
+
+---
+
 ## v1.18.5-project-coord-routed-to-nxt8-graph — 2026-06-09
 
 **Status:** ✅ `project_coord` переведён на `nxt8_graph`. Подчинённый слой
