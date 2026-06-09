@@ -1,7 +1,30 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.8-hermes-self-audit-phase1
+**Current version:** v1.18.9-hermes-self-audit-endpoint
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.9 (2026-06-09)
+
+**Manual Hermes Self-Audit endpoint completed.** Теперь аудит можно запускать
+по требованию через backend API без prompt-инъекции и без автосоздания
+proposal-записей.
+
+- `backend/server.py`
+  - добавлен `POST /api/hermes/self-audit/run`
+  - endpoint защищён через `Depends(require_user)`
+  - tenant scope берётся строго из `user.company_id`
+  - endpoint агрегирует:
+    - `scan_system_health({company_id, window=200})`
+    - `run_persona_benchmark({company_id, query=...})`
+  - endpoint возвращает consolidated JSON: `ok`, `company_id`, `health`, `benchmark`, `message`
+  - endpoint **не** создаёт auto-proposals и **не** шлёт Telegram alerts сам по себе
+- `backend/tests/test_hermes_self_audit_endpoint.py`
+  - добавлен регрессионный тест на consolidated response и tenant scoping
+
+**Validated**
+- `pytest -q /app/backend/tests/test_hermes_self_audit_endpoint.py /app/backend/tests/test_hermes_tools_audit.py /app/backend/tests/test_hermes_evolution.py /app/backend/tests/test_telegram_bot.py` → **27/27 PASS**
+- import smoke: `endpoint_imported=True`
+- независимая backend-валидация → **PASS**
 
 ## What's new — v1.18.8 (2026-06-09)
 

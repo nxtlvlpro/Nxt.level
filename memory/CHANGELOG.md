@@ -1,5 +1,30 @@
 # NXT8 — Release Notes
 
+## v1.18.9-hermes-self-audit-endpoint — 2026-06-09
+
+**Status:** ✅ Добавлен ручной API-триггер для Hermes self-audit.
+
+### Added
+- **`POST /api/hermes/self-audit/run`** в `backend/server.py`
+  - требует authenticated user
+  - использует `user.company_id` для tenant-scoped запуска
+  - возвращает consolidated JSON с `health` + `benchmark`
+
+### Changed
+- **`backend/server.py`**
+  - импортированы `scan_system_health` и `run_persona_benchmark`
+  - добавлен endpoint с явным сообщением, что Telegram alerts отправляются
+    только после последующего `propose_improvement` / `propose_policy`
+- **`backend/tests/test_hermes_self_audit_endpoint.py`**
+  - новый регрессионный тест на response shape и company scoping
+
+### Validated
+- `pytest -q /app/backend/tests/test_hermes_self_audit_endpoint.py /app/backend/tests/test_hermes_tools_audit.py /app/backend/tests/test_hermes_evolution.py /app/backend/tests/test_telegram_bot.py` → **27/27 PASS**
+- import smoke → `endpoint_imported=True`
+- независимая backend-валидация → **PASS**
+
+---
+
 ## v1.18.8-hermes-self-audit-phase1 — 2026-06-09
 
 **Status:** ✅ Hermes получил безопасный self-audit cycle и Telegram alerts для evolution proposals.
