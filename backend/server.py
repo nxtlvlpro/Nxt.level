@@ -533,8 +533,15 @@ async def list_requests(
 
 
 @api.get("/sessions/{session_id}")
-async def get_session(session_id: str) -> Dict[str, Any]:
-    msgs = await memory_agent.get_memory().get_session(session_id, limit=200)
+async def get_session(
+    session_id: str,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    msgs = await memory_agent.get_memory().get_session(
+        session_id,
+        limit=200,
+        company_id=None if user.is_admin else user.company_id,
+    )
     return {"session_id": session_id, "messages": msgs}
 
 
@@ -1042,7 +1049,7 @@ async def voice_converse(
     history: List[Dict[str, Any]] = []
     try:
         mem = memory_agent.get_memory()
-        prev = await mem.get_session(sid, limit=6)
+        prev = await mem.get_session(sid, limit=6, company_id=v_company_id)
         for m in prev or []:
             role = m.get("role")
             content = m.get("content")
@@ -1213,6 +1220,7 @@ async def voice_converse_stream(
             return
 
         sid = sid_locked
+        v_company_id = _tenant_for_public_chat(authed, sid)
         yield json.dumps({"type": "meta", "session_id": sid}) + "\n"
         yield json.dumps({"type": "transcript", "text": user_text}) + "\n"
 
@@ -1220,7 +1228,7 @@ async def voice_converse_stream(
         history: List[Dict[str, Any]] = []
         try:
             mem = memory_agent.get_memory()
-            prev = await mem.get_session(sid, limit=6)
+            prev = await mem.get_session(sid, limit=6, company_id=v_company_id)
             for m in prev or []:
                 role = m.get("role")
                 content = m.get("content")
@@ -1423,7 +1431,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
             #   intent_tokens      — quick classifier call.
             #   fallback estimate  — (prompt_chars + reply_chars) / 4 when
             #                        provider didn't emit a usage chunk.
-            past = [m["content"] for m in (await mem.get_session(session_id, limit=10))
+            past = [m["content"] for m in (await mem.get_session(session_id, limit=10, company_id=stream_company_id))
                     if m.get("role") == "assistant"]
             mem_ctx_texts = [r.get("content", "") for r in ctx.get("retrieved", [])]
             latency_ms = int((_time.time() - t0) * 1000)
@@ -1615,7 +1623,7 @@ async def hermes_talk(
                 if stream_tokens == 0:
                     stream_tokens = max(1, (prompt_chars + len(full)) // 4)
                 past = [
-                    m["content"] for m in (await mem.get_session(session_id, limit=10))
+                    m["content"] for m in (await mem.get_session(session_id, limit=10, company_id=talk_company_id))
                     if m.get("role") == "assistant"
                 ]
                 await finalize_llm_turn(

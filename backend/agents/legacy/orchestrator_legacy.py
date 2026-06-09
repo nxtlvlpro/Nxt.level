@@ -106,7 +106,7 @@ async def route(
     # 5. reliability assessment
     past = [
         m["content"]
-        for m in (await mem.get_session(session_id, limit=10))
+        for m in (await mem.get_session(session_id, limit=10, company_id=company_id))
         if m.get("role") == "assistant"
     ]
     mem_ctx_texts = [r.get("content", "") for r in ctx.get("retrieved", [])]

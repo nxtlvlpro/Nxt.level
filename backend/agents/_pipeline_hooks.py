@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from agents import reliability as reliability_agent
 from agents import roi as roi_agent
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.pipeline_hooks")
 
@@ -122,7 +122,10 @@ async def finalize_llm_turn(
             await roi_agent.record_escalation_cost(
                 agent, minutes=5.0, company_id=company_id
             )
-            await get_db().alerts.insert_one(
+            await TenantAwareCRUD(
+                get_db().alerts,
+                company_id=company_id,
+            ).insert_one(
                 {
                     "id": str(uuid.uuid4()),
                     "source": "reliability",

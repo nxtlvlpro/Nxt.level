@@ -137,15 +137,30 @@ class MemoryEngine:
             upsert=True,
         )
 
-    async def get_session(self, session_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        doc = await TenantAwareCRUD(get_db().sessions).find_one({"session_id": session_id}, {"_id": 0, "messages": 1})
+    async def get_session(
+        self,
+        session_id: str,
+        limit: int = 50,
+        *,
+        company_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        doc = await TenantAwareCRUD(
+            get_db().sessions,
+            company_id=company_id,
+        ).find_one({"session_id": session_id}, {"_id": 0, "messages": 1})
         if not doc:
             return []
         msgs = doc.get("messages") or []
         return msgs[-limit:]
 
-    async def build_short_context(self, session_id: str, max_chars: int = 6000) -> str:
-        msgs = await self.get_session(session_id, limit=50)
+    async def build_short_context(
+        self,
+        session_id: str,
+        max_chars: int = 6000,
+        *,
+        company_id: Optional[str] = None,
+    ) -> str:
+        msgs = await self.get_session(session_id, limit=50, company_id=company_id)
         parts: List[str] = []
         total = 0
         for m in reversed(msgs):
@@ -302,7 +317,11 @@ class MemoryEngine:
         *, company_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Combine short-term + retrieved long-term memories into one context string."""
-        short = await self.build_short_context(session_id, max_chars=max_chars // 2)
+        short = await self.build_short_context(
+            session_id,
+            max_chars=max_chars // 2,
+            company_id=company_id,
+        )
         retrieved = await self.search(query, top_k=5, company_id=company_id)
         long_parts: List[str] = []
         used = len(short)
