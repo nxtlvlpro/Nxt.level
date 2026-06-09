@@ -102,158 +102,143 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Backend-only validation of distributed lease-lock for scheduler in NXT8 to prevent duplicate job executions across multiple backend instances"
+user_problem_statement: "Backend-only validation of skill-based migration for analyst and client_manager personas to nxt8_graph in NXT8"
 
 backend:
-  - task: "Distributed lock acquisition mechanism"
+  - task: "Analyst persona routing to nxt8_graph"
     implemented: true
     working: true
-    file: "backend/core/scheduler_lock.py"
+    file: "backend/agents/personas.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ try_acquire() correctly acquires lock for new job_id, blocks second owner while lease active, allows same owner to refresh lock, and safely handles DuplicateKeyError on concurrent upserts. Tested with 10 concurrent acquisitions - exactly 1 succeeded."
+        comment: "✅ /api/personas/analyst/chat correctly routes to nxt8_graph (not legacy). SKILL_ROUTED_PERSONAS contains 'analyst'. Response contract intact with all required fields (success, provider='nxt8_graph', persona_id, content, session_id, iterations, confidence, tool_traces). Verified via comprehensive backend test."
 
-  - task: "Lease expiration and takeover"
+  - task: "Client_manager persona routing to nxt8_graph"
     implemented: true
     working: true
-    file: "backend/core/scheduler_lock.py"
+    file: "backend/agents/personas.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ try_acquire() correctly allows new owner to take over expired locks. Verified that locked_until is updated and ownership transfers properly."
+        comment: "✅ /api/personas/client_manager/chat correctly routes to nxt8_graph (not legacy). SKILL_ROUTED_PERSONAS contains 'client_manager'. Response contract intact with all required fields (success, provider='nxt8_graph', persona_id, content, session_id, iterations, confidence, tool_traces). Verified via comprehensive backend test."
 
-  - task: "Lock release mechanism"
+  - task: "Analyst tool loop (evaluate_action_roi)"
     implemented: true
     working: true
-    file: "backend/core/scheduler_lock.py"
+    file: "backend/skills/analyst.md, backend/core/nxt8_graph.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ release() correctly deletes lock only when owner_id matches. Wrong owner cannot release lock. Handles empty parameters gracefully."
+        comment: "✅ Analyst skill file has 'evaluate_action_roi' in allowed_tools. Tool loop works correctly - when prompted to evaluate ROI, analyst invokes evaluate_action_roi tool and receives result. Verified in backend logs and audit records. Tool execution: args={'action': 'Запустить reactivation-кампанию по dormant B2B лидам'}, result ok=True."
 
-  - task: "Exclusive job execution wrapper"
+  - task: "Client_manager tool loop (create_task)"
     implemented: true
     working: true
-    file: "backend/core/scheduler_lock.py"
+    file: "backend/skills/client_manager.md, backend/core/nxt8_graph.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ run_exclusive() executes runner only for lock winner, returns None for losers. Tested with 5 concurrent calls - only 1 executed. Lock is released even when runner raises exception."
+        comment: "✅ Client_manager skill file has 'create_task' in allowed_tools. Tool loop works correctly - when prompted to create follow-up task, client_manager invokes create_task tool and task is created. Verified in backend logs and audit records. Tool execution: args={'title': 'Follow-up: резюме звонка и слот на завтра — ACME', ...}, result ok=True."
 
-  - task: "Race condition handling"
+  - task: "Audit records with provider='nxt8_graph'"
     implemented: true
     working: true
-    file: "backend/core/scheduler_lock.py"
+    file: "backend/agents/personas.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ DuplicateKeyError is caught and handled safely during concurrent upserts. Tested with 10 concurrent try_acquire calls - exactly 1 succeeded, 9 failed gracefully."
+        comment: "✅ persona_requests collection correctly stores provider='nxt8_graph' for both analyst and client_manager. Verified 5 recent analyst records and 4 recent client_manager records all have provider='nxt8_graph'. Older records (pre-migration) correctly show provider='deepseek_direct'. Tool traces are properly stored in audit records."
 
-  - task: "Scheduler job registration with locks"
+  - task: "Plan-gate for analyst (headquarters only)"
     implemented: true
     working: true
-    file: "backend/core/scheduler.py"
+    file: "backend/agents/legacy/personas_legacy.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ pulse_tick registered via _run_pulse_for_all_locked wrapper. ✅ daily_digest registered via _run_digest_for_all_locked wrapper. ✅ session_cleanup registered via _run_session_cleanup_locked wrapper. ✅ _refresh_tenants_cache (discover_tenants job) is NOT wrapped with global lock (correct per requirements)."
+        comment: "✅ Analyst is only available on 'headquarters' plan. Test with 'team' plan returns success=False with error 'persona analyst недоступна на тарифе team'. Test with 'headquarters' plan returns success=True with provider='nxt8_graph'. Plan-gate correctly preserved."
 
-  - task: "Database index creation"
+  - task: "Plan-gate for client_manager (team+)"
     implemented: true
     working: true
-    file: "backend/core/db.py"
+    file: "backend/agents/legacy/personas_legacy.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ scheduler_locks.locked_until index created correctly. Index details: {'v': 2, 'key': [('locked_until', 1)]}"
+        comment: "✅ Client_manager is available on 'team' plan and above. Test with 'personal' plan returns success=False with error 'persona client_manager недоступна на тарифе personal'. Test with 'team' plan returns success=True with provider='nxt8_graph'. Plan-gate correctly preserved."
 
-  - task: "Edge cases and error handling"
+  - task: "Other personas not affected by migration"
     implemented: true
     working: true
-    file: "backend/core/scheduler_lock.py"
-    stuck_count: 0
-    priority: "medium"
-    needs_retesting: false
-    status_history:
-      - working: true
-        agent: "testing"
-        comment: "✅ Empty job_id raises ValueError. ✅ Empty owner_id raises ValueError. ✅ Invalid lease_seconds (<=0) raises ValueError. ✅ release() with empty parameters handled gracefully. ✅ get_owner_id() returns valid format: hostname:pid:uuid"
-
-  - task: "Existing unit tests"
-    implemented: true
-    working: true
-    file: "backend/tests/test_scheduler_lock.py"
+    file: "backend/agents/personas.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ All 6 tests in test_scheduler_lock.py passed: test_try_acquire_succeeds_for_new_lock, test_try_acquire_blocks_second_owner_while_lease_active, test_try_acquire_allows_takeover_after_expiry, test_release_deletes_only_matching_owner, test_run_exclusive_skips_runner_when_lock_is_busy, test_run_exclusive_executes_only_once_under_race"
+        comment: "✅ Other personas (bookkeeper, marketer) still use legacy path. Tested bookkeeper and marketer - both return success=True with provider='deepseek_direct' (not 'nxt8_graph'). Only hr_mentor, analyst, and client_manager are in SKILL_ROUTED_PERSONAS set. Migration is selective and does not affect other personas."
 
-  - task: "Session cleanup job registration"
+  - task: "Skill files validation"
     implemented: true
     working: true
-    file: "backend/tests/test_memory_m3_session_limits.py"
+    file: "backend/skills/analyst.md, backend/skills/client_manager.md"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ test_scheduler_session_cleanup_job_registered passed. Session cleanup job is properly registered in scheduler."
+        comment: "✅ Both skill files exist and are valid. analyst.md: id='analyst', allowed_tools includes 'evaluate_action_roi'. client_manager.md: id='client_manager', allowed_tools includes 'create_task'. YAML frontmatter is correctly formatted and parseable. Skill files are loaded by nxt8_graph.py load_skill() function."
 
 frontend:
-  - task: "Frontend smoke test after backend changes"
-    implemented: true
-    working: true
-    file: "frontend/src/App.js"
+  - task: "Frontend testing not required"
+    implemented: false
+    working: "NA"
+    file: "N/A"
     stuck_count: 0
-    priority: "high"
+    priority: "low"
     needs_retesting: false
     status_history:
-      - working: true
+      - working: "NA"
         agent: "testing"
-        comment: "✅ Frontend smoke test passed. App loads without blank screen. Header, navigation, and main content area all render correctly. Found 57 buttons and 1 link. No visible error messages. Console shows expected 401 errors for unauthenticated API calls (/api/auth/me, /api/telegram/status, /api/whatsapp/status) which are handled gracefully. No JavaScript errors or frontend regression detected from backend scheduler lock changes."
+        comment: "Frontend testing not required for this backend-only persona migration. Changes are isolated to backend routing logic and skill files."
 
 metadata:
   created_by: "testing_agent"
-  version: "1.0"
-  test_sequence: 2
-  run_ui: true
+  version: "1.1"
+  test_sequence: 3
+  run_ui: false
 
 test_plan:
   current_focus:
-    - "All backend tasks completed and validated"
-    - "Frontend smoke test completed"
+    - "Backend-only validation of analyst and client_manager migration to nxt8_graph"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "testing"
-    message: "Completed comprehensive backend validation of distributed scheduler lock system. All 8 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test.py covering: lock mechanics, lease expiration, race conditions (5 and 10 concurrent calls), exception handling, scheduler job registration, index creation, DuplicateKeyError handling, and edge cases. All existing unit tests (6 in test_scheduler_lock.py + 1 in test_memory_m3_session_limits.py) pass. Backend logs show scheduler properly initialized with all lock-wrapped jobs. No issues found."
-  - agent: "testing"
-    message: "Completed frontend smoke test after backend-only scheduler lock changes. App loads successfully with all UI shell components (header, navigation, main content) rendering correctly. No blank screen, no visible errors, no JavaScript exceptions. Console shows only expected 401 auth errors for unauthenticated user. No frontend regression detected. Backend changes (scheduler_lock.py, scheduler.py, db.py) have not impacted frontend functionality."
+    message: "Completed comprehensive backend validation of analyst and client_manager migration to nxt8_graph. All 9 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_analyst_client_manager.py covering: routing verification, response contract validation, tool loop execution (evaluate_action_roi for analyst, create_task for client_manager), audit record verification, plan-gate enforcement, and non-regression of other personas. All tests passed. Backend logs confirm tool invocations working correctly. Database audit records show provider='nxt8_graph' for both personas. No issues found."

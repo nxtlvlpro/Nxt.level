@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from agents.legacy import personas_legacy as _legacy
 from agents import ai_mentor as _aim
+from core.company_context import get_settings as get_company_settings, render_company_block
 from core.db import get_db
 from core.nxt8_graph import nxt8_graph
 
@@ -17,25 +18,49 @@ MAX_ITER = _legacy.MAX_ITER
 get_plan = _legacy.get_plan
 list_personas = _legacy.list_personas
 
+SKILL_ROUTED_PERSONAS = {"hr_mentor", "analyst", "client_manager"}
 
-async def run_persona(
+
+async def _build_skill_context_blocks(persona_id: str, company_id: str, user_id: str):
+    blocks = []
+    cfg = PERSONAS.get(persona_id) or {}
+    for fetcher in cfg.get("data_fetchers") or []:
+        if fetcher == "user_skill_profile":
+            block = await _aim.build_user_skill_block(user_id or "anon", company_id or "default")
+            if block:
+                blocks.append(block)
+            continue
+        fn = _legacy._FETCHER_DISPATCH.get(fetcher)
+        if not fn:
+            continue
+        try:
+            if fetcher == "mentor_overview":
+                block = await fn(company_id or "default")
+            else:
+                block = await fn()
+        except Exception:
+            block = ""
+        if block:
+            blocks.append(block)
+
+    try:
+        company_settings = await get_company_settings(company_id)
+        company_block = render_company_block(company_settings)
+        if company_block:
+            blocks.append(company_block)
+    except Exception:
+        pass
+    return blocks
+
+
+async def _run_skill_persona(
     persona_id: str,
     message: str,
-    company_id: str = "default",
-    user_id: str = "anonymous",
-    session_id: str | None = None,
-    plan_id: str | None = None,
+    company_id: str,
+    user_id: str,
+    session_id: str | None,
+    plan_id: str | None,
 ):
-    if persona_id != "hr_mentor":
-        return await _legacy.run_persona(
-            persona_id=persona_id,
-            message=message,
-            company_id=company_id,
-            user_id=user_id,
-            session_id=session_id,
-            plan_id=plan_id,
-        )
-
     if persona_id not in PERSONAS:
         return {"success": False, "error": f"unknown persona: {persona_id}"}
 
@@ -49,17 +74,20 @@ async def run_persona(
         }
 
     sid = session_id or f"persona_{persona_id}_{uuid.uuid4().hex[:10]}"
-    skill_block = await _aim.build_user_skill_block(user_id or "anon", company_id or "default")
+    ctx_blocks = await _build_skill_context_blocks(persona_id, company_id, user_id)
     initial_messages = []
-    if skill_block:
-        initial_messages.append({"role": "system", "content": skill_block})
+    if ctx_blocks:
+        initial_messages.append({
+            "role": "system",
+            "content": "## Текущий контекст\n\n" + "\n\n".join(ctx_blocks),
+        })
     initial_messages.append({"role": "user", "content": message})
 
     config = {"configurable": {"thread_id": sid}}
     result = await nxt8_graph.ainvoke(
         {
             "messages": initial_messages,
-            "skill_id": "hr_mentor",
+            "skill_id": persona_id,
             "company_id": company_id,
             "user_id": user_id,
             "session_id": sid,
@@ -77,13 +105,7 @@ async def run_persona(
             tool_result = json.loads(item.get("content") or "{}")
         except json.JSONDecodeError:
             tool_result = {"raw": item.get("content")}
-        tool_traces.append(
-            {
-                "name": item.get("name"),
-                "args": {},
-                "result": tool_result,
-            }
-        )
+        tool_traces.append({"name": item.get("name"), "args": {}, "result": tool_result})
 
     assistant_messages = [m for m in full_messages if m.get("role") == "assistant"]
     last_content = assistant_messages[-1].get("content", "") if assistant_messages else ""
@@ -124,6 +146,34 @@ async def run_persona(
         "plan_id": plan["id"],
         "tokens_total": int(result.get("tokens_total", 0)),
     }
+
+
+async def run_persona(
+    persona_id: str,
+    message: str,
+    company_id: str = "default",
+    user_id: str = "anonymous",
+    session_id: str | None = None,
+    plan_id: str | None = None,
+):
+    if persona_id not in SKILL_ROUTED_PERSONAS:
+        return await _legacy.run_persona(
+            persona_id=persona_id,
+            message=message,
+            company_id=company_id,
+            user_id=user_id,
+            session_id=session_id,
+            plan_id=plan_id,
+        )
+
+    return await _run_skill_persona(
+        persona_id=persona_id,
+        message=message,
+        company_id=company_id,
+        user_id=user_id,
+        session_id=session_id,
+        plan_id=plan_id,
+    )
 
 
 def __getattr__(name: str):
