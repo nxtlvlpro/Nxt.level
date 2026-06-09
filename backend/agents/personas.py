@@ -347,10 +347,10 @@ def get_plan(plan_id: Optional[str]) -> Dict[str, Any]:
 # =====================================================================
 
 
-async def _fetch_mentor_overview() -> str:
+async def _fetch_mentor_overview(company_id: str = "default") -> str:
     try:
         emps = await mentor_agent.list_employees()
-        patterns = await mentor_agent.list_open_patterns(limit=20)
+        patterns = await mentor_agent.list_open_patterns(company_id=company_id, limit=20)
     except Exception as e:
         logger.warning("mentor_overview fetch failed: %s", e)
         return "(данные по сотрудникам недоступны)"
@@ -622,7 +622,10 @@ async def run_persona(
         fn = _FETCHER_DISPATCH.get(fetcher)
         if fn:
             try:
-                ctx_blocks.append(await fn())
+                if fetcher == "mentor_overview":
+                    ctx_blocks.append(await fn(company_id or "default"))
+                else:
+                    ctx_blocks.append(await fn())
             except Exception as e:  # noqa: BLE001
                 logger.warning("fetcher %s failed: %s", fetcher, e)
 

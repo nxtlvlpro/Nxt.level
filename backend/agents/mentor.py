@@ -254,8 +254,8 @@ async def employee_summary(employee_id: str) -> Dict[str, Any]:
     return {"employee": emp, "history": history, "open_patterns": patterns}
 
 
-async def list_open_patterns(limit: int = 50) -> List[Dict[str, Any]]:
+async def list_open_patterns(company_id: str, limit: int = 50) -> List[Dict[str, Any]]:
     db = get_db()
     return await db.weak_patterns.find(
-        {"resolved": False}, {"_id": 0}
+        {"resolved": False, "company_id": company_id}, {"_id": 0}
     ).sort("detected_at", -1).to_list(length=limit)

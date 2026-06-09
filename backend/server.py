@@ -637,8 +637,11 @@ async def mentor_detect_patterns(employee_id: str) -> Dict[str, Any]:
 
 
 @api.get("/mentor/patterns")
-async def mentor_list_patterns(limit: int = 50) -> Dict[str, Any]:
-    items = await mentor_agent.list_open_patterns(limit=limit)
+async def mentor_list_patterns(
+    limit: int = 50,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    items = await mentor_agent.list_open_patterns(company_id=user.company_id, limit=limit)
     return {"count": len(items), "patterns": items}
 
 
