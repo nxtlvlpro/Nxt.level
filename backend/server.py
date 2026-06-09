@@ -1626,24 +1626,37 @@ async def cross_dept_detect(query: str) -> Dict[str, Any]:
 
 @api.post("/diagnostics/scan")
 async def diagnostics_scan(
-    window: int = 200, sim_threshold: float = 0.45, divergence_threshold: float = 0.3
+    window: int = 200,
+    sim_threshold: float = 0.45,
+    divergence_threshold: float = 0.3,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
+    company_filter = None if user.is_admin else user.company_id
     return await diagnostics_agent.scan_contradictions(
         window=window,
         sim_threshold=sim_threshold,
         divergence_threshold=divergence_threshold,
+        company_id=company_filter,
     )
 
 
 @api.get("/diagnostics/contradictions")
-async def diagnostics_list(limit: int = 30) -> Dict[str, Any]:
-    items = await diagnostics_agent.list_contradictions(limit=limit)
+async def diagnostics_list(
+    limit: int = 30,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    company_filter = None if user.is_admin else user.company_id
+    items = await diagnostics_agent.list_contradictions(limit=limit, company_id=company_filter)
     return {"count": len(items), "contradictions": items}
 
 
 @api.get("/diagnostics/summary")
-async def diagnostics_summary(window: int = 200) -> Dict[str, Any]:
-    return await diagnostics_agent.summary(window=window)
+async def diagnostics_summary(
+    window: int = 200,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    company_filter = None if user.is_admin else user.company_id
+    return await diagnostics_agent.summary(window=window, company_id=company_filter)
 
 
 # =====================================================================

@@ -44,6 +44,7 @@ async def scan_contradictions(
     window: int = 200,
     sim_threshold: float = 0.45,
     divergence_threshold: float = 0.3,
+    company_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Find pairs of recent requests with similar prompts but divergent responses.
 
@@ -51,8 +52,11 @@ async def scan_contradictions(
     Persists each new contradiction to db.contradictions.
     """
     db = get_db()
+    query: Dict[str, Any] = {}
+    if company_id:
+        query["company_id"] = company_id
     docs = await db.requests.find(
-        {}, {"_id": 0, "id": 1, "intent": 1, "message": 1, "response": 1,
+        query, {"_id": 0, "id": 1, "intent": 1, "message": 1, "response": 1,
              "confidence": 1, "session_id": 1, "created_at": 1}
     ).sort("created_at", -1).limit(window).to_list(length=window)
 
@@ -104,26 +108,38 @@ async def scan_contradictions(
         b = f["b_id"] or ""
         pair_key = "|".join(sorted([a, b]))
         await db.contradictions.update_one(
-            {"pair_key": pair_key},
-            {"$set": {**f, "pair_key": pair_key, "detected_at": _now(),
-                      "id": str(uuid.uuid4())}},
+            {"pair_key": pair_key, "company_id": company_id},
+            {"$set": {**f, "pair_key": pair_key, "company_id": company_id,
+                      "detected_at": _now(), "id": str(uuid.uuid4())}},
             upsert=True,
         )
 
     return {"count": len(top), "contradictions": top, "scanned": len(docs)}
 
 
-async def list_contradictions(limit: int = 30) -> List[Dict[str, Any]]:
+async def list_contradictions(
+    limit: int = 30,
+    company_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     db = get_db()
+    query: Dict[str, Any] = {}
+    if company_id:
+        query["company_id"] = company_id
     return await db.contradictions.find(
-        {}, {"_id": 0, "pair_key": 0}
+        query, {"_id": 0, "pair_key": 0}
     ).sort("detected_at", -1).to_list(length=limit)
 
 
-async def summary(window: int = 200) -> Dict[str, Any]:
+async def summary(
+    window: int = 200,
+    company_id: Optional[str] = None,
+) -> Dict[str, Any]:
     db = get_db()
+    query: Dict[str, Any] = {}
+    if company_id:
+        query["company_id"] = company_id
     docs = await db.requests.find(
-        {}, {"_id": 0, "intent": 1, "confidence": 1, "should_escalate": 1, "mock": 1}
+        query, {"_id": 0, "intent": 1, "confidence": 1, "should_escalate": 1, "mock": 1}
     ).sort("created_at", -1).limit(window).to_list(length=window)
 
     if not docs:
