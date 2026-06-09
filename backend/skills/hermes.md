@@ -18,6 +18,9 @@ allowed_tools:
   - ask_colleague
   - propose_improvement
   - propose_policy
+  - generate_daily_digest
+  - detect_automation_candidates
+  - hermes_self_assessment
 decision_authority: execute_autonomous
 data_access:
   read: ["*"]

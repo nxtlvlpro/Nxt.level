@@ -26,6 +26,7 @@ SKILL_ROUTED_PERSONAS = {
     "marketer",
     "compliance",
     "project_coord",
+    "hermes",
 }
 
 
