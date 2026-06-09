@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph, END
 
 from agents.hermes import HERMES_TOOLS
 from core.access_guard import check_access
+from core.complexity_router import pick_model
 from core.deepseek import get_deepseek
 
 logger = logging.getLogger("nxt8.graph")
@@ -123,10 +124,12 @@ async def execute_node(state: AgentState) -> Dict[str, Any]:
     messages += state.get("messages", [])
 
     ds = get_deepseek()
+    model_to_use = pick_model(messages=messages, intent=state.get("skill_id", "general"))
     response = await ds.chat(
         messages=messages,
         temperature=0.3,
         max_tokens=1024,
+        model_override=model_to_use,
         request_logprobs=True,
     )
 
