@@ -108,7 +108,7 @@ async def scan_contradictions(
         b = f["b_id"] or ""
         pair_key = "|".join(sorted([a, b]))
         await db.contradictions.update_one(
-            {"pair_key": pair_key, "company_id": company_id},
+            {"pair_key": pair_key},
             {"$set": {**f, "pair_key": pair_key, "company_id": company_id,
                       "detected_at": _now(), "id": str(uuid.uuid4())}},
             upsert=True,
