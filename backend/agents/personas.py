@@ -25,6 +25,7 @@ SKILL_ROUTED_PERSONAS = {
     "bookkeeper",
     "marketer",
     "compliance",
+    "project_coord",
 }
 
 

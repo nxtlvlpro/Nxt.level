@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Backend-only validation of skill-based migration for bookkeeper, marketer, and compliance personas to nxt8_graph in NXT8 (Wave 2)"
+user_problem_statement: "Backend-only validation of skill-based migration for project_coord persona to nxt8_graph in NXT8 (Wave 3)"
 
 backend:
   - task: "Analyst persona routing to nxt8_graph"
@@ -332,6 +332,93 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ Other personas not in SKILL_ROUTED_PERSONAS still use legacy path. Tested project_coord - returns success=True with provider='deepseek_direct' (not 'nxt8_graph'). SKILL_ROUTED_PERSONAS now contains 6 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance. Migration is selective and does not affect project_coord or hermes."
+      - working: true
+        agent: "testing"
+        comment: "✅ Wave 3 update: project_coord now migrated to nxt8_graph. SKILL_ROUTED_PERSONAS now contains 7 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance, project_coord. Hermes remains on legacy path (not affected by migration)."
+
+  - task: "Project_coord persona routing to nxt8_graph"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ /api/personas/project_coord/chat correctly routes to nxt8_graph (not legacy). SKILL_ROUTED_PERSONAS contains 'project_coord'. Response contract intact with all required fields (success, provider='nxt8_graph', persona_id, content, session_id, iterations, confidence, tool_traces). Verified via comprehensive backend test in /app/backend_test_project_coord.py."
+
+  - task: "Project_coord tool loop (create_cross_department_bridge)"
+    implemented: true
+    working: true
+    file: "backend/skills/project_coord.md, backend/core/nxt8_graph.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Project_coord skill file has 'create_cross_department_bridge' in allowed_tools. Tool loop works correctly - when prompted with cross-department task, project_coord invokes create_cross_department_bridge tool and receives result. Verified in backend test and logs. Tool execution: args={'from_dept': 'sales', 'to_dept': 'product', 'description': 'Согласовать требования клиента ACME и зафиксировать следующий релизный слот'}, result ok=True. Backend logs confirm: 'Hermes created task: Bridge: sales → product'."
+
+  - task: "Audit records with provider='nxt8_graph' for project_coord"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ persona_requests collection correctly stores provider='nxt8_graph' for project_coord. Verified 9 test records all have provider='nxt8_graph'. Tool traces are properly stored in audit records with correct structure. Old pre-migration records (provider='deepseek_direct') exist but are correctly filtered out in testing."
+
+  - task: "Plan-gate for project_coord (headquarters only)"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py, backend/agents/legacy/personas_legacy.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Project_coord is only available on 'headquarters' plan. Test with 'operations' plan returns success=False with error 'persona project_coord недоступна на тарифе operations'. Test with 'team' plan returns success=False with error 'persona project_coord недоступна на тарифе team'. Test with 'headquarters' plan returns success=True with provider='nxt8_graph'. Plan-gate correctly preserved after migration."
+
+  - task: "Non-regression: previously migrated personas still work"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All previously migrated personas (analyst, client_manager, bookkeeper) still work correctly after project_coord migration. All return success=True with provider='nxt8_graph'. No regression detected. SKILL_ROUTED_PERSONAS now contains 7 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance, project_coord."
+
+  - task: "Hermes remains separate (not affected)"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Hermes is NOT in SKILL_ROUTED_PERSONAS (remains separate track). Hermes uses legacy path with provider='deepseek_direct'. Migration of project_coord did not affect hermes routing. This is correct behavior as hermes has separate implementation requirements."
+
+  - task: "Skill file validation for project_coord"
+    implemented: true
+    working: true
+    file: "backend/skills/project_coord.md"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Skill file exists and is valid. project_coord.md: id='project_coord', name='Координатор проектов', allowed_tools=['search_memory', 'create_task', 'update_task', 'create_cross_department_bridge', 'monitor_sla_violations', 'web_search', 'fetch_url', 'ask_colleague', 'escalate_to_hermes']. YAML frontmatter is correctly formatted and parseable. Skill file loaded successfully by nxt8_graph.py load_skill() function. Prompt length: 2757 chars (~689 tokens)."
 
   - task: "Skill files validation for new personas"
     implemented: true
@@ -372,13 +459,13 @@ frontend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.2"
-  test_sequence: 4
+  version: "1.3"
+  test_sequence: 5
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Backend-only validation of bookkeeper, marketer, compliance migration to nxt8_graph (Wave 2)"
+    - "Backend-only validation of project_coord migration to nxt8_graph (Wave 3)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -388,3 +475,5 @@ agent_communication:
     message: "Completed comprehensive backend validation of analyst and client_manager migration to nxt8_graph. All 9 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_analyst_client_manager.py covering: routing verification, response contract validation, tool loop execution (evaluate_action_roi for analyst, create_task for client_manager), audit record verification, plan-gate enforcement, and non-regression of other personas. All tests passed. Backend logs confirm tool invocations working correctly. Database audit records show provider='nxt8_graph' for both personas. No issues found."
   - agent: "testing"
     message: "Completed comprehensive backend validation of bookkeeper, marketer, and compliance migration to nxt8_graph (Wave 2). All 12 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_bookkeeper_marketer_compliance.py covering: routing verification (all 3 personas route to nxt8_graph), response contract validation (all required fields present), tool behavior (marketer invokes suggest_next_best_action, compliance invokes mempalace_search and asks for document when empty, bookkeeper can answer without tool-loop), audit record verification (provider='nxt8_graph' for all 3), plan-gate enforcement (operations+ for all 3, correctly returns HTTP 402 for team plan), and non-regression (project_coord still uses legacy deepseek_direct). All tests passed. Backend logs confirm tool invocations working correctly. SKILL_ROUTED_PERSONAS now contains 6 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance. No issues found."
+  - agent: "testing"
+    message: "Completed comprehensive backend validation of project_coord migration to nxt8_graph (Wave 3). All 8 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_project_coord.py covering: routing verification (project_coord routes to nxt8_graph), response contract validation (all required fields present), tool loop execution (create_cross_department_bridge invoked for cross-dept tasks), audit record verification (provider='nxt8_graph' for all test records), plan-gate enforcement (headquarters-only, correctly blocks operations and team plans), non-regression (analyst, client_manager, bookkeeper still work), hermes separation (hermes NOT in SKILL_ROUTED_PERSONAS, uses legacy path), and skill file validation (project_coord.md valid with 9 allowed_tools). All tests passed (8/8). Backend logs confirm tool invocations working correctly. SKILL_ROUTED_PERSONAS now contains 7 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance, project_coord. No issues found."
