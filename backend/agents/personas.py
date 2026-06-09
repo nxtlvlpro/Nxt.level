@@ -18,7 +18,14 @@ MAX_ITER = _legacy.MAX_ITER
 get_plan = _legacy.get_plan
 list_personas = _legacy.list_personas
 
-SKILL_ROUTED_PERSONAS = {"hr_mentor", "analyst", "client_manager"}
+SKILL_ROUTED_PERSONAS = {
+    "hr_mentor",
+    "analyst",
+    "client_manager",
+    "bookkeeper",
+    "marketer",
+    "compliance",
+}
 
 
 async def _build_skill_context_blocks(persona_id: str, company_id: str, user_id: str):

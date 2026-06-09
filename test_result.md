@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Backend-only validation of skill-based migration for analyst and client_manager personas to nxt8_graph in NXT8"
+user_problem_statement: "Backend-only validation of skill-based migration for bookkeeper, marketer, and compliance personas to nxt8_graph in NXT8 (Wave 2)"
 
 backend:
   - task: "Analyst persona routing to nxt8_graph"
@@ -201,6 +201,150 @@ backend:
         agent: "testing"
         comment: "✅ Other personas (bookkeeper, marketer) still use legacy path. Tested bookkeeper and marketer - both return success=True with provider='deepseek_direct' (not 'nxt8_graph'). Only hr_mentor, analyst, and client_manager are in SKILL_ROUTED_PERSONAS set. Migration is selective and does not affect other personas."
 
+  - task: "Bookkeeper persona routing to nxt8_graph"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ /api/personas/bookkeeper/chat correctly routes to nxt8_graph. SKILL_ROUTED_PERSONAS now contains 'bookkeeper'. Response contract intact with all required fields (success, provider='nxt8_graph', persona_id, content, session_id, iterations, confidence, tool_traces). Verified via comprehensive backend test in /app/backend_test_bookkeeper_marketer_compliance.py."
+
+  - task: "Marketer persona routing to nxt8_graph"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ /api/personas/marketer/chat correctly routes to nxt8_graph. SKILL_ROUTED_PERSONAS now contains 'marketer'. Response contract intact with all required fields (success, provider='nxt8_graph', persona_id, content, session_id, iterations, confidence, tool_traces). Verified via comprehensive backend test in /app/backend_test_bookkeeper_marketer_compliance.py."
+
+  - task: "Compliance persona routing to nxt8_graph"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ /api/personas/compliance/chat correctly routes to nxt8_graph. SKILL_ROUTED_PERSONAS now contains 'compliance'. Response contract intact with all required fields (success, provider='nxt8_graph', persona_id, content, session_id, iterations, confidence, tool_traces). Verified via comprehensive backend test in /app/backend_test_bookkeeper_marketer_compliance.py."
+
+  - task: "Marketer tool loop (suggest_next_best_action)"
+    implemented: true
+    working: true
+    file: "backend/skills/marketer.md, backend/core/nxt8_graph.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Marketer skill file has 'suggest_next_best_action' in allowed_tools. Tool loop works correctly - when prompted to suggest next action, marketer invokes suggest_next_best_action tool and receives result. Verified in backend logs and manual test. Tool execution: args={'action': 'Запустить серию ICP-интервью для нового сегмента', 'context': 'B2B SaaS, early PMF, регион RU, ecommerce'}, result ok=True."
+
+  - task: "Compliance tool loop (mempalace_search)"
+    implemented: true
+    working: true
+    file: "backend/skills/compliance.md, backend/core/nxt8_graph.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Compliance skill file has 'mempalace_search' in allowed_tools. Tool loop works correctly - when prompted to check a contract, compliance invokes mempalace_search tool first. When search returns empty, compliance correctly asks user to provide document (no invalid tool-calls). Verified in backend test and audit records. Skill file instruction at line 31 enforces this behavior: 'Если `mempalace_search` ничего не нашёл — НЕ вызывай дополнительные внутренние инструменты. Сразу попроси пользователя прислать `document_id`'."
+
+  - task: "Bookkeeper no mandatory tool-loop"
+    implemented: true
+    working: true
+    file: "backend/skills/bookkeeper.md, backend/core/nxt8_graph.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Bookkeeper can answer questions without mandatory tool-loop when context is sufficient. Tested with 'Что такое unit economics?' - bookkeeper provided comprehensive answer (1264 chars) without invoking any tools. This is correct behavior as bookkeeper has expertise and doesn't need tools for every query. Tools (search_memory, web_search, fetch_url) are available when needed for external data."
+
+  - task: "Audit records with provider='nxt8_graph' for new personas"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ persona_requests collection correctly stores provider='nxt8_graph' for bookkeeper, marketer, and compliance. Verified recent records for all 3 personas have provider='nxt8_graph'. Compliance records show tool_traces with mempalace_search invocations. Tool traces are properly stored in audit records with correct structure."
+
+  - task: "Plan-gate for bookkeeper (operations+)"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py, backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Bookkeeper is available on 'operations' plan and above. Test with 'team' plan returns HTTP 402 (Payment Required). Test with 'operations' plan returns success=True with provider='nxt8_graph'. Plan-gate correctly enforced at API level (server.py lines 2834-2842)."
+
+  - task: "Plan-gate for marketer (operations+)"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py, backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Marketer is available on 'operations' plan and above. Test with 'team' plan returns HTTP 402 (Payment Required). Test with 'operations' plan returns success=True with provider='nxt8_graph'. Plan-gate correctly enforced at API level (server.py lines 2834-2842)."
+
+  - task: "Plan-gate for compliance (operations+)"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py, backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Compliance is available on 'operations' plan and above. Test with 'team' plan returns HTTP 402 (Payment Required). Test with 'operations' plan returns success=True with provider='nxt8_graph'. Plan-gate correctly enforced at API level (server.py lines 2834-2842)."
+
+  - task: "Other personas still unaffected (non-regression)"
+    implemented: true
+    working: true
+    file: "backend/agents/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Other personas not in SKILL_ROUTED_PERSONAS still use legacy path. Tested project_coord - returns success=True with provider='deepseek_direct' (not 'nxt8_graph'). SKILL_ROUTED_PERSONAS now contains 6 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance. Migration is selective and does not affect project_coord or hermes."
+
+  - task: "Skill files validation for new personas"
+    implemented: true
+    working: true
+    file: "backend/skills/bookkeeper.md, backend/skills/marketer.md, backend/skills/compliance.md"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All 3 skill files exist and are valid. bookkeeper.md: id='bookkeeper', allowed_tools=['search_memory', 'web_search', 'fetch_url', 'ask_colleague', 'escalate_to_hermes']. marketer.md: id='marketer', allowed_tools=['search_memory', 'suggest_next_best_action', 'web_search', 'fetch_url', 'ask_colleague', 'escalate_to_hermes']. compliance.md: id='compliance', allowed_tools=['search_memory', 'mempalace_search', 'web_search', 'fetch_url', 'escalate_to_hermes']. YAML frontmatter is correctly formatted and parseable. Skill files are loaded by nxt8_graph.py load_skill() function."
+
   - task: "Skill files validation"
     implemented: true
     working: true
@@ -228,13 +372,13 @@ frontend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.1"
-  test_sequence: 3
+  version: "1.2"
+  test_sequence: 4
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Backend-only validation of analyst and client_manager migration to nxt8_graph"
+    - "Backend-only validation of bookkeeper, marketer, compliance migration to nxt8_graph (Wave 2)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -242,3 +386,5 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "Completed comprehensive backend validation of analyst and client_manager migration to nxt8_graph. All 9 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_analyst_client_manager.py covering: routing verification, response contract validation, tool loop execution (evaluate_action_roi for analyst, create_task for client_manager), audit record verification, plan-gate enforcement, and non-regression of other personas. All tests passed. Backend logs confirm tool invocations working correctly. Database audit records show provider='nxt8_graph' for both personas. No issues found."
+  - agent: "testing"
+    message: "Completed comprehensive backend validation of bookkeeper, marketer, and compliance migration to nxt8_graph (Wave 2). All 12 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_bookkeeper_marketer_compliance.py covering: routing verification (all 3 personas route to nxt8_graph), response contract validation (all required fields present), tool behavior (marketer invokes suggest_next_best_action, compliance invokes mempalace_search and asks for document when empty, bookkeeper can answer without tool-loop), audit record verification (provider='nxt8_graph' for all 3), plan-gate enforcement (operations+ for all 3, correctly returns HTTP 402 for team plan), and non-regression (project_coord still uses legacy deepseek_direct). All tests passed. Backend logs confirm tool invocations working correctly. SKILL_ROUTED_PERSONAS now contains 6 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance. No issues found."
