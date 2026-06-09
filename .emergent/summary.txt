@@ -1,146 +1,148 @@
-<analysis>**original_problem_statement**: 
-Multi-agent system (NXT8) acting as a company OS. Focus on strict architectural control, robust LLM orchestration (LangGraph), deep integrations, multi-tenancy, and proactive AI tasks. The core requirement was to resolve critical architectural flaws identified during a codebase audit, specifically ensuring strict tenant data isolation (ROI and Memory), accurate token/cost accounting, and creating a seamless non-authenticated access flow for landing page users (Open Beta mode). PRODUCT REQUIREMENTS: Strict separation of tenant data in MongoDB and ChromaDB, robust token counting for streaming responses, allowing anonymous users to interact with the Hermes chat directly from the landing page, and providing world-class, expert-level system prompts for all 8 agent personas.
+<analysis>**original_problem_statement**: Multi-agent system (NXT8) acting as a company OS. Focus on strict architectural control, robust LLM orchestration (LangGraph), deep integrations, multi-tenancy, and proactive AI tasks. The core requirement was to resolve critical architectural flaws identified during a codebase audit, specifically ensuring strict tenant data isolation (ROI and Memory), accurate token/cost accounting, and creating a seamless non-authenticated access flow for landing page users (Open Beta mode). PRODUCT REQUIREMENTS: Strict separation of tenant data in MongoDB and ChromaDB, robust token counting for streaming responses, allowing anonymous users to interact with the Hermes chat directly from the landing page, and providing world-class, expert-level system prompts for all 8 agent personas.
 
-**User's preferred language**: Russian (NEXT AGENT: YOU MUST RESPOND IN RUSSIAN ONLY)
+**User's preferred language**: Russian (ВНИМАНИЕ СЛЕДУЮЩЕМУ АГЕНТУ: ВЫ ОБЯЗАНЫ ОТВЕЧАТЬ ИСКЛЮЧИТЕЛЬНО НА РУССКОМ ЯЗЫКЕ)
 
 **what currently exists?**: 
-Full-stack AI OS (NXT8). Data leaks in memory and ROI have been patched. The Memory Sprint (Fix M1, M2, M3) is complete, establishing safe bounds for session documents and TTL indexes. The frontend landing page allows anonymous Test Mode access via the Hermes chat, which has been optimized for mobile layout. Critical security gaps in public endpoints ( injection), CORS, and Stripe webhooks are patched. All 8 LangGraph agent personas and the AI Mentor feature highly detailed, expert-level system prompts with frameworks, specific laws (RF), benchmark data, and few-shot examples.
+Full-stack AI OS (NXT8). Закрыты проблемы с CORS для успешного деплоя. Исправлен баг, блокировавший анонимных пользователей на этапе онбординга (Landing page). Проведен независимый аудит всех 8 агентов: исправлен критический баг  у агента HR Mentor, добавлена строгая защита от галлюцинаций (выдумывания цифр) для агента Hermes. 
+Успешно завершена изоляция данных (Cross-tenant isolation) для 4-х из 7 критических (RED) модулей: , история запросов (),  и . Внедрен режим **СТРОГОГО КОНТРОЛЯ (STRICT MODE)** при работе с пользователем.
 
 **Last working item**: 
-    - Last item agent was working: Upgrading the  dynamic prompts. The agent implemented expert knowledge across 7 business domains and differentiated the Socratic teaching method across 3 proficiency levels (0-1, 2-3, 4-5).
+    - Last item agent was working: Изоляция данных между тенантами в модуле  (эндпоинты , , ). Была добавлена фильтрация по .
     - Status: COMPLETED
     - Agent Testing Done: Y
-    - Which testing method agent to use? python -c / bash testing 
-    - User Testing Done: N
+    - Which testing method agent to use? python -c / bash скрипты, которые выполнял сам пользователь в режиме строгого контроля.
+    - User Testing Done: Y
 
 **All Pending/In progress Issue list**:  
-  Issue 1: 7 Remaining RED (Stop) Security/Architecture Audit Issues
-     - Attempted fixes: None yet (Agent fixed the top 3, these remain).
-     - Next debug checklist: 
-       1) Cross-tenant leak in HR/Diagnostics/Skills/Cross-dept/Market endpoints (0 mentions of  in , , etc.). Need schema updates & backfill.
-       2)  is public and global. Remove from whitelist and add filter.
-       3)  has no ownership check.
-       4)  falls back to , merging data.
-       5)  exists in prod and can wipe data if  is compromised.
-     - Why fix this issue and what will be achieved with the fix? Prevents catastrophic data leaks between tenants when the system scales to multiple paying customers.
+  Issue 1: Оставшиеся 3 RED (Stop) Security/Architecture Audit Issues
+     - Attempted fixes: Изоляция Mentor, Requests и Diagnostics завершена. Остались: 1)  (public/global), 2)  (нет проверки владельца), 3)  (fallback на default company_id), 4)  (риск затирания данных).
+     - Next debug checklist: Внедрить проверку  для сессий и алёртов. Запретить fallback на default при делегировании.
+     - Why fix this issue and what will be achieved with the fix? Полная безопасность данных арендаторов перед масштабированием.
      - Status: NOT STARTED (P0)
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix? Backend
 
-  Issue 2: ~45 pre-existing unit tests are failing
-     - Attempted fixes: None.
-     - Next debug checklist: Update  tests in  and  to use admin auth properly via .
-     - Why fix this issue and what will be achieved with the fix? Restores full CI/CD suite health.
+  Issue 2: Analyst agent не имеет deep prompt
+     - Attempted fixes: Найдено во время аудита. Analyst использует дефолтный системный промпт, так как отсутствует в маппинге глубоких промптов .
+     - Next debug checklist: Написать deep prompt для Analyst в  (SaaS metrics, маркетплейс benchmark, cohort math, A/B test stat sig).
+     - Why fix this issue and what will be achieved with the fix? Качество ответов аналитика сравняется с остальными 7 агентами.
+     - Status: NOT STARTED (P0)
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? Backend
+
+  Issue 3: Распространить anti-hallucination guard на остальные 6 personas
+     - Attempted fixes: Пользователь запросил (сообщение 152), но сразу переключился на Security Sprint в Strict Mode.
+     - Next debug checklist: Добавить блок запрета на выдумывание цифр/статистики для , , , , ,  в .
+     - Why fix this issue and what will be achieved with the fix? Агенты перестанут выдумывать несуществующие метрики (например, выдуманные DORA +40%).
      - Status: NOT STARTED (P1)
      - Is recurring issue? Y
      - Should Test frontend/backend/both after fix? Backend
 
-  Issue 3: Single-instance scheduler limitation
-     - Attempted fixes: None. 
-     - Next debug checklist: Switch APScheduler to  for horizontal scaling support.
-     - Why fix this issue and what will be achieved with the fix? Prevents duplicate pulse ticks and digests if the backend scales.
+  Issue 4: ~45 pre-existing unit tests are failing
+     - Attempted fixes: None.
+     - Next debug checklist: Обновить тесты  в  и  для использования . Добавить  в моковые данные тестов, так как теперь везде включена изоляция тенантов.
+     - Why fix this issue and what will be achieved with the fix? Восстановление CI/CD.
      - Status: NOT STARTED (P1)
+     - Is recurring issue? Y
+     - Should Test frontend/backend/both after fix? Backend
+
+  Issue 5: Single-instance scheduler limitation
+     - Attempted fixes: None.
+     - Next debug checklist: Переключить APScheduler на .
+     - Why fix this issue and what will be achieved with the fix? Поддержка горизонтального масштабирования.
+     - Status: NOT STARTED (P2)
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix? Backend
 
-  Issue 4: Save to GitHub platform button not working for user 
-     - Attempted fixes: None, platform issue.
-     - Next debug checklist: Outside of programmatic control.
-     - Why fix this issue and what will be achieved with the fix? Code persistence for user.
-     - Status: BLOCKED (On user / platform support)
-     - Is recurring issue? N
-     - Should Test frontend/backend/both after fix? NA
-
 **In progress Task List**:
-  *None. All active tasks were completed.*
+ *None.*
 
 **Upcoming and Future Tasks**
-  - P0: Implement Data Access Guard () - Enforce the / permissions defined in  at the tool call level.
-  - P1: Refactoring Sprint A - Fix 3 (Approval Gate bypass in ).
-  - P1: Refactoring Sprint A - Fix 4 (Deduplicate notifications: Pulse/Digest/Reliability logic).
-  - P1: Address YELLOW (Pain) audit issues: Implement Rate Limiting ( or Redis), hide  from , fix memory backfill on start, enforce  on ChatRequest.
-  - P1: Execute Refactoring Sprint B (Simplification): Remove dead code (, , ), unify tool-loop in , unify memory I/O.
-  - P1: Execute Refactoring Sprint C (Deep Refactor): Split  into , unify the 3 memory systems into .
+  - P0: Implement Data Access Guard ().
+  - P1: Refactoring Sprint A (Approval Gate bypass, Deduplicate notifications).
+  - P1: Address YELLOW audit issues (Rate Limiting, hide , enforce ).
+  - P1: Refactoring Sprint B & C (Удаление мертвого кода, объединение memory hubs, разбивка ).
   - P2: Loading / Skeleton states across frontend views.
-  - P2: Pydantic-validation for the 5 remaining  endpoints (, , etc.).
 
 **Completed work in this session**
-- Memory Sprint - Fix M3:  to limit , 90-day TTL index, and  scheduler (DONE)
-- Bug Fix: DemoTour sends  causing 400 Error (Fixed in  and ) (DONE)
-- Security Fix 1: Removed  from public body payloads in  and  to prevent tenant spoofing (DONE)
-- Security Fix 2: Applied strict CORS whitelist from  in  (DONE)
-- Security Fix 3: Enforced Stripe Webhook signature verification in  (DONE)
-- Mobile UI Chat Fixes: Adjusted  to give the chat window more height on mobile, aligned the 4 quick-action buttons symmetrically, removed unnecessary text (DONE)
-- Feature: VAD (Voice Activity Detection) auto-send after 2 seconds of silence in  (DONE)
-- Persona Audit & Sprints P1/P2: Audited and completely rewrote the 8 agent deep prompts in  to expert-level (Senior/Consultant) with real frameworks, laws, benchmark data, and few-shot examples (DONE)
-- Feature: Rewrote  dynamic prompts to encompass cross-domain knowledge while preserving the 3-tier Socratic teaching method (DONE)
+- CORS whitelist дополнен доменом  для успешного деплоя (DONE)
+- Баг фикс: Анонимный онбординг исправлен (замена  на  в  для эндпоинтов ) (DONE)
+- Баг фикс: Устранена бесконечная петля (tool-loop) у HR Mentor при пустой памяти ( в ) (DONE)
+- Security/Prompt: Защита от галлюцинаций добавлена для Hermes () (DONE)
+- Security Sprint (Cross-tenant Isolation):  изолирован по  (DONE)
+- Security Sprint (Cross-tenant Isolation):  изолирован по  (с bypass для admin) (DONE)
+- Security Sprint (Cross-tenant Isolation): Модуль Mentor (, , ) изолирован, исправлен баг в  (DONE)
+- Security Sprint (Cross-tenant Isolation): Модуль Diagnostics (, , ) изолирован (DONE)
 
 **Earlier issues found/mentioned but not fixed**
-   - Issue 1: Code Review identified 8 empty catch blocks in frontend (mostly  cleanup).
-     - Debug checklist: Locate empty catch blocks, add proper error handling/logging.
-     - Why to solve this issue and what will be achieved with this? Improve codebase hygiene and error visibility.
+   - Issue 1: 8 пустых блоков  на фронтенде (в основном очистка ).
+     - Debug checklist: Найти пустые блоки, добавить логирование.
+     - Why to solve this issue and what will be achieved with this? Улучшение гигиены кода.
      - Should Test frontend/backend/both after fix: Frontend
      - Is recurring issue? N
 
 **Known issue recurrence from previous fork**
-  - Issue recurrence in previous fork: ~45 pre-existing unit tests failing due to  auth changes.
-  - Recurrence count: 2
+  - Issue recurrence in previous fork: Падение ~45 unit тестов. Теперь их может быть больше из-за добавления обязательного  во многие функции агентов.
+  - Recurrence count: 3
   - Status: NOT STARTED
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-FastAPI, LangGraph Orchestration, VAD (Voice Activity Detection), Multi-tenancy Data Isolation, Stripe Webhooks, Socratic Prompt Engineering, APScheduler, JWT Authentication, React.
+FastAPI, Multi-tenancy Data Isolation (жесткая фильтрация по  на уровне БД), LangGraph Orchestration, Strict Control Mode (взаимодействие с пользователем только через diff и команды).
 
 **key DB schema**
-  - : {session_id, user_id, company_id, messages: [{role, content}]} (TTL index added)
-  - : {user_id, company_id, ai_grade, skill_points, patterns_used}
+  - :  (Индекс  уникальный, upsert обновляет )
+  - , , , : Все коллекции теперь строго требуют и фильтруются по .
 
 **changes in tech stack**
-  - None 
+  - None
 
 **All files of reference**
-  -  (M3:  added)
-  -  (M3:  TTL index)
-  -  &  (M3: Cleanup job)
-  -  (Security fixes for public routes & CORS)
-  -  (Stripe signature verification)
-  -  (Mobile UI chat sizing, 4 symmetrical buttons, VAD integration)
-  -  (Completely revamped 8 agent prompts)
-  -  (Completely revamped Socratic mentor prompts)
-  -  (Created memo)
+  -  (Обновлен CORS, добавлены  фильтры во множество роутов)
+  -  (Добавлен )
+  -  (Ограничение вызовов памяти, проброс  в fetchers)
+  -  (Обновлен промпт Hermes)
+  -  (Cross-tenant изоляция)
+  -  (Cross-tenant изоляция)
+  -  (Cross-tenant изоляция)
 
 **Areas that need refactoring**: 
--  (> 3500 lines).
--  (Over 40 tests are broken due to the  endpoint now requiring admin authentication).
+-  (> 3600 строк).
+-  (Огромное количество тестов сломано из-за внедрения  и жесткой фильтрации по ).
 
 **key api endpoints**
-  - 
-  - 
-  - 
-  - 
+  -  (Публичный доступ через )
+  -  (Строго по )
+  -  (Строго по , Admin видит всё)
+  -  (Строго по )
 
 **Critical Info for New Agent**
-- **Security Audit Context:** The previous agent performed a deep audit and identified 10 RED (Stop) issues. Only the top 3 were fixed. The remaining 7 (like cross-tenant data leaks in the Mentor/Cross-dept/Market APIs, public , and  vulnerability) MUST be prioritized.
-- **Prompt Engineering:** The agent completely rewrote  and  adding heavy expert logic, legal codes, and exact frameworks. DO NOT shorten or simplify these prompts in future updates.  details the principles used.
-- **Tenant Isolation:** Anonymous public chat is resolved via . Never trust the  passed in public request bodies.
-- **Stripe Webhook:**  must be populated in the production environment. It currently fails closed (HTTP 400) if empty, which is intentional.
+- 🚨 **РЕЖИМ СТРОГОГО КОНТРОЛЯ АКТИВЕН**: Пользователь активировал жесткий протокол. ВАМ **ЗАПРЕЩЕНО** писать код напрямую в файлы или самостоятельно запускать тесты, симулировать их выполнение, писать вступления/выводы. ВЫ ОБЯЗАНЫ выдавать ответ строго в 4 шага: ШАГ 1 (Анализ), ШАГ 2 (Diff изменений), ШАГ 3 (Команда bash для запуска), ШАГ 4 (Ожидание: фраза Жду вашего подтверждения...). Пользователь сам выполняет команды и присылает вам логи. Любое отклонение приведет к прерыванию работы. (Смотрите сообщение 157 для точного синтаксиса).
+- **Изоляция арендаторов (Multi-tenancy):** Никогда не берите  из тела запроса (body). Всегда используйте  из .
+- **Diagnostics Trade-off:** Во время изоляции  было решено оставить индекс  уникальным, но убрать  из фильтра . В результате Admin-scan затирает  в . Пользователь согласился на этот сайд-эффект.
+- **Осторожно с тестами:** Не запускайте pytest без острой необходимости — большинство тестов сейчас сломано изменениями безопасности (отсутствие  в моках). Тестируйте фичи изолированными bash/python скриптами.
 
 **documents and test reports created in this job**
-  - 
-  - 
+  -  (Обновлен)
 
 **Last 10 User Messages and any pending HUMAN messages** 
- 1. (User) Asked to run a Deep Audit of all 15 agents, grading them 1-10 on professional depth. -> COMPLETED.
- 2. (User) Agreed with the audit. Commanded Sprint P1 to upgrade the 3 weakest agents (Bookkeeper, Marketer, Client-Manager) with specific frameworks and laws. -> COMPLETED.
- 3. (User) Commanded Sprint P2 to upgrade ALL 8 agents via few-shot prompting and expert knowledge without breaking tool routing. Also requested to save principles in a memo. -> COMPLETED.
- 4. (User) Requested to upgrade  for all 3 levels (0-1, 2-3, 4-5) incorporating cross-domain expert knowledge while using Socratic methods. -> COMPLETED.
- *No pending explicit human commands. The agent finished the last prompt upgrade successfully.*
+ 1. (User) Ошибка деплоя в логах. -> Исправлено (CORS).
+ 2. (User) Ошибка на проде: Hermes не обработал ответы анкеты. -> Исправлено (анонимный доступ к ).
+ 3. (User) Провести независимый аудит всех 8 агентов жесткими вопросами. -> Проведено, выявлен баг в HR Mentor и галлюцинации у остальных.
+ 4. (User) Срочно починить HR Mentor (tool-loop) и добавить Anti-hallucination guard для Hermes. -> Выполнено.
+ 5. (User) Распространить anti-hallucination guard на остальные 6 personas. -> *Агент принял задачу, но пользователь тут же перебил ее строгим режимом*.
+ 6. (User) ⚠️ АКТИВАЦИЯ СТРОГОГО РЕЖИМА. Задача: Исправить изоляцию . -> Выполнено строго по протоколу.
+ 7. (User) Задача: Изоляция . -> Выполнено строго по протоколу (с корректировкой дат в тестах).
+ 8. (User) Задача: Изоляция данных в модуле Mentor (HR). -> Выполнено (агент дополнительно заметил проблему с  и сидами, пользователь одобрил расширенный diff).
+ 9. (User) Задача: Изоляция модуля Diagnostics. -> Выполнено (решена проблема с duplicate key).
+ 
+*Pending Human Messages*: Нет. Пользователь написал Задача закрыта. Жду следующую RED-проблему. Вы должны дождаться, какую именно RED-проблему из оставшихся (например,  или ) пользователь передаст вам в рамках режима Строгого Контроля, ИЛИ можете проявить инициативу и, соблюдая строгий формат, предложить diff для одной из оставшихся проблем (например, Issue 1 или Issue 2 из списка выше).
 
 **Project Health Check:**
-- Broken: ~45 pre-existing tests failing (requires fixing the  setup to use  for seed requests).
-- Mocked:  (permissions exist in manifest but are not enforced).
+- Broken: Backend unit тесты сломаны массово.
+- Mocked: Data Access Guard.
 
 **3rd Party Integrations** 
   - Emergent Google OAuth — uses Emergent LLM Key 
@@ -153,13 +155,13 @@ FastAPI, LangGraph Orchestration, VAD (Voice Activity Detection), Multi-tenancy 
   - Telegram Bot API — requires User API Key
 
 **Testing status**
-  - Testing agent used after significant changes: NO (Self-tested via bash scripts, curl, and frontend screenshots extensively).
+  - Testing agent used after significant changes: NO
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: 
-  - Known regressions: None (Beyond the pre-existing broken tests).
+  - Test files created: None (использовались inline python bash скрипты от пользователя)
+  - Known regressions: Unit тесты. Admin-scan затирает  в коллекции .
 
 **Credentials to test flow:**
 Check 
 
 **What agent forgot to execute**
-The agent addressed the immediate explicit requests (Prompt upgrades, Mobile UI, Fix M3). However, it generated a comprehensive 10-point RED security audit and only fixed 3 of those items. The remaining 7 critical security issues (e.g., cross-tenant leaks in Mentor APIs) were left for future sprints.</analysis>
+Агент получил команду Распространить anti-hallucination guard на остальные 6 personas в сообщении 152. Однако сразу за этим последовало сообщение 157, активирующее жесткий протокол и дающее новую задачу по Security Sprint. В результате апгрейд промптов для 6 агентов (client_manager, project_coord, bookkeeper, marketer, compliance, analyst) **не был выполнен**. Кроме того, во время аудита выяснилось, что агент Analyst вообще не имеет глубокого промпта. Обе эти задачи остались висеть.</analysis>
