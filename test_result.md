@@ -408,6 +408,18 @@ backend:
         agent: "testing"
         comment: "✅ Hermes is NOT in SKILL_ROUTED_PERSONAS (remains separate track). Hermes uses legacy path with provider='deepseek_direct'. Migration of project_coord did not affect hermes routing. This is correct behavior as hermes has separate implementation requirements."
 
+  - task: "Inter-agent delegation depth counter (recursion protection)"
+    implemented: true
+    working: true
+    file: "backend/agents/inter_agent.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Depth counter fix verified comprehensively. MAX_DELEGATION_DEPTH=3 correctly enforced. Both delegate_to_agent and ask_colleague: (1) increment depth counter inside try block, (2) reset via try/finally after success AND after exception, (3) block at depth>=3 with exact error 'Max delegation depth (3) reached'. Verified: depth resets after success (10 tests), depth resets after exception (2 tests), depth limit blocks delegation (2 tests), multiple sequential calls don't accumulate depth (5 calls), escalate_to_hermes preserves depth context correctly (3 scenarios including depth=0, depth=2, depth=3). All pytest tests passed (9/9). No edge cases or bugs found. Implementation is correct and production-ready."
+
   - task: "Skill file validation for project_coord"
     implemented: true
     working: true
@@ -459,13 +471,13 @@ frontend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.3"
-  test_sequence: 5
+  version: "1.4"
+  test_sequence: 6
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Backend-only validation of project_coord migration to nxt8_graph (Wave 3)"
+    - "Inter-agent delegation depth counter (recursion protection)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -477,3 +489,5 @@ agent_communication:
     message: "Completed comprehensive backend validation of bookkeeper, marketer, and compliance migration to nxt8_graph (Wave 2). All 12 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_bookkeeper_marketer_compliance.py covering: routing verification (all 3 personas route to nxt8_graph), response contract validation (all required fields present), tool behavior (marketer invokes suggest_next_best_action, compliance invokes mempalace_search and asks for document when empty, bookkeeper can answer without tool-loop), audit record verification (provider='nxt8_graph' for all 3), plan-gate enforcement (operations+ for all 3, correctly returns HTTP 402 for team plan), and non-regression (project_coord still uses legacy deepseek_direct). All tests passed. Backend logs confirm tool invocations working correctly. SKILL_ROUTED_PERSONAS now contains 6 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance. No issues found."
   - agent: "testing"
     message: "Completed comprehensive backend validation of project_coord migration to nxt8_graph (Wave 3). All 8 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_project_coord.py covering: routing verification (project_coord routes to nxt8_graph), response contract validation (all required fields present), tool loop execution (create_cross_department_bridge invoked for cross-dept tasks), audit record verification (provider='nxt8_graph' for all test records), plan-gate enforcement (headquarters-only, correctly blocks operations and team plans), non-regression (analyst, client_manager, bookkeeper still work), hermes separation (hermes NOT in SKILL_ROUTED_PERSONAS, uses legacy path), and skill file validation (project_coord.md valid with 9 allowed_tools). All tests passed (8/8). Backend logs confirm tool invocations working correctly. SKILL_ROUTED_PERSONAS now contains 7 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance, project_coord. No issues found."
+  - agent: "testing"
+    message: "Completed comprehensive backend validation of inter-agent delegation depth counter fix (P0 recursion protection). Verified MAX_DELEGATION_DEPTH=3 correctly enforced in both delegate_to_agent and ask_colleague. All depth counter requirements met: (1) depth increments during calls, (2) depth resets via try/finally after success, (3) depth resets via try/finally after exception, (4) depth limit blocks at >=3 with exact error message. Created two comprehensive test suites: /app/backend_test_inter_agent_depth.py (10 tests covering success/exception/limit/sequential scenarios) and /app/backend_test_escalate_depth.py (3 scenarios verifying escalate_to_hermes preserves depth context). All pytest tests passed (9/9). All custom tests passed (13/13). No edge cases or bugs found. Implementation is correct and production-ready."

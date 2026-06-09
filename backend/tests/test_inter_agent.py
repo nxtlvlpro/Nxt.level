@@ -84,6 +84,133 @@ def test_ask_colleague_rejects_self_and_hermes():
     assert r3["ok"] is False
 
 
+def test_delegate_depth_resets_after_success(monkeypatch):
+    import agents.personas as personas
+    from agents import inter_agent
+
+    async def fake_run_persona(**kwargs):
+        assert inter_agent.delegation_depth.get() == 1
+        return {
+            "content": "Delegated OK",
+            "confidence": 0.91,
+            "tokens_total": 17,
+            "tool_traces": [],
+        }
+
+    async def fake_log_dialogue(**kwargs):
+        return "dlg_depth_ok"
+
+    monkeypatch.setattr(personas, "run_persona", fake_run_persona)
+    monkeypatch.setattr(inter_agent, "_log_dialogue", fake_log_dialogue)
+
+    async def run():
+        before = inter_agent.delegation_depth.get()
+        res = await inter_agent.delegate_to_agent({
+            "from_agent": "hermes",
+            "agent_id": "analyst",
+            "task": "Проведи короткий анализ.",
+            "company_id": "test_company",
+            "user_id": "test_user",
+        })
+        after = inter_agent.delegation_depth.get()
+        return before, res, after
+
+    before, res, after = asyncio.run(run())
+    assert before == 0
+    assert res["ok"] is True
+    assert res["response"] == "Delegated OK"
+    assert after == 0
+
+
+def test_delegate_depth_resets_after_exception(monkeypatch):
+    import agents.personas as personas
+    from agents import inter_agent
+
+    async def fake_run_persona(**kwargs):
+        assert inter_agent.delegation_depth.get() == 1
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(personas, "run_persona", fake_run_persona)
+
+    async def run():
+        before = inter_agent.delegation_depth.get()
+        res = await inter_agent.delegate_to_agent({
+            "from_agent": "hermes",
+            "agent_id": "analyst",
+            "task": "Сломайся контролируемо.",
+            "company_id": "test_company",
+            "user_id": "test_user",
+        })
+        after = inter_agent.delegation_depth.get()
+        return before, res, after
+
+    before, res, after = asyncio.run(run())
+    assert before == 0
+    assert res["ok"] is False
+    assert "delegation_failed" in res["error"]
+    assert after == 0
+
+
+def test_ask_colleague_depth_resets_after_exception(monkeypatch):
+    import agents.personas as personas
+    from agents import inter_agent
+
+    async def fake_run_persona(**kwargs):
+        assert inter_agent.delegation_depth.get() == 1
+        raise RuntimeError("peer boom")
+
+    monkeypatch.setattr(personas, "run_persona", fake_run_persona)
+
+    async def run():
+        before = inter_agent.delegation_depth.get()
+        res = await inter_agent.ask_colleague({
+            "from_agent": "bookkeeper",
+            "agent_id": "analyst",
+            "question": "Что думаешь?",
+            "company_id": "test_company",
+            "user_id": "test_user",
+        })
+        after = inter_agent.delegation_depth.get()
+        return before, res, after
+
+    before, res, after = asyncio.run(run())
+    assert before == 0
+    assert res["ok"] is False
+    assert "ask_failed" in res["error"]
+    assert after == 0
+
+
+def test_depth_limit_blocks_delegate_and_ask():
+    from agents import inter_agent
+
+    async def run():
+        token = inter_agent.delegation_depth.set(inter_agent.MAX_DELEGATION_DEPTH)
+        try:
+            delegate_res = await inter_agent.delegate_to_agent({
+                "from_agent": "hermes",
+                "agent_id": "analyst",
+                "task": "test",
+                "company_id": "test_company",
+            })
+            ask_res = await inter_agent.ask_colleague({
+                "from_agent": "bookkeeper",
+                "agent_id": "analyst",
+                "question": "test",
+                "company_id": "test_company",
+            })
+            depth_inside = inter_agent.delegation_depth.get()
+            return delegate_res, ask_res, depth_inside
+        finally:
+            inter_agent.delegation_depth.reset(token)
+
+    delegate_res, ask_res, depth_inside = asyncio.run(run())
+    assert delegate_res["ok"] is False
+    assert ask_res["ok"] is False
+    assert "Max delegation depth (3) reached" == delegate_res["error"]
+    assert "Max delegation depth (3) reached" == ask_res["error"]
+    assert depth_inside == inter_agent.MAX_DELEGATION_DEPTH
+
+
 if __name__ == "__main__":
     test_hermes_tools_contains_inter_agent()
     test_subordinates_have_escalate_and_ask()
