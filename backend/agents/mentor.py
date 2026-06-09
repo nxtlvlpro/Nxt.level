@@ -88,11 +88,12 @@ def _std(values: List[float]) -> float:
 # ---------- profile management ----------
 
 
-async def upsert_employee(employee: Dict[str, Any]) -> Dict[str, Any]:
+async def upsert_employee(employee: Dict[str, Any], company_id: str) -> Dict[str, Any]:
     db = get_db()
     eid = employee.get("employee_id") or str(uuid.uuid4())
     doc = {
         "employee_id": eid,
+        "company_id": company_id,
         "name": employee.get("name", "Unnamed"),
         "department": employee.get("department", "general"),
         "level": employee.get("level", "junior"),
@@ -103,23 +104,24 @@ async def upsert_employee(employee: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at": _now(),
     }
     await db.employees.update_one(
-        {"employee_id": eid},
+        {"employee_id": eid, "company_id": company_id},
         {"$set": doc, "$setOnInsert": {"created_at": _now()}},
         upsert=True,
     )
     return doc
 
 
-async def list_employees() -> List[Dict[str, Any]]:
+async def list_employees(company_id: str) -> List[Dict[str, Any]]:
     db = get_db()
-    return await db.employees.find({}, {"_id": 0}).to_list(length=500)
+    return await db.employees.find({"company_id": company_id}, {"_id": 0}).to_list(length=500)
 
 
-async def record_performance(metrics: Dict[str, Any]) -> Dict[str, Any]:
+async def record_performance(metrics: Dict[str, Any], company_id: str) -> Dict[str, Any]:
     db = get_db()
     doc = {
         "id": str(uuid.uuid4()),
         "employee_id": metrics["employee_id"],
+        "company_id": company_id,
         "period_start": metrics.get("period_start", _now()),
         "period_end": metrics.get("period_end", _now()),
         "accuracy": float(metrics.get("accuracy", 0.0)),
@@ -135,11 +137,11 @@ async def record_performance(metrics: Dict[str, Any]) -> Dict[str, Any]:
     return doc
 
 
-async def performance_history(employee_id: str, weeks: int = 4) -> List[Dict[str, Any]]:
+async def performance_history(employee_id: str, company_id: str, weeks: int = 4) -> List[Dict[str, Any]]:
     db = get_db()
     cutoff = (datetime.now(timezone.utc) - timedelta(weeks=weeks)).isoformat()
     cursor = db.performance.find(
-        {"employee_id": employee_id, "recorded_at": {"$gte": cutoff}}, {"_id": 0}
+        {"employee_id": employee_id, "company_id": company_id, "recorded_at": {"$gte": cutoff}}, {"_id": 0}
     ).sort("period_end", -1)
     return await cursor.to_list(length=200)
 
@@ -169,12 +171,12 @@ async def _level_stats(level_id: str) -> Dict[str, Any]:
     }
 
 
-async def detect_weak_patterns(employee_id: str) -> List[Dict[str, Any]]:
+async def detect_weak_patterns(employee_id: str, company_id: str) -> List[Dict[str, Any]]:
     db = get_db()
-    emp = await db.employees.find_one({"employee_id": employee_id}, {"_id": 0})
+    emp = await db.employees.find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
     if not emp:
         return []
-    history = await performance_history(employee_id, weeks=4)
+    history = await performance_history(employee_id, company_id, weeks=4)
     if not history:
         return []
     latest = history[0]
@@ -215,6 +217,7 @@ async def detect_weak_patterns(employee_id: str) -> List[Dict[str, Any]]:
         await db.weak_patterns.insert_one({
             "id": str(uuid.uuid4()),
             "employee_id": employee_id,
+            "company_id": company_id,
             "pattern": p["pattern"],
             "details": p["details"],
             "confidence": p["confidence"],
@@ -226,10 +229,10 @@ async def detect_weak_patterns(employee_id: str) -> List[Dict[str, Any]]:
 
 
 async def generate_recommendation(
-    employee_id: str, pattern: str
+    employee_id: str, pattern: str, company_id: str
 ) -> Dict[str, Any]:
     db = get_db()
-    emp = await db.employees.find_one({"employee_id": employee_id}, {"_id": 0})
+    emp = await db.employees.find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
     level = emp["level"] if emp else "unknown"
     return {
         "employee_id": employee_id,
@@ -242,14 +245,14 @@ async def generate_recommendation(
     }
 
 
-async def employee_summary(employee_id: str) -> Dict[str, Any]:
+async def employee_summary(employee_id: str, company_id: str) -> Dict[str, Any]:
     db = get_db()
-    emp = await db.employees.find_one({"employee_id": employee_id}, {"_id": 0})
+    emp = await db.employees.find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
     if not emp:
         return {"error": "not_found"}
-    history = await performance_history(employee_id, weeks=12)
+    history = await performance_history(employee_id, company_id, weeks=12)
     patterns = await db.weak_patterns.find(
-        {"employee_id": employee_id, "resolved": False}, {"_id": 0}
+        {"employee_id": employee_id, "company_id": company_id, "resolved": False}, {"_id": 0}
     ).sort("detected_at", -1).to_list(length=20)
     return {"employee": emp, "history": history, "open_patterns": patterns}
 

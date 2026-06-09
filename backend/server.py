@@ -352,7 +352,7 @@ async def seed_demo(
          "level": "junior", "experience_months": 3, "skills": []},
     ]
     for e in employees:
-        await mentor_agent.upsert_employee(e)
+        await mentor_agent.upsert_employee(e, company_id=_admin.company_id)
 
     # performance for junior — intentionally weak to trigger patterns
     base = datetime.now(timezone.utc)
@@ -367,7 +367,7 @@ async def seed_demo(
             "error_repeat": 2,
             "tasks_completed": 30,
             "tasks_reviewed": 18,
-        })
+        }, company_id=_admin.company_id)
     # healthy performance for senior
     for i in range(4):
         await mentor_agent.record_performance({
@@ -380,7 +380,7 @@ async def seed_demo(
             "error_repeat": 0,
             "tasks_completed": 45,
             "tasks_reviewed": 2,
-        })
+        }, company_id=_admin.company_id)
 
     # demo deals + interactions
     for i, value in enumerate([2400, 600, 1800, 950]):
@@ -415,7 +415,7 @@ async def seed_demo(
         )
 
     # detect weak patterns for junior
-    await mentor_agent.detect_weak_patterns("emp_jr")
+    await mentor_agent.detect_weak_patterns("emp_jr", company_id=_admin.company_id)
 
     # generate first roi snapshot
     await roi_agent.calculate_hourly_roi(company_id=_admin.company_id)
@@ -617,29 +617,46 @@ async def reliability_assess(req: ReliabilityRequest) -> Dict[str, Any]:
 
 
 @api.post("/mentor/employees")
-async def mentor_upsert_employee(req: EmployeeRequest) -> Dict[str, Any]:
-    return await mentor_agent.upsert_employee(req.model_dump())
+async def mentor_upsert_employee(
+    req: EmployeeRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    return await mentor_agent.upsert_employee(req.model_dump(), company_id=user.company_id)
 
 
 @api.get("/mentor/employees")
-async def mentor_list_employees() -> Dict[str, Any]:
-    emps = await mentor_agent.list_employees()
+async def mentor_list_employees(
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    emps = await mentor_agent.list_employees(company_id=user.company_id)
     return {"count": len(emps), "employees": emps}
 
 
 @api.get("/mentor/employees/{employee_id}")
-async def mentor_employee_summary(employee_id: str) -> Dict[str, Any]:
-    return await mentor_agent.employee_summary(employee_id)
+async def mentor_employee_summary(
+    employee_id: str,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    summary = await mentor_agent.employee_summary(employee_id, company_id=user.company_id)
+    if "error" in summary:
+        raise HTTPException(status_code=404, detail="not_found")
+    return summary
 
 
 @api.post("/mentor/performance")
-async def mentor_record_performance(req: PerformanceRequest) -> Dict[str, Any]:
-    return await mentor_agent.record_performance(req.model_dump())
+async def mentor_record_performance(
+    req: PerformanceRequest,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    return await mentor_agent.record_performance(req.model_dump(), company_id=user.company_id)
 
 
 @api.post("/mentor/detect/{employee_id}")
-async def mentor_detect_patterns(employee_id: str) -> Dict[str, Any]:
-    patterns = await mentor_agent.detect_weak_patterns(employee_id)
+async def mentor_detect_patterns(
+    employee_id: str,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    patterns = await mentor_agent.detect_weak_patterns(employee_id, company_id=user.company_id)
     return {"employee_id": employee_id, "patterns": patterns}
 
 
@@ -653,8 +670,12 @@ async def mentor_list_patterns(
 
 
 @api.get("/mentor/recommend/{employee_id}/{pattern}")
-async def mentor_recommendation(employee_id: str, pattern: str) -> Dict[str, Any]:
-    return await mentor_agent.generate_recommendation(employee_id, pattern)
+async def mentor_recommendation(
+    employee_id: str,
+    pattern: str,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    return await mentor_agent.generate_recommendation(employee_id, pattern, company_id=user.company_id)
 
 
 # =====================================================================

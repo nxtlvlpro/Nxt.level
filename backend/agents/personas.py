@@ -349,7 +349,7 @@ def get_plan(plan_id: Optional[str]) -> Dict[str, Any]:
 
 async def _fetch_mentor_overview(company_id: str = "default") -> str:
     try:
-        emps = await mentor_agent.list_employees()
+        emps = await mentor_agent.list_employees(company_id=company_id)
         patterns = await mentor_agent.list_open_patterns(company_id=company_id, limit=20)
     except Exception as e:
         logger.warning("mentor_overview fetch failed: %s", e)
