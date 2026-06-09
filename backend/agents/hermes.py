@@ -819,9 +819,11 @@ HERMES_TOOLS: Dict[str, Any] = {
 # loops with `personas.py`).
 async def _t_award_skill_points(args: Dict[str, Any]) -> Dict[str, Any]:
     from agents import ai_mentor as _aim
-    pattern = (args.get("pattern") or "").strip() or "unknown"
-    points = int(args.get("points") or _aim.POINTS.get(pattern, 5))
     reason = (args.get("reason") or "").strip()
+    pattern = _aim.infer_pattern(args.get("pattern"), reason)
+    if not pattern:
+        return {"ok": False, "error": "pattern is required"}
+    points = int(args.get("points") or _aim.POINTS.get(pattern, 5))
     uid = (args.get("user_id") or "").strip() or "anon"
     cid = (args.get("company_id") or "").strip() or "default"
     return await _aim.award_points(uid, cid, pattern, points, reason)

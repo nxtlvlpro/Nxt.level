@@ -36,6 +36,35 @@ POINTS = {
     "solved_without_help": 20,
 }
 
+PATTERN_ALIASES: Dict[str, tuple[str, ...]] = {
+    "added_context": ("added_context", "добавил контекст", "added context", "контекст"),
+    "role_task_format": (
+        "role_task_format",
+        "role task format",
+        "роль, контекст и формат",
+        "роль контекст и формат",
+        "указал роль, контекст и формат",
+        "role, context and format",
+    ),
+    "self_used_pattern": ("self_used_pattern", "self used pattern", "сам использовал паттерн"),
+    "solved_without_help": ("solved_without_help", "solved without help", "решил без помощи"),
+}
+
+
+def infer_pattern(pattern: Optional[str], reason: str = "") -> Optional[str]:
+    explicit = (pattern or "").strip()
+    if explicit:
+        return explicit if explicit in POINTS else None
+
+    hay = (reason or "").strip().lower()
+    if not hay:
+        return None
+
+    for canonical, aliases in PATTERN_ALIASES.items():
+        if any(alias in hay for alias in aliases):
+            return canonical
+    return None
+
 
 # ---------------------------------------------------------------------
 # Grade detection (heuristic, no LLM)

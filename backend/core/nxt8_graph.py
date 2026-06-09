@@ -111,6 +111,8 @@ async def execute_node(state: AgentState) -> Dict[str, Any]:
             '{"tool":"имя_инструмента","args":{...}}\n'
             "```\n"
             "Для HR Mentor: если пользователь просит начислить очки/подтвердить прогресс, обязательно используй `award_skill_points` перед финальным ответом.\n"
+            "Для `award_skill_points` всегда передавай полный JSON: "
+            '{"tool":"award_skill_points","args":{"pattern":"role_task_format","points":10,"reason":"..."}}\n'
             "После получения результата инструмента дай короткий финальный ответ обычным текстом."
         )
 
