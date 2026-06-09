@@ -184,6 +184,7 @@ export const api = {
   hermesHealth: () => http.get("/hermes/health").then((r) => r.data),
   hermesChat: (payload) =>
     http.post("/hermes/chat", payload).then((r) => r.data),
+  hermesSelfAudit: () => http.post("/hermes/self-audit/run", {}).then((r) => r.data),
   hermesJobsList: () => http.get("/hermes/jobs").then((r) => r.data),
   hermesJobCreate: (payload) =>
     http.post("/hermes/jobs", payload).then((r) => r.data),
