@@ -1,7 +1,32 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.6-p0-tenant-isolation-layer
+**Current version:** v1.18.7-p0-delegation-depth-guard
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.7 (2026-06-09)
+
+**P0 recursion safety for inter-agent delegation completed.** Закрыт риск
+бесконечных циклов делегирования между агентами (`Hermes -> Analyst ->
+Bookkeeper -> Hermes` и подобные цепочки).
+
+- `backend/agents/inter_agent.py`
+  - подтверждён и зафиксирован depth guard на базе `contextvars`
+  - лимит `MAX_DELEGATION_DEPTH = 3`
+  - `delegate_to_agent(...)` гарантированно сбрасывает `delegation_depth`
+    через `try/finally`
+  - `ask_colleague(...)` гарантированно сбрасывает `delegation_depth`
+    через `try/finally`
+  - при достижении лимита возвращается controlled error без падения процесса:
+    `Max delegation depth (3) reached`
+- `backend/tests/test_inter_agent.py`
+  - добавлены регрессионные тесты на reset после success
+  - добавлены регрессионные тесты на reset после exception
+  - добавлены тесты на блокировку при достижении depth limit
+
+**Validated**
+- `pytest -q /app/backend/tests/test_inter_agent.py` → **9/9 PASS**
+- ручной smoke depth-limit → `{'ok': False, 'error': 'Max delegation depth (3) reached'}`
+- независимая backend-валидация → **22/22 PASS**
 
 ## What's new — v1.18.6 (2026-06-09)
 

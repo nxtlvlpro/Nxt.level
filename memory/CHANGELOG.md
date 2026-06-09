@@ -1,5 +1,30 @@
 # NXT8 — Release Notes
 
+## v1.18.7-p0-delegation-depth-guard — 2026-06-09
+
+**Status:** ✅ P0-защита от циклической межагентной рекурсии закрыта.
+
+### Changed
+- **`backend/agents/inter_agent.py`**
+  - подтверждён depth counter на `contextvars`
+  - лимит зафиксирован как `MAX_DELEGATION_DEPTH = 3`
+  - `delegate_to_agent(...)` и `ask_colleague(...)` гарантированно сбрасывают
+    глубину через `try/finally`
+
+### Added
+- **`backend/tests/test_inter_agent.py`**
+  - тест на reset глубины после success
+  - тест на reset глубины после exception
+  - тест на отказ при достижении лимита глубины
+
+### Validated
+- `pytest -q /app/backend/tests/test_inter_agent.py` → **9/9 PASS**
+- manual depth smoke → при глубине `3` возвращается
+  `Max delegation depth (3) reached`, после reset глубина снова `0`
+- независимая backend-валидация → **22/22 PASS**
+
+---
+
 ## v1.18.6-p0-tenant-isolation-layer — 2026-06-09
 
 **Status:** ✅ Критическая P0-изоляция тенантов закрыта на уровне инфраструктуры.
