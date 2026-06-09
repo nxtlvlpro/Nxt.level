@@ -2,14 +2,128 @@
 
 from __future__ import annotations
 
+import json
+import uuid
+from datetime import datetime, timezone
+
 from agents.legacy import personas_legacy as _legacy
+from agents import ai_mentor as _aim
+from core.db import get_db
+from core.nxt8_graph import nxt8_graph
 
 PERSONAS = _legacy.PERSONAS
 PLANS = _legacy.PLANS
 MAX_ITER = _legacy.MAX_ITER
 get_plan = _legacy.get_plan
 list_personas = _legacy.list_personas
-run_persona = _legacy.run_persona
+
+
+async def run_persona(
+    persona_id: str,
+    message: str,
+    company_id: str = "default",
+    user_id: str = "anonymous",
+    session_id: str | None = None,
+    plan_id: str | None = None,
+):
+    if persona_id != "hr_mentor":
+        return await _legacy.run_persona(
+            persona_id=persona_id,
+            message=message,
+            company_id=company_id,
+            user_id=user_id,
+            session_id=session_id,
+            plan_id=plan_id,
+        )
+
+    if persona_id not in PERSONAS:
+        return {"success": False, "error": f"unknown persona: {persona_id}"}
+
+    plan = get_plan(plan_id)
+    if persona_id not in plan["personas"]:
+        return {
+            "success": False,
+            "error": f"persona '{persona_id}' недоступна на тарифе '{plan['id']}'",
+            "current_plan": plan["id"],
+            "required_plan": _legacy._min_plan_for(persona_id),
+        }
+
+    sid = session_id or f"persona_{persona_id}_{uuid.uuid4().hex[:10]}"
+    skill_block = await _aim.build_user_skill_block(user_id or "anon", company_id or "default")
+    initial_messages = []
+    if skill_block:
+        initial_messages.append({"role": "system", "content": skill_block})
+    initial_messages.append({"role": "user", "content": message})
+
+    config = {"configurable": {"thread_id": sid}}
+    result = await nxt8_graph.ainvoke(
+        {
+            "messages": initial_messages,
+            "skill_id": "hr_mentor",
+            "company_id": company_id,
+            "user_id": user_id,
+            "session_id": sid,
+        },
+        config,
+    )
+
+    full_messages = result.get("messages") or []
+    tool_traces = []
+    for item in full_messages:
+        if item.get("role") != "tool":
+            continue
+        tool_result = {}
+        try:
+            tool_result = json.loads(item.get("content") or "{}")
+        except json.JSONDecodeError:
+            tool_result = {"raw": item.get("content")}
+        tool_traces.append(
+            {
+                "name": item.get("name"),
+                "args": {},
+                "result": tool_result,
+            }
+        )
+
+    assistant_messages = [m for m in full_messages if m.get("role") == "assistant"]
+    last_content = assistant_messages[-1].get("content", "") if assistant_messages else ""
+
+    try:
+        await get_db().persona_requests.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "persona_id": persona_id,
+                "company_id": company_id,
+                "user_id": user_id,
+                "session_id": sid,
+                "plan_id": plan["id"],
+                "message": message,
+                "response": last_content,
+                "tool_traces": tool_traces,
+                "iterations": result.get("iterations", 1),
+                "confidence": result.get("confidence", 0.7),
+                "provider": "nxt8_graph",
+                "mock": bool(result.get("mock", False)),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "persona_id": persona_id,
+        "persona_name": PERSONAS[persona_id]["name"],
+        "session_id": sid,
+        "content": last_content,
+        "tool_traces": tool_traces,
+        "iterations": result.get("iterations", 1),
+        "confidence": round(float(result.get("confidence", 0.7)), 4),
+        "provider": "nxt8_graph",
+        "mock": bool(result.get("mock", False)),
+        "plan_id": plan["id"],
+        "tokens_total": int(result.get("tokens_total", 0)),
+    }
 
 
 def __getattr__(name: str):
