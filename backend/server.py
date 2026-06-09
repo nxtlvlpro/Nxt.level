@@ -339,9 +339,10 @@ async def seed_demo(
       • header `X-Admin-Token: $SEED_ADMIN_TOKEN`, or
       • an authenticated session whose email is in `NXT8_ADMIN_EMAILS`.
     """
+    DEMO_COMPANY_ID = "demo"
     mem = memory_agent.get_memory()
-    memories = TenantAwareCRUD(get_db().memories, company_id=_admin.company_id, force_admin=True)
-    interactions = TenantAwareCRUD(get_db().interactions, company_id=_admin.company_id, force_admin=True)
+    memories = TenantAwareCRUD(get_db().memories, company_id=DEMO_COMPANY_ID, force_admin=True)
+    interactions = TenantAwareCRUD(get_db().interactions, company_id=DEMO_COMPANY_ID, force_admin=True)
 
     # idempotent
     existing = await memories.count_documents({})
@@ -364,7 +365,7 @@ async def seed_demo(
     ]
     for content, meta in corporate_docs:
         await mem.store_memory(content, memory_type="corporate", metadata=meta,
-                               company_id=_admin.company_id)
+                               company_id=DEMO_COMPANY_ID)
 
     employees = [
         {"employee_id": "emp_alex", "name": "Alex Morgan", "department": "sales",
@@ -377,7 +378,7 @@ async def seed_demo(
          "level": "junior", "experience_months": 3, "skills": []},
     ]
     for e in employees:
-        await mentor_agent.upsert_employee(e, company_id=_admin.company_id)
+        await mentor_agent.upsert_employee(e, company_id=DEMO_COMPANY_ID)
 
     # performance for junior — intentionally weak to trigger patterns
     base = datetime.now(timezone.utc)
@@ -392,7 +393,7 @@ async def seed_demo(
             "error_repeat": 2,
             "tasks_completed": 30,
             "tasks_reviewed": 18,
-        }, company_id=_admin.company_id)
+        }, company_id=DEMO_COMPANY_ID)
     # healthy performance for senior
     for i in range(4):
         await mentor_agent.record_performance({
@@ -405,7 +406,7 @@ async def seed_demo(
             "error_repeat": 0,
             "tasks_completed": 45,
             "tasks_reviewed": 2,
-        }, company_id=_admin.company_id)
+        }, company_id=DEMO_COMPANY_ID)
 
     # demo deals + interactions
     for i, value in enumerate([2400, 600, 1800, 950]):
@@ -419,31 +420,31 @@ async def seed_demo(
                 "interaction_type": "touch",
                 "interaction_time": (base - timedelta(days=day + 1, hours=i)).isoformat(),
                 "attributed_revenue": None,
-                "company_id": _admin.company_id,
+                "company_id": DEMO_COMPANY_ID,
             })
         await roi_agent.record_deal(
             deal_id=deal_id,
             value_usd=float(value),
             team="sales",
             closed_at=(base - timedelta(hours=i)).isoformat(),
-            company_id=_admin.company_id,
+            company_id=DEMO_COMPANY_ID,
         )
 
     # synthetic costs over last hour to make ROI non-zero
     for _ in range(40):
         await roi_agent.record_api_cost(
-            "orchestrator", tokens=15000, company_id=_admin.company_id
+            "orchestrator", tokens=15000, company_id=DEMO_COMPANY_ID
         )
     for _ in range(8):
         await roi_agent.record_escalation_cost(
-            "support", minutes=5.0, company_id=_admin.company_id
+            "support", minutes=5.0, company_id=DEMO_COMPANY_ID
         )
 
     # detect weak patterns for junior
-    await mentor_agent.detect_weak_patterns("emp_jr", company_id=_admin.company_id)
+    await mentor_agent.detect_weak_patterns("emp_jr", company_id=DEMO_COMPANY_ID)
 
     # generate first roi snapshot
-    await roi_agent.calculate_hourly_roi(company_id=_admin.company_id)
+    await roi_agent.calculate_hourly_roi(company_id=DEMO_COMPANY_ID)
 
     # seed market signals + first digest
     try:
@@ -871,8 +872,25 @@ async def roi_record_interaction(
 
 
 @api.get("/alerts")
-async def list_alerts(limit: int = 20) -> Dict[str, Any]:
-    items = await orchestrator_agent.list_alerts(limit=limit)
+async def list_alerts(
+    limit: int = 20,
+    user: Optional["_auth_mod.AuthedUser"] = Depends(_auth_mod.optional_user),
+) -> Dict[str, Any]:
+    if user and user.is_admin:
+        company_id = None
+        force_admin = True
+    elif user:
+        company_id = user.company_id
+        force_admin = False
+    else:
+        company_id = "demo"
+        force_admin = False
+
+    items = await TenantAwareCRUD(
+        get_db().alerts,
+        company_id=company_id,
+        force_admin=force_admin,
+    ).find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(length=limit)
     return {"count": len(items), "alerts": items}
 
 
