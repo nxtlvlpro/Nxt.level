@@ -1,5 +1,28 @@
 # NXT8 — Release Notes
 
+## v1.18.10-hermes-self-audit-ui — 2026-06-09
+
+**Status:** ✅ Hermes Self-Audit выведен в Ops UI как операторский инструмент.
+
+### Added
+- **`frontend/src/lib/api.js`**
+  - новый метод `hermesSelfAudit()`
+- **`frontend/src/components/views/ops/HermesPanel.jsx`**
+  - кнопка `Run Audit`
+  - loading-state `Scanning agents...`
+  - health cards + benchmark panel
+  - кнопка `View in Telegram` (disabled by default, если Telegram не подключён)
+  - audit-specific `data-testid`
+
+### Validated
+- ESLint frontend → **PASS**
+- Playwright smoke screenshot → panel рендерится, audit-card видна
+- Независимая frontend-валидация → **PASS**
+  - API call уходит корректно
+  - `401/not_authenticated` классифицирован как session/auth test issue, не как UI regression
+
+---
+
 ## v1.18.9-hermes-self-audit-endpoint — 2026-06-09
 
 **Status:** ✅ Добавлен ручной API-триггер для Hermes self-audit.
