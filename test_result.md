@@ -101,3 +101,146 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Backend-only validation of distributed lease-lock for scheduler in NXT8 to prevent duplicate job executions across multiple backend instances"
+
+backend:
+  - task: "Distributed lock acquisition mechanism"
+    implemented: true
+    working: true
+    file: "backend/core/scheduler_lock.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ try_acquire() correctly acquires lock for new job_id, blocks second owner while lease active, allows same owner to refresh lock, and safely handles DuplicateKeyError on concurrent upserts. Tested with 10 concurrent acquisitions - exactly 1 succeeded."
+
+  - task: "Lease expiration and takeover"
+    implemented: true
+    working: true
+    file: "backend/core/scheduler_lock.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ try_acquire() correctly allows new owner to take over expired locks. Verified that locked_until is updated and ownership transfers properly."
+
+  - task: "Lock release mechanism"
+    implemented: true
+    working: true
+    file: "backend/core/scheduler_lock.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ release() correctly deletes lock only when owner_id matches. Wrong owner cannot release lock. Handles empty parameters gracefully."
+
+  - task: "Exclusive job execution wrapper"
+    implemented: true
+    working: true
+    file: "backend/core/scheduler_lock.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ run_exclusive() executes runner only for lock winner, returns None for losers. Tested with 5 concurrent calls - only 1 executed. Lock is released even when runner raises exception."
+
+  - task: "Race condition handling"
+    implemented: true
+    working: true
+    file: "backend/core/scheduler_lock.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ DuplicateKeyError is caught and handled safely during concurrent upserts. Tested with 10 concurrent try_acquire calls - exactly 1 succeeded, 9 failed gracefully."
+
+  - task: "Scheduler job registration with locks"
+    implemented: true
+    working: true
+    file: "backend/core/scheduler.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ pulse_tick registered via _run_pulse_for_all_locked wrapper. ✅ daily_digest registered via _run_digest_for_all_locked wrapper. ✅ session_cleanup registered via _run_session_cleanup_locked wrapper. ✅ _refresh_tenants_cache (discover_tenants job) is NOT wrapped with global lock (correct per requirements)."
+
+  - task: "Database index creation"
+    implemented: true
+    working: true
+    file: "backend/core/db.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ scheduler_locks.locked_until index created correctly. Index details: {'v': 2, 'key': [('locked_until', 1)]}"
+
+  - task: "Edge cases and error handling"
+    implemented: true
+    working: true
+    file: "backend/core/scheduler_lock.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Empty job_id raises ValueError. ✅ Empty owner_id raises ValueError. ✅ Invalid lease_seconds (<=0) raises ValueError. ✅ release() with empty parameters handled gracefully. ✅ get_owner_id() returns valid format: hostname:pid:uuid"
+
+  - task: "Existing unit tests"
+    implemented: true
+    working: true
+    file: "backend/tests/test_scheduler_lock.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All 6 tests in test_scheduler_lock.py passed: test_try_acquire_succeeds_for_new_lock, test_try_acquire_blocks_second_owner_while_lease_active, test_try_acquire_allows_takeover_after_expiry, test_release_deletes_only_matching_owner, test_run_exclusive_skips_runner_when_lock_is_busy, test_run_exclusive_executes_only_once_under_race"
+
+  - task: "Session cleanup job registration"
+    implemented: true
+    working: true
+    file: "backend/tests/test_memory_m3_session_limits.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ test_scheduler_session_cleanup_job_registered passed. Session cleanup job is properly registered in scheduler."
+
+frontend:
+  # No frontend changes for this backend-only feature
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "All backend tasks completed and validated"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Completed comprehensive backend validation of distributed scheduler lock system. All 8 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test.py covering: lock mechanics, lease expiration, race conditions (5 and 10 concurrent calls), exception handling, scheduler job registration, index creation, DuplicateKeyError handling, and edge cases. All existing unit tests (6 in test_scheduler_lock.py + 1 in test_memory_m3_session_limits.py) pass. Backend logs show scheduler properly initialized with all lock-wrapped jobs. No issues found."

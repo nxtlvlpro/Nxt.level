@@ -30,6 +30,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from core.db import get_db
+from core.scheduler_lock import run_exclusive
 
 logger = logging.getLogger("nxt8.scheduler")
 
@@ -53,6 +54,9 @@ DIGEST_HOUR = _int("DIGEST_HOUR", 9)
 SESSION_CLEANUP_HOUR = _int("SESSION_CLEANUP_HOUR", 3)
 TENANT_INACTIVE_DAYS = _int("TENANT_INACTIVE_DAYS", 7)
 DEFAULT_TZ = (os.environ.get("DIGEST_DEFAULT_TIMEZONE") or "Europe/Moscow").strip()
+PULSE_LOCK_LEASE_SECONDS = 30 * 60
+DIGEST_LOCK_LEASE_SECONDS = 2 * 60 * 60
+SESSION_CLEANUP_LOCK_LEASE_SECONDS = 30 * 60
 
 
 _scheduler: Optional[AsyncIOScheduler] = None
@@ -192,6 +196,22 @@ async def _run_session_cleanup() -> None:
     logger.info("session_cleanup done: deleted=%d", deleted)
 
 
+async def _run_pulse_for_all_locked() -> None:
+    await run_exclusive("pulse_tick", PULSE_LOCK_LEASE_SECONDS, _run_pulse_for_all)
+
+
+async def _run_digest_for_all_locked() -> None:
+    await run_exclusive("daily_digest", DIGEST_LOCK_LEASE_SECONDS, _run_digest_for_all)
+
+
+async def _run_session_cleanup_locked() -> None:
+    await run_exclusive(
+        "session_cleanup",
+        SESSION_CLEANUP_LOCK_LEASE_SECONDS,
+        _run_session_cleanup,
+    )
+
+
 # ---------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------
@@ -220,7 +240,7 @@ def start() -> None:
 
     if PULSE_ENABLED:
         sch.add_job(
-            _run_pulse_for_all,
+            _run_pulse_for_all_locked,
             IntervalTrigger(minutes=max(1, PULSE_INTERVAL_MINUTES)),
             id="pulse_tick",
             name=f"Pulse every {PULSE_INTERVAL_MINUTES}m",
@@ -231,7 +251,7 @@ def start() -> None:
 
     if DIGEST_ENABLED:
         sch.add_job(
-            _run_digest_for_all,
+            _run_digest_for_all_locked,
             CronTrigger(hour=DIGEST_HOUR, minute=0, timezone=DEFAULT_TZ),
             id="daily_digest",
             name=f"Daily digest @ {DIGEST_HOUR}:00 {DEFAULT_TZ}",
@@ -242,7 +262,7 @@ def start() -> None:
 
     if SESSION_CLEANUP_ENABLED:
         sch.add_job(
-            _run_session_cleanup,
+            _run_session_cleanup_locked,
             CronTrigger(hour=SESSION_CLEANUP_HOUR, minute=0, timezone=DEFAULT_TZ),
             id="session_cleanup",
             name=f"Session cleanup @ {SESSION_CLEANUP_HOUR}:00 {DEFAULT_TZ}",

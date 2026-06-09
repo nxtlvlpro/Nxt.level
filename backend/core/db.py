@@ -101,6 +101,8 @@ async def ensure_indexes() -> None:
     await db.pending_approvals.create_index([("status", 1), ("created_at", -1)])
     await db.pending_approvals.create_index([("agent_id", 1), ("created_at", -1)])
     await db.pending_approvals.create_index([("company_id", 1), ("status", 1)])
+    # Scheduler distributed lease-locks for multi-instance safe cron execution.
+    await db.scheduler_locks.create_index([("locked_until", 1)])
 
 
 def close_db() -> None:
