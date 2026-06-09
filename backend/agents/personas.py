@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from agents.legacy import personas_legacy as _legacy
 from agents import ai_mentor as _aim
 from core.company_context import get_settings as get_company_settings, render_company_block
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 from core.nxt8_graph import nxt8_graph
 
 PERSONAS = _legacy.PERSONAS
@@ -119,7 +119,7 @@ async def _run_skill_persona(
     last_content = assistant_messages[-1].get("content", "") if assistant_messages else ""
 
     try:
-        await get_db().persona_requests.insert_one(
+        await TenantAwareCRUD(get_db().persona_requests, company_id=company_id).insert_one(
             {
                 "id": str(uuid.uuid4()),
                 "persona_id": persona_id,

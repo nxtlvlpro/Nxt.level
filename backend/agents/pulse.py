@@ -19,7 +19,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.pulse")
 
@@ -41,28 +41,31 @@ def _iso(dt: datetime) -> str:
 
 async def compute_kpi(company_id: str) -> Dict[str, Any]:
     db = get_db()
+    interactions = TenantAwareCRUD(db.interactions, company_id=company_id)
+    deals = TenantAwareCRUD(db.deals, company_id=company_id)
+    approvals = TenantAwareCRUD(db.pending_approvals, company_id=company_id)
     now = _now()
     day_ago = now - timedelta(hours=24)
     hour_ago = now - timedelta(hours=1)
 
     try:
-        interactions_24h = await db.interactions.count_documents(
+        interactions_24h = await interactions.count_documents(
             {"company_id": company_id, "timestamp": {"$gte": _iso(day_ago)}}
         )
     except Exception:  # noqa: BLE001
         interactions_24h = 0
     try:
-        deals_24h = await db.deals.count_documents(
+        deals_24h = await deals.count_documents(
             {"company_id": company_id, "closed_at": {"$gte": _iso(day_ago)}}
         )
-        new_deals_last_hour = await db.deals.count_documents(
+        new_deals_last_hour = await deals.count_documents(
             {"company_id": company_id, "closed_at": {"$gte": _iso(hour_ago)}}
         )
     except Exception:  # noqa: BLE001
         deals_24h = 0
         new_deals_last_hour = 0
     try:
-        roi_usd_24h_cursor = db.deals.aggregate([
+        roi_usd_24h_cursor = deals.aggregate([
             {"$match": {"company_id": company_id, "closed_at": {"$gte": _iso(day_ago)}}},
             {"$group": {"_id": None, "total": {"$sum": "$value_usd"}}},
         ])
@@ -71,10 +74,10 @@ async def compute_kpi(company_id: str) -> Dict[str, Any]:
     except Exception:  # noqa: BLE001
         roi_usd_24h = 0.0
     try:
-        pending_count = await db.pending_approvals.count_documents(
+        pending_count = await approvals.count_documents(
             {"company_id": company_id, "status": "pending"}
         )
-        stale_pending = await db.pending_approvals.count_documents({
+        stale_pending = await approvals.count_documents({
             "company_id": company_id, "status": "pending",
             "created_at": {"$lte": _iso(now - timedelta(hours=2))},
         })
@@ -93,10 +96,10 @@ async def compute_kpi(company_id: str) -> Dict[str, Any]:
 
 
 async def _save_snapshot(company_id: str, kpi: Dict[str, Any]) -> str:
-    db = get_db()
+    snapshots = TenantAwareCRUD(get_db().pulse_snapshots, company_id=company_id)
     import uuid
     sid = f"snap_{uuid.uuid4().hex[:16]}"
-    await db.pulse_snapshots.insert_one({
+    await snapshots.insert_one({
         "snapshot_id": sid,
         "company_id": company_id,
         "taken_at": _iso(_now()),
@@ -106,10 +109,9 @@ async def _save_snapshot(company_id: str, kpi: Dict[str, Any]) -> str:
 
 
 async def _previous_snapshot(company_id: str) -> Optional[Dict[str, Any]]:
-    db = get_db()
+    snapshots = TenantAwareCRUD(get_db().pulse_snapshots, company_id=company_id)
     docs = await (
-        db.pulse_snapshots
-        .find({"company_id": company_id}, {"_id": 0})
+        snapshots.find({"company_id": company_id}, {"_id": 0})
         .sort("taken_at", -1)
         .limit(2)
         .to_list(length=2)
@@ -119,10 +121,10 @@ async def _previous_snapshot(company_id: str) -> Optional[Dict[str, Any]]:
 
 
 async def _nudges_today(company_id: str) -> int:
-    db = get_db()
+    approvals = TenantAwareCRUD(get_db().pending_approvals, company_id=company_id)
     today_start = _now().replace(hour=0, minute=0, second=0, microsecond=0)
     try:
-        return await db.pending_approvals.count_documents({
+        return await approvals.count_documents({
             "company_id": company_id,
             "action": "nudge_user",
             "created_at": {"$gte": _iso(today_start)},

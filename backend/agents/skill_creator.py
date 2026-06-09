@@ -23,7 +23,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 from core.deepseek import get_deepseek
 
 logger = logging.getLogger("nxt8.skill_creator")
@@ -53,7 +53,9 @@ def _signature(text: str, top: int = 4) -> List[str]:
 async def scan_and_register() -> Dict[str, Any]:
     """Look at recent requests, find recurring (intent, signature) patterns, register skills."""
     db = get_db()
-    docs = await db.requests.find(
+    requests = TenantAwareCRUD(db.requests)
+    skills = TenantAwareCRUD(db.skills)
+    docs = await requests.find(
         {}, {"_id": 0, "intent": 1, "message": 1, "confidence": 1, "should_escalate": 1}
     ).sort("created_at", -1).limit(400).to_list(length=400)
 
@@ -80,10 +82,10 @@ async def scan_and_register() -> Dict[str, Any]:
         name = f"{intent}:{'+'.join(sig_terms[:3])}"
 
         # idempotent: skip if same intent+signature already exists
-        existing = await db.skills.find_one({"intent": intent, "signature_terms": sig_terms},
+        existing = await skills.find_one({"intent": intent, "signature_terms": sig_terms},
                                             {"_id": 0})
         if existing:
-            await db.skills.update_one(
+            await skills.update_one(
                 {"id": existing["id"]},
                 {"$set": {
                     "hit_count": len(items),
@@ -112,7 +114,7 @@ async def scan_and_register() -> Dict[str, Any]:
             "created_at": _now(),
             "updated_at": _now(),
         }
-        await db.skills.insert_one(skill)
+        await skills.insert_one(skill)
         # don't leak _id
         skill_clean = {k: v for k, v in skill.items() if k != "_id"}
         created.append(skill_clean)
@@ -121,13 +123,12 @@ async def scan_and_register() -> Dict[str, Any]:
 
 
 async def list_skills(only_enabled: bool = False, limit: int = 100) -> List[Dict[str, Any]]:
-    db = get_db()
     q = {"enabled": True} if only_enabled else {}
-    return await db.skills.find(q, {"_id": 0}).sort("updated_at", -1).to_list(length=limit)
+    return await TenantAwareCRUD(get_db().skills).find(q, {"_id": 0}).sort("updated_at", -1).to_list(length=limit)
 
 
 async def create_skill(payload: Dict[str, Any]) -> Dict[str, Any]:
-    db = get_db()
+    skills = TenantAwareCRUD(get_db().skills)
     skill = {
         "id": str(uuid.uuid4()),
         "name": payload.get("name") or f"manual:{uuid.uuid4().hex[:6]}",
@@ -142,13 +143,12 @@ async def create_skill(payload: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": _now(),
         "updated_at": _now(),
     }
-    await db.skills.insert_one(skill)
+    await skills.insert_one(skill)
     return {k: v for k, v in skill.items() if k != "_id"}
 
 
 async def toggle_skill(skill_id: str, enabled: bool) -> Optional[Dict[str, Any]]:
-    db = get_db()
-    res = await db.skills.find_one_and_update(
+    res = await TenantAwareCRUD(get_db().skills).find_one_and_update(
         {"id": skill_id},
         {"$set": {"enabled": enabled, "updated_at": _now()}},
         return_document=True,

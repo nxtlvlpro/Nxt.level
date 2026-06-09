@@ -31,7 +31,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.approval_gate")
 
@@ -76,7 +76,7 @@ async def request_approval(
         "result": None,
     }
     try:
-        await get_db().pending_approvals.insert_one(doc)
+        await TenantAwareCRUD(get_db().pending_approvals, company_id=company_id).insert_one(doc)
         logger.info(
             "approval requested: agent=%s action=%s id=%s", agent_id, action, pid
         )
@@ -132,17 +132,16 @@ async def list_pending(
         q["company_id"] = company_id
     if agent_id:
         q["agent_id"] = agent_id
-    cursor = (
-        get_db()
-        .pending_approvals.find(q, {"_id": 0})
-        .sort("created_at", -1)
-        .limit(int(limit))
-    )
+    cursor = TenantAwareCRUD(
+        get_db().pending_approvals,
+        company_id=company_id,
+        force_admin=company_id is None,
+    ).find(q, {"_id": 0}).sort("created_at", -1).limit(int(limit))
     return await cursor.to_list(length=int(limit))
 
 
-async def get_pending(pending_id: str) -> Optional[Dict[str, Any]]:
-    return await get_db().pending_approvals.find_one(
+async def get_pending(pending_id: str, company_id: Optional[str] = None, *, force_admin: bool = False) -> Optional[Dict[str, Any]]:
+    return await TenantAwareCRUD(get_db().pending_approvals, company_id=company_id, force_admin=force_admin).find_one(
         {"id": pending_id}, {"_id": 0}
     )
 
@@ -158,7 +157,7 @@ async def approve(
 
     `executor` is an async callable: `executor(action: str, args: dict) -> dict`.
     """
-    rec = await get_pending(pending_id)
+    rec = await get_pending(pending_id, force_admin=True)
     if not rec:
         return {"ok": False, "error": "pending not found"}
     if rec.get("status") != STATUS_PENDING:
@@ -168,7 +167,7 @@ async def approve(
             "current_status": rec.get("status"),
         }
 
-    await get_db().pending_approvals.update_one(
+    await TenantAwareCRUD(get_db().pending_approvals, company_id=rec.get("company_id")).update_one(
         {"id": pending_id},
         {
             "$set": {
@@ -190,7 +189,7 @@ async def approve(
 
     try:
         exec_result = await executor(rec["action"], dict(rec.get("args") or {}))
-        await get_db().pending_approvals.update_one(
+        await TenantAwareCRUD(get_db().pending_approvals, company_id=rec.get("company_id")).update_one(
             {"id": pending_id},
             {
                 "$set": {
@@ -209,7 +208,7 @@ async def approve(
         }
     except Exception as e:  # noqa: BLE001
         logger.exception("approval execute failed: %s", e)
-        await get_db().pending_approvals.update_one(
+        await TenantAwareCRUD(get_db().pending_approvals, company_id=rec.get("company_id")).update_one(
             {"id": pending_id},
             {
                 "$set": {
@@ -233,7 +232,7 @@ async def reject(
     decided_by: str = "hermes",
     reason: Optional[str] = None,
 ) -> Dict[str, Any]:
-    rec = await get_pending(pending_id)
+    rec = await get_pending(pending_id, force_admin=True)
     if not rec:
         return {"ok": False, "error": "pending not found"}
     if rec.get("status") != STATUS_PENDING:
@@ -242,7 +241,7 @@ async def reject(
             "error": f"approval already in status '{rec.get('status')}'",
             "current_status": rec.get("status"),
         }
-    await get_db().pending_approvals.update_one(
+    await TenantAwareCRUD(get_db().pending_approvals, company_id=rec.get("company_id")).update_one(
         {"id": pending_id},
         {
             "$set": {
@@ -258,7 +257,7 @@ async def reject(
 
 async def stats(window_hours: int = 24) -> Dict[str, Any]:
     """Lightweight counters for an Ops dashboard widget."""
-    db = get_db()
+    crud = TenantAwareCRUD(get_db().pending_approvals)
     cutoff_iso = (
         datetime.now(timezone.utc) - timedelta(hours=window_hours)
     ).isoformat()
@@ -267,7 +266,7 @@ async def stats(window_hours: int = 24) -> Dict[str, Any]:
         {"$group": {"_id": "$status", "count": {"$sum": 1}}},
     ]
     by_status: Dict[str, int] = {}
-    async for row in db.pending_approvals.aggregate(pipeline):
+    async for row in crud.aggregate(pipeline):
         by_status[row["_id"]] = int(row["count"])
     return {
         "ok": True,

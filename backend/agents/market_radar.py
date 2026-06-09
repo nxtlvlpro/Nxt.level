@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 from core.deepseek import get_deepseek
 
 logger = logging.getLogger("nxt8.market_radar")
@@ -33,7 +33,7 @@ def _now() -> str:
 
 
 async def ingest_signal(payload: Dict[str, Any]) -> Dict[str, Any]:
-    db = get_db()
+    signals = TenantAwareCRUD(get_db().market_signals)
     cat = (payload.get("category") or "tech").lower()
     if cat not in CATEGORIES:
         cat = "tech"
@@ -49,23 +49,25 @@ async def ingest_signal(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
     if not sig["headline"]:
         raise ValueError("headline is required")
-    await db.market_signals.insert_one(sig)
+    await signals.insert_one(sig)
     return {k: v for k, v in sig.items() if k != "_id"}
 
 
 async def list_signals(category: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
-    db = get_db()
+    signals = TenantAwareCRUD(get_db().market_signals)
     q: Dict[str, Any] = {}
     if category:
         q["category"] = category
-    return await db.market_signals.find(q, {"_id": 0}).sort("ingested_at", -1).to_list(length=limit)
+    return await signals.find(q, {"_id": 0}).sort("ingested_at", -1).to_list(length=limit)
 
 
 async def scan(window_hours: int = 24) -> Dict[str, Any]:
     """Summarise recent signals into a market intelligence digest."""
     db = get_db()
+    signals_crud = TenantAwareCRUD(db.market_signals)
+    digests_crud = TenantAwareCRUD(db.market_digests)
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
-    signals = await db.market_signals.find(
+    signals = await signals_crud.find(
         {"ingested_at": {"$gte": cutoff}}, {"_id": 0}
     ).sort("ingested_at", -1).to_list(length=200)
 
@@ -105,24 +107,22 @@ async def scan(window_hours: int = 24) -> Dict[str, Any]:
         "provider": answer.get("provider"),
         "created_at": _now(),
     }
-    await db.market_digests.insert_one(digest)
+    await digests_crud.insert_one(digest)
 
     # mark signals processed (idempotent)
     ids = [s["id"] for s in signals]
-    await db.market_signals.update_many({"id": {"$in": ids}}, {"$set": {"processed": True}})
+    await signals_crud.update_many({"id": {"$in": ids}}, {"$set": {"processed": True}})
 
     return {k: v for k, v in digest.items() if k != "_id"}
 
 
 async def list_digests(limit: int = 10) -> List[Dict[str, Any]]:
-    db = get_db()
-    return await db.market_digests.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=limit)
+    return await TenantAwareCRUD(get_db().market_digests).find({}, {"_id": 0}).sort("created_at", -1).to_list(length=limit)
 
 
 async def seed_demo_signals() -> int:
     """Insert a small synthetic batch if signals collection is empty."""
-    db = get_db()
-    existing = await db.market_signals.count_documents({})
+    existing = await TenantAwareCRUD(get_db().market_signals).count_documents({})
     if existing > 0:
         return 0
     demo = [

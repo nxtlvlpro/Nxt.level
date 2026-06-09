@@ -18,7 +18,12 @@ from typing import Any, Dict
 import pytest
 
 from core import auth as A
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
+
+
+@pytest.fixture
+def test_company_id() -> str:
+    return "tenancytest_fixture"
 
 
 def _run(coro):
@@ -78,22 +83,30 @@ def _cleanup_email(email: str) -> None:
 # ---------------------------------------------------------------------
 
 
-def test_memory_writes_are_tagged_with_company_id() -> None:
+def test_memory_writes_are_tagged_with_company_id(test_company_id: str) -> None:
+    mid = f"mem_{uuid.uuid4().hex[:10]}"
+    crud = TenantAwareCRUD(get_db().memories, company_id=test_company_id)
+    try:
+        _run(crud.insert_one({"id": mid, "content": "fixture-memory", "type": "corporate", "created_at": datetime.now(timezone.utc).isoformat()}))
+        doc = _run(crud.find_one({"id": mid}, {"_id": 0}))
+        assert doc is not None
+        assert doc["company_id"] == test_company_id
+    finally:
+        _run(crud.delete_many({"id": mid}))
+
+
+def test_memory_engine_store_memory_preserves_company_id() -> None:
     alice = _make_user("alice@tenancytest_acme.com")
     try:
         from agents import memory as memory_agent
         mid = _run(memory_agent.get_memory().store_memory(
-            content="acme-only memo " + alice.user_id, memory_type="corporate"
+            content="acme-only memo " + alice.user_id, memory_type="corporate", company_id=alice.company_id
         ))
-        # Mirror the endpoint's post-write tag
-        _run(get_db().memories.update_one(
-            {"id": mid}, {"$set": {"company_id": alice.company_id}}
-        ))
-        doc = _run(get_db().memories.find_one({"id": mid}, {"_id": 0}))
+        doc = _run(TenantAwareCRUD(get_db().memories, company_id=alice.company_id).find_one({"id": mid}, {"_id": 0}))
         assert doc["company_id"] == "tenancytest_acme"
 
         # Cleanup
-        _run(get_db().memories.delete_many({"id": mid}))
+        _run(TenantAwareCRUD(get_db().memories, company_id=alice.company_id).delete_many({"id": mid}))
     finally:
         _cleanup_email("alice@tenancytest_acme.com")
 
@@ -105,35 +118,29 @@ def test_memory_list_filters_by_company_id() -> None:
     try:
         from agents import memory as memory_agent
         mid_a = _run(memory_agent.get_memory().store_memory(
-            content="alice-secret " + alice.user_id, memory_type="corporate"
+            content="alice-secret " + alice.user_id, memory_type="corporate", company_id=alice.company_id
         ))
         mid_b = _run(memory_agent.get_memory().store_memory(
-            content="bob-secret " + bob.user_id, memory_type="corporate"
-        ))
-        _run(get_db().memories.update_one(
-            {"id": mid_a}, {"$set": {"company_id": alice.company_id}}
-        ))
-        _run(get_db().memories.update_one(
-            {"id": mid_b}, {"$set": {"company_id": bob.company_id}}
+            content="bob-secret " + bob.user_id, memory_type="corporate", company_id=bob.company_id
         ))
 
         # Alice's filter
-        alice_rows = _run(get_db().memories.find(
-            {"company_id": alice.company_id}, {"_id": 0}
+        alice_rows = _run(TenantAwareCRUD(get_db().memories, company_id=alice.company_id).find(
+            {}, {"_id": 0}
         ).to_list(length=100))
         ids = {r["id"] for r in alice_rows}
         assert mid_a in ids
         assert mid_b not in ids
 
         # Bob's filter
-        bob_rows = _run(get_db().memories.find(
-            {"company_id": bob.company_id}, {"_id": 0}
+        bob_rows = _run(TenantAwareCRUD(get_db().memories, company_id=bob.company_id).find(
+            {}, {"_id": 0}
         ).to_list(length=100))
         bob_ids = {r["id"] for r in bob_rows}
         assert mid_b in bob_ids
         assert mid_a not in bob_ids
 
-        _run(get_db().memories.delete_many({"id": {"$in": [mid_a, mid_b]}}))
+        _run(TenantAwareCRUD(get_db().memories, company_id=alice.company_id, force_admin=True).delete_many({"id": {"$in": [mid_a, mid_b]}}))
     finally:
         _cleanup_email("alice@tenancytest_isol_a.com")
         _cleanup_email("bob@tenancytest_isol_b.com")
@@ -166,7 +173,7 @@ def test_pending_approval_list_filters_by_company_id() -> None:
         assert any(r["id"] == bid for r in beta_only)
         assert not any(r["id"] == aid for r in beta_only)
     finally:
-        _run(get_db().pending_approvals.delete_many({"id": {"$in": [aid, bid]}}))
+        _run(TenantAwareCRUD(get_db().pending_approvals, force_admin=True).delete_many({"id": {"$in": [aid, bid]}}))
 
 
 # ---------------------------------------------------------------------
@@ -180,9 +187,8 @@ def test_onboarding_profile_isolation() -> None:
     alice = _make_user("alice@tenancytest_onb_a.com")
     bob = _make_user("bob@tenancytest_onb_b.com")
     pid = str(uuid.uuid4())
-    _run(get_db().client_profiles.insert_one({
+    _run(TenantAwareCRUD(get_db().client_profiles, company_id=alice.company_id).insert_one({
         "id": pid,
-        "company_id": alice.company_id,
         "industry": "test",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }))
@@ -198,7 +204,7 @@ def test_onboarding_profile_isolation() -> None:
             _run(onboarding_get_profile(pid, user=bob))
         assert e.value.status_code == 404
     finally:
-        _run(get_db().client_profiles.delete_many({"id": pid}))
+        _run(TenantAwareCRUD(get_db().client_profiles, force_admin=True).delete_many({"id": pid}))
         _cleanup_email("alice@tenancytest_onb_a.com")
         _cleanup_email("bob@tenancytest_onb_b.com")
 
@@ -210,9 +216,8 @@ def test_admin_bypasses_tenant_filter() -> None:
         is_admin=True, company_id="nxt8_local_admin",
     )
     pid = str(uuid.uuid4())
-    _run(get_db().client_profiles.insert_one({
+    _run(TenantAwareCRUD(get_db().client_profiles, company_id="some_other_tenant").insert_one({
         "id": pid,
-        "company_id": "some_other_tenant",
         "industry": "test",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }))
@@ -221,7 +226,7 @@ def test_admin_bypasses_tenant_filter() -> None:
         result = _run(onboarding_get_profile(pid, user=admin))
         assert result["id"] == pid
     finally:
-        _run(get_db().client_profiles.delete_many({"id": pid}))
+        _run(TenantAwareCRUD(get_db().client_profiles, force_admin=True).delete_many({"id": pid}))
 
 
 # ---------------------------------------------------------------------

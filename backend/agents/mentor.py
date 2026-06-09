@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.mentor")
 
@@ -89,7 +89,7 @@ def _std(values: List[float]) -> float:
 
 
 async def upsert_employee(employee: Dict[str, Any], company_id: str) -> Dict[str, Any]:
-    db = get_db()
+    employees = TenantAwareCRUD(get_db().employees, company_id=company_id)
     eid = employee.get("employee_id") or str(uuid.uuid4())
     doc = {
         "employee_id": eid,
@@ -103,7 +103,7 @@ async def upsert_employee(employee: Dict[str, Any], company_id: str) -> Dict[str
         "skills": employee.get("skills", []),
         "updated_at": _now(),
     }
-    await db.employees.update_one(
+    await employees.update_one(
         {"employee_id": eid, "company_id": company_id},
         {"$set": doc, "$setOnInsert": {"created_at": _now()}},
         upsert=True,
@@ -112,12 +112,11 @@ async def upsert_employee(employee: Dict[str, Any], company_id: str) -> Dict[str
 
 
 async def list_employees(company_id: str) -> List[Dict[str, Any]]:
-    db = get_db()
-    return await db.employees.find({"company_id": company_id}, {"_id": 0}).to_list(length=500)
+    return await TenantAwareCRUD(get_db().employees, company_id=company_id).find({"company_id": company_id}, {"_id": 0}).to_list(length=500)
 
 
 async def record_performance(metrics: Dict[str, Any], company_id: str) -> Dict[str, Any]:
-    db = get_db()
+    performance = TenantAwareCRUD(get_db().performance, company_id=company_id)
     doc = {
         "id": str(uuid.uuid4()),
         "employee_id": metrics["employee_id"],
@@ -132,15 +131,15 @@ async def record_performance(metrics: Dict[str, Any], company_id: str) -> Dict[s
         "tasks_reviewed": int(metrics.get("tasks_reviewed", 0)),
         "recorded_at": _now(),
     }
-    await db.performance.insert_one(doc)
+    await performance.insert_one(doc)
     doc.pop("_id", None)
     return doc
 
 
 async def performance_history(employee_id: str, company_id: str, weeks: int = 4) -> List[Dict[str, Any]]:
-    db = get_db()
+    performance = TenantAwareCRUD(get_db().performance, company_id=company_id)
     cutoff = (datetime.now(timezone.utc) - timedelta(weeks=weeks)).isoformat()
-    cursor = db.performance.find(
+    cursor = performance.find(
         {"employee_id": employee_id, "company_id": company_id, "recorded_at": {"$gte": cutoff}}, {"_id": 0}
     ).sort("period_end", -1)
     return await cursor.to_list(length=200)
@@ -150,7 +149,7 @@ async def performance_history(employee_id: str, company_id: str, weeks: int = 4)
 
 
 async def _level_stats(level_id: str) -> Dict[str, Any]:
-    db = get_db()
+    performance = TenantAwareCRUD(get_db().performance)
     pipeline = [
         {"$lookup": {
             "from": "employees", "localField": "employee_id",
@@ -160,7 +159,7 @@ async def _level_stats(level_id: str) -> Dict[str, Any]:
         {"$match": {"emp.level": level_id}},
         {"$project": {"_id": 0, "accuracy": 1, "escalation_rate": 1, "error_repeat": 1}},
     ]
-    rows = await db.performance.aggregate(pipeline).to_list(length=2000)
+    rows = await performance.aggregate(pipeline).to_list(length=2000)
     acc = [r["accuracy"] for r in rows if "accuracy" in r]
     esc = [r["escalation_rate"] for r in rows if "escalation_rate" in r]
     return {
@@ -172,8 +171,9 @@ async def _level_stats(level_id: str) -> Dict[str, Any]:
 
 
 async def detect_weak_patterns(employee_id: str, company_id: str) -> List[Dict[str, Any]]:
-    db = get_db()
-    emp = await db.employees.find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
+    employees = TenantAwareCRUD(get_db().employees, company_id=company_id)
+    weak_patterns = TenantAwareCRUD(get_db().weak_patterns, company_id=company_id)
+    emp = await employees.find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
     if not emp:
         return []
     history = await performance_history(employee_id, company_id, weeks=4)
@@ -214,7 +214,7 @@ async def detect_weak_patterns(employee_id: str, company_id: str) -> List[Dict[s
 
     # persist detection
     for p in patterns:
-        await db.weak_patterns.insert_one({
+        await weak_patterns.insert_one({
             "id": str(uuid.uuid4()),
             "employee_id": employee_id,
             "company_id": company_id,
@@ -231,8 +231,7 @@ async def detect_weak_patterns(employee_id: str, company_id: str) -> List[Dict[s
 async def generate_recommendation(
     employee_id: str, pattern: str, company_id: str
 ) -> Dict[str, Any]:
-    db = get_db()
-    emp = await db.employees.find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
+    emp = await TenantAwareCRUD(get_db().employees, company_id=company_id).find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
     level = emp["level"] if emp else "unknown"
     return {
         "employee_id": employee_id,
@@ -246,19 +245,19 @@ async def generate_recommendation(
 
 
 async def employee_summary(employee_id: str, company_id: str) -> Dict[str, Any]:
-    db = get_db()
-    emp = await db.employees.find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
+    employees = TenantAwareCRUD(get_db().employees, company_id=company_id)
+    weak_patterns = TenantAwareCRUD(get_db().weak_patterns, company_id=company_id)
+    emp = await employees.find_one({"employee_id": employee_id, "company_id": company_id}, {"_id": 0})
     if not emp:
         return {"error": "not_found"}
     history = await performance_history(employee_id, company_id, weeks=12)
-    patterns = await db.weak_patterns.find(
+    patterns = await weak_patterns.find(
         {"employee_id": employee_id, "company_id": company_id, "resolved": False}, {"_id": 0}
     ).sort("detected_at", -1).to_list(length=20)
     return {"employee": emp, "history": history, "open_patterns": patterns}
 
 
 async def list_open_patterns(company_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-    db = get_db()
-    return await db.weak_patterns.find(
+    return await TenantAwareCRUD(get_db().weak_patterns, company_id=company_id).find(
         {"resolved": False, "company_id": company_id}, {"_id": 0}
     ).sort("detected_at", -1).to_list(length=limit)

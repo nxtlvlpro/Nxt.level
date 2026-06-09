@@ -42,7 +42,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.memory")
 
@@ -96,7 +96,7 @@ class MemoryEngine:
         *,
         company_id: Optional[str] = None,
     ) -> None:
-        db = get_db()
+        sessions = TenantAwareCRUD(get_db().sessions, company_id=company_id)
         msg = {"role": role, "content": content, "ts": _now()}
         set_fields: Dict[str, Any] = {"updated_at": _now()}
         unset_fields: Dict[str, Any] = {}
@@ -131,15 +131,14 @@ class MemoryEngine:
         }
         if unset_fields:
             update["$unset"] = unset_fields
-        await db.sessions.update_one(
+        await sessions.update_one(
             {"session_id": session_id},
             update,
             upsert=True,
         )
 
     async def get_session(self, session_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        db = get_db()
-        doc = await db.sessions.find_one({"session_id": session_id}, {"_id": 0, "messages": 1})
+        doc = await TenantAwareCRUD(get_db().sessions).find_one({"session_id": session_id}, {"_id": 0, "messages": 1})
         if not doc:
             return []
         msgs = doc.get("messages") or []
@@ -168,7 +167,7 @@ class MemoryEngine:
         *,
         company_id: Optional[str] = None,
     ) -> str:
-        db = get_db()
+        memories = TenantAwareCRUD(get_db().memories, company_id=company_id)
         doc = {
             "id": str(uuid.uuid4()),
             "content": content,
@@ -178,7 +177,7 @@ class MemoryEngine:
             "company_id": company_id,
             "created_at": _now(),
         }
-        await db.memories.insert_one(doc)
+        await memories.insert_one(doc)
         # Only invalidate the cache for THIS tenant — other tenants'
         # corpora are untouched.
         self._tfidf_cache.pop(company_id, None)
@@ -190,13 +189,13 @@ class MemoryEngine:
         self, memory_type: Optional[str] = None, limit: int = 100,
         *, company_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        db = get_db()
+        memories = TenantAwareCRUD(get_db().memories, company_id=company_id)
         q: Dict[str, Any] = {}
         if memory_type:
             q["type"] = memory_type
         if company_id is not None:
             q["company_id"] = company_id
-        cursor = db.memories.find(q, {"_id": 0}).sort("created_at", -1).limit(limit)
+        cursor = memories.find(q, {"_id": 0}).sort("created_at", -1).limit(limit)
         return await cursor.to_list(length=limit)
 
     async def _ensure_tfidf(
@@ -206,12 +205,12 @@ class MemoryEngine:
             cached = self._tfidf_cache.get(company_id)
             if cached is not None:
                 return cached
-            db = get_db()
+            memories = TenantAwareCRUD(get_db().memories, company_id=company_id)
             # Strict tenant scope: a tenant query returns ONLY that tenant's
             # docs. The legacy/admin pool (company_id=None) sees only NULL-
             # tagged docs; it never inherits another tenant's data.
             q = {"company_id": company_id}
-            docs = await db.memories.find(
+            docs = await memories.find(
                 q,
                 {"_id": 0, "id": 1, "content": 1, "type": 1,
                  "metadata": 1, "created_at": 1, "access_count": 1,

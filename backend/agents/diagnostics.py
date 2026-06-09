@@ -22,7 +22,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.diagnostics")
 
@@ -51,11 +51,11 @@ async def scan_contradictions(
     Returns {'count': N, 'contradictions': [{a, b, message_similarity, response_divergence, intent}]}.
     Persists each new contradiction to db.contradictions.
     """
-    db = get_db()
+    requests = TenantAwareCRUD(get_db().requests, company_id=company_id)
     query: Dict[str, Any] = {}
     if company_id:
         query["company_id"] = company_id
-    docs = await db.requests.find(
+    docs = await requests.find(
         query, {"_id": 0, "id": 1, "intent": 1, "message": 1, "response": 1,
              "confidence": 1, "session_id": 1, "created_at": 1}
     ).sort("created_at", -1).limit(window).to_list(length=window)
@@ -102,12 +102,13 @@ async def scan_contradictions(
     findings.sort(key=lambda x: x["divergence"], reverse=True)
     top = findings[:30]
 
+    contradictions = TenantAwareCRUD(get_db().contradictions, company_id=company_id)
     # persist new contradictions (idempotent on pair ids; use joined string to avoid multikey)
     for f in top:
         a = f["a_id"] or ""
         b = f["b_id"] or ""
         pair_key = "|".join(sorted([a, b]))
-        await db.contradictions.update_one(
+        await contradictions.update_one(
             {"pair_key": pair_key},
             {"$set": {**f, "pair_key": pair_key, "company_id": company_id,
                       "detected_at": _now(), "id": str(uuid.uuid4())}},
@@ -121,11 +122,11 @@ async def list_contradictions(
     limit: int = 30,
     company_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    db = get_db()
+    contradictions = TenantAwareCRUD(get_db().contradictions, company_id=company_id)
     query: Dict[str, Any] = {}
     if company_id:
         query["company_id"] = company_id
-    return await db.contradictions.find(
+    return await contradictions.find(
         query, {"_id": 0, "pair_key": 0}
     ).sort("detected_at", -1).to_list(length=limit)
 
@@ -134,11 +135,11 @@ async def summary(
     window: int = 200,
     company_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    db = get_db()
+    requests = TenantAwareCRUD(get_db().requests, company_id=company_id)
     query: Dict[str, Any] = {}
     if company_id:
         query["company_id"] = company_id
-    docs = await db.requests.find(
+    docs = await requests.find(
         query, {"_id": 0, "intent": 1, "confidence": 1, "should_escalate": 1, "mock": 1}
     ).sort("created_at", -1).limit(window).to_list(length=window)
 

@@ -21,7 +21,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.hermes_evolution")
 
@@ -85,8 +85,7 @@ async def propose_improvement(args: Dict[str, Any]) -> Dict[str, Any]:
         "created_at":       _now(),
         "updated_at":       _now(),
     }
-    db = get_db()
-    await db.hermes_evolution_log.insert_one(entry)
+    await TenantAwareCRUD(get_db().hermes_evolution_log, company_id=args.get("company_id")).insert_one(entry)
     entry.pop("_id", None)
     return {"ok": True, "id": entry["id"], "area": area, "title": entry["title"],
             "priority": priority, "status": "proposed"}
@@ -95,14 +94,14 @@ async def propose_improvement(args: Dict[str, Any]) -> Dict[str, Any]:
 async def list_evolution_roadmap(args: Dict[str, Any]) -> Dict[str, Any]:
     """List Evolution Journal entries, optionally filtered by area / status.
     Groups by area when no area is specified."""
-    db = get_db()
+    crud = TenantAwareCRUD(get_db().hermes_evolution_log, company_id=args.get("company_id"))
     q: Dict[str, Any] = {}
     if args.get("area"):
         q["area"] = args["area"].lower()
     if args.get("status"):
         q["status"] = args["status"].lower()
     limit = _safe_int(args.get("limit"), 100)
-    docs = await db.hermes_evolution_log.find(q, {"_id": 0}).sort(
+    docs = await crud.find(q, {"_id": 0}).sort(
         "created_at", -1).to_list(length=limit)
 
     # Group by area for the roadmap view
@@ -126,8 +125,7 @@ async def approve_proposal(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "error": "status must be approved | rejected | done"}
     if not pid:
         return {"ok": False, "error": "id required"}
-    db = get_db()
-    res = await db.hermes_evolution_log.find_one_and_update(
+    res = await TenantAwareCRUD(get_db().hermes_evolution_log, company_id=args.get("company_id"), force_admin=bool(args.get("force_admin"))).find_one_and_update(
         {"id": pid},
         {"$set": {"status": new_status, "updated_at": _now()}},
         projection={"_id": 0},
@@ -170,8 +168,7 @@ async def propose_policy(args: Dict[str, Any]) -> Dict[str, Any]:
         "created_at":     _now(),
         "updated_at":     _now(),
     }
-    db = get_db()
-    await db.policy_proposals.insert_one(entry)
+    await TenantAwareCRUD(get_db().policy_proposals, company_id=args.get("company_id")).insert_one(entry)
     entry.pop("_id", None)
     return {"ok": True, "id": entry["id"], "title": title, "scope": entry["scope"],
             "severity": entry["severity"], "status": "proposed"}
@@ -179,12 +176,12 @@ async def propose_policy(args: Dict[str, Any]) -> Dict[str, Any]:
 
 async def list_policy_proposals(args: Dict[str, Any]) -> Dict[str, Any]:
     """Read pending / all policy proposals."""
-    db = get_db()
+    crud = TenantAwareCRUD(get_db().policy_proposals, company_id=args.get("company_id"))
     q: Dict[str, Any] = {}
     if args.get("status"):
         q["status"] = args["status"].lower()
     limit = _safe_int(args.get("limit"), 50)
-    docs = await db.policy_proposals.find(q, {"_id": 0}).sort(
+    docs = await crud.find(q, {"_id": 0}).sort(
         "created_at", -1).to_list(length=limit)
     return {"ok": True, "count": len(docs), "proposals": docs}
 
@@ -209,8 +206,7 @@ async def detect_automation_candidates(args: Dict[str, Any]) -> Dict[str, Any]:
     window = max(50, min(_safe_int(args.get("window"), 500), 2000))
     min_count = max(2, _safe_int(args.get("min_count"), 3))
 
-    db = get_db()
-    docs = await db.requests.find(
+    docs = await TenantAwareCRUD(get_db().requests, company_id=args.get("company_id")).find(
         {}, {"_id": 0, "intent": 1, "confidence": 1, "should_escalate": 1, "mock": 1}
     ).sort("created_at", -1).limit(window).to_list(length=window)
 
@@ -273,9 +269,11 @@ async def hermes_self_assessment(args: Dict[str, Any]) -> Dict[str, Any]:
     db.hermes_evolution_log + diagnostics.
     """
     window = max(50, min(_safe_int(args.get("window"), 200), 1000))
-    db = get_db()
+    company_id = args.get("company_id")
+    requests_crud = TenantAwareCRUD(get_db().requests, company_id=company_id)
+    evolution_crud = TenantAwareCRUD(get_db().hermes_evolution_log, company_id=company_id)
 
-    docs = await db.requests.find(
+    docs = await requests_crud.find(
         {}, {"_id": 0, "confidence": 1, "should_escalate": 1, "mock": 1,
              "intent": 1, "agent_chain": 1}
     ).sort("created_at", -1).limit(window).to_list(length=window)
@@ -290,10 +288,10 @@ async def hermes_self_assessment(args: Dict[str, Any]) -> Dict[str, Any]:
     intent_counts = Counter((d.get("intent") or "general") for d in docs).most_common(5)
 
     # Evolution journal stats
-    proposed = await db.hermes_evolution_log.count_documents({"status": "proposed"})
-    approved = await db.hermes_evolution_log.count_documents({"status": "approved"})
-    done = await db.hermes_evolution_log.count_documents({"status": "done"})
-    by_area = await db.hermes_evolution_log.aggregate([
+    proposed = await evolution_crud.count_documents({"status": "proposed"})
+    approved = await evolution_crud.count_documents({"status": "approved"})
+    done = await evolution_crud.count_documents({"status": "done"})
+    by_area = await evolution_crud.aggregate([
         {"$group": {"_id": "$area", "count": {"$sum": 1}}}
     ]).to_list(length=20)
 

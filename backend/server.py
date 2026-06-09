@@ -52,7 +52,14 @@ from agents import personas as personas_agent  # noqa: E402
 from agents import documents as documents_agent  # noqa: E402
 from agents._pipeline_hooks import finalize_llm_turn  # noqa: E402
 from nxt8_langgraph_ultra import run_nxt8_ultra  # noqa: E402
-from core.db import close_db, ensure_indexes, get_db  # noqa: E402
+from core.db import (  # noqa: E402
+    TenantAwareCRUD,
+    close_db,
+    ensure_indexes,
+    get_db,
+    reset_request_company_context,
+    set_request_company_context,
+)
 from core.deepseek import get_deepseek  # noqa: E402
 
 
@@ -169,6 +176,23 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="NXT8 API", version="1.0.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def inject_company_context(request: Request, call_next):
+    user = getattr(request.state, "user", None)
+    company_id = getattr(request.state, "company_id", None)
+    force_admin = bool(getattr(request.state, "force_admin", False))
+    if user and getattr(user, "company_id", None):
+        company_id = user.company_id
+        force_admin = force_admin or bool(getattr(user, "is_admin", False))
+    tokens = set_request_company_context(company_id, force_admin=force_admin)
+    try:
+        return await call_next(request)
+    finally:
+        reset_request_company_context(tokens)
+
+
 api = APIRouter(prefix="/api")
 
 
@@ -316,10 +340,11 @@ async def seed_demo(
       • an authenticated session whose email is in `NXT8_ADMIN_EMAILS`.
     """
     mem = memory_agent.get_memory()
-    db = get_db()
+    memories = TenantAwareCRUD(get_db().memories, company_id=_admin.company_id, force_admin=True)
+    interactions = TenantAwareCRUD(get_db().interactions, company_id=_admin.company_id, force_admin=True)
 
     # idempotent
-    existing = await db.memories.count_documents({})
+    existing = await memories.count_documents({})
     if existing > 5:
         return {"status": "already_seeded", "memories": existing}
 
@@ -387,7 +412,7 @@ async def seed_demo(
         deal_id = f"deal_demo_{i}"
         # interactions BEFORE the deal close (1-4 days before)
         for day, agent in enumerate(["orchestrator", "memory", "orchestrator"]):
-            await db.interactions.insert_one({
+            await interactions.insert_one({
                 "id": str(uuid.uuid4()),
                 "deal_id": deal_id,
                 "agent": agent,
@@ -749,7 +774,7 @@ async def _resolve_company_id(
     if not user_id or user_id == "anonymous":
         return None
     try:
-        u = await get_db().users.find_one({"user_id": user_id}, {"_id": 0})
+        u = await TenantAwareCRUD(get_db().users, force_admin=True).find_one({"user_id": user_id}, {"_id": 0})
         if u:
             cid = u.get("company_id")
             if cid:
@@ -1913,7 +1938,7 @@ async def onboarding_save_profile(
     # exists. Anonymous landing-page submissions stay untagged.
     if user is not None:
         try:
-            await get_db().client_profiles.update_one(
+            await TenantAwareCRUD(get_db().client_profiles, company_id=user.company_id).update_one(
                 {"id": saved["id"]},
                 {"$set": {"company_id": user.company_id, "owner_user_id": user.user_id}},
             )
@@ -1928,7 +1953,11 @@ async def onboarding_get_profile(
     user: Optional["_auth_mod.AuthedUser"] = Depends(_auth_mod.optional_user),
 ) -> Dict[str, Any]:
     from agents import onboarding as _onb
-    profile = await _onb.get_profile(profile_id)
+    profile = await _onb.get_profile(
+        profile_id,
+        company_id=None if (user and user.is_admin) else (user.company_id if user else None),
+        force_admin=bool(user and user.is_admin),
+    )
     if not profile:
         raise HTTPException(status_code=404, detail="profile_not_found")
     # Cross-tenant isolation — admins still see everything. Anonymous profiles
@@ -1951,8 +1980,7 @@ async def onboarding_brief(profile_id: str) -> Dict[str, Any]:
     brief = _onb.build_brief(profile)
     reply = await _onb.generate_hermes_reply(profile, brief, lang=profile.get("lang", "en"))
     # Persist for later retrieval (Ops / admin).
-    db = get_db()
-    await db.client_profiles.update_one(
+    await TenantAwareCRUD(get_db().client_profiles, company_id=profile.get("company_id")).update_one(
         {"id": profile_id},
         {"$set": {"brief": brief, "hermes_reply": reply, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
@@ -2126,24 +2154,22 @@ async def hermes_os_cycle_stream(req: HermesOSCycleRequest) -> StreamingResponse
 
 
 @api.get("/hermes/os/cycle/{cycle_id}")
-async def hermes_os_cycle_get(cycle_id: str) -> Dict[str, Any]:
+async def hermes_os_cycle_get(cycle_id: str, user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user)) -> Dict[str, Any]:
     """Fetch a persisted cycle by id."""
-    db = get_db()
-    doc = await db.hermes_os_cycles.find_one({"cycle_id": cycle_id}, {"_id": 0})
+    doc = await TenantAwareCRUD(get_db().hermes_os_cycles, company_id=None if user.is_admin else user.company_id, force_admin=user.is_admin).find_one({"cycle_id": cycle_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="cycle not found")
     return doc
 
 
 @api.get("/hermes/os/cycles")
-async def hermes_os_cycles_list(limit: int = 20, source: Optional[str] = None) -> Dict[str, Any]:
+async def hermes_os_cycles_list(limit: int = 20, source: Optional[str] = None, user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user)) -> Dict[str, Any]:
     """List recent cycles for the Ops dashboard."""
-    db = get_db()
     limit = max(1, min(int(limit or 20), 200))
     q: Dict[str, Any] = {}
     if source:
         q["event.source"] = source
-    cursor = db.hermes_os_cycles.find(q, {"_id": 0, "history": 0, "stages": 0}) \
+    cursor = TenantAwareCRUD(get_db().hermes_os_cycles, company_id=None if user.is_admin else user.company_id, force_admin=user.is_admin).find(q, {"_id": 0, "history": 0, "stages": 0}) \
         .sort("started_at", -1).limit(limit)
     items = await cursor.to_list(length=limit)
     return {"count": len(items), "items": items}
@@ -2196,16 +2222,16 @@ async def hermes_memory_short_term(user_id: Optional[str] = None,
 
 @api.get("/hermes/memory/knowledge-graph")
 async def hermes_memory_kg(entity: Optional[str] = None,
-                            limit: int = 25) -> Dict[str, Any]:
+                            limit: int = 25,
+                            user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user)) -> Dict[str, Any]:
     """One-hop walk of the company knowledge graph from a given entity.
     When `entity` is omitted, returns the most recent edges."""
     from core import hermes_memory as _hm
     if entity:
         edges = await _hm.kg_neighbors([entity], limit=limit)
     else:
-        db = get_db()
         try:
-            edges = await db.knowledge_graph.find({}, {"_id": 0}) \
+            edges = await TenantAwareCRUD(get_db().knowledge_graph, company_id=None if user.is_admin else user.company_id, force_admin=user.is_admin).find({}, {"_id": 0}) \
                 .sort("created_at", -1).limit(max(1, min(int(limit), 200))) \
                 .to_list(length=limit)
         except Exception:  # noqa: BLE001
@@ -2322,8 +2348,7 @@ async def channels_webhook_inbound(
 
     # Lightweight audit so the Ops dashboard can show channel activity.
     try:
-        db = get_db()
-        await db.channel_events.insert_one({
+        await TenantAwareCRUD(get_db().channel_events, company_id=getattr(request.state, "company_id", None)).insert_one({
             "id": f"ch_{uuid.uuid4().hex[:12]}",
             "channel_id": channel_id,
             "channel_kind": "webhook",
@@ -2345,12 +2370,11 @@ async def channels_webhook_inbound(
 
 
 @api.get("/channels/{channel_id}/events")
-async def channels_recent_events(channel_id: str, limit: int = 20) -> Dict[str, Any]:
+async def channels_recent_events(channel_id: str, limit: int = 20, user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user)) -> Dict[str, Any]:
     """Recent inbound events for a given channel (for Ops dashboard)."""
-    db = get_db()
     limit = max(1, min(int(limit or 20), 200))
     items: List[Dict[str, Any]] = []
-    async for r in db.channel_events.find({"channel_id": channel_id}).sort("ts", -1).limit(limit):
+    async for r in TenantAwareCRUD(get_db().channel_events, company_id=None if user.is_admin else user.company_id, force_admin=user.is_admin).find({"channel_id": channel_id}).sort("ts", -1).limit(limit):
         r.pop("_id", None)
         items.append(r)
     return {"channel_id": channel_id, "count": len(items), "items": items}

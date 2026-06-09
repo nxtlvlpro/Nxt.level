@@ -483,6 +483,8 @@ def install_auth_middleware(app: Any) -> None:
     @app.middleware("http")
     async def _auth_gate(request: Request, call_next):  # type: ignore[no-untyped-def]
         path = request.url.path
+        request.state.company_id = None
+        request.state.force_admin = False
         # Non-API surface (Static, /s/<id>, etc.) is handled by FastAPI routing.
         if not path.startswith("/api/"):
             return await call_next(request)
@@ -495,6 +497,7 @@ def install_auth_middleware(app: Any) -> None:
         # request *claims* admin identity rather than letting it fall
         # through to the regular session check.
         if request.headers.get("X-Admin-Token"):
+            request.state.force_admin = True
             return await call_next(request)
         # Resolve session — cookie or Bearer header.
         token = _extract_token(
@@ -514,4 +517,6 @@ def install_auth_middleware(app: Any) -> None:
             )
         # Stash on request.state so endpoints can read it without re-querying.
         request.state.user = user
+        request.state.company_id = user.company_id or None
+        request.state.force_admin = bool(user.is_admin)
         return await call_next(request)

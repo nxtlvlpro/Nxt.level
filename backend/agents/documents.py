@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from agents import mempalace_bridge as mempalace_agent
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 from core.deepseek import get_deepseek
 
 logger = logging.getLogger("nxt8.documents")
@@ -274,7 +274,7 @@ async def ingest_document(
         "provider": verdict.get("provider"),
         "created_at": _now(),
     }
-    await get_db().documents.insert_one(doc)
+    await TenantAwareCRUD(get_db().documents, company_id=company_id).insert_one(doc)
 
     # Return without _id (excluded on read)
     return {k: v for k, v in doc.items() if k != "_id"}
@@ -285,9 +285,9 @@ async def list_documents(company_id: Optional[str] = None,
     q: Dict[str, Any] = {}
     if company_id:
         q["company_id"] = company_id
-    cursor = get_db().documents.find(q, {"_id": 0}).sort("created_at", -1).limit(limit)
+    cursor = TenantAwareCRUD(get_db().documents, company_id=company_id).find(q, {"_id": 0}).sort("created_at", -1).limit(limit)
     return await cursor.to_list(length=limit)
 
 
-async def get_document(document_id: str) -> Optional[Dict[str, Any]]:
-    return await get_db().documents.find_one({"id": document_id}, {"_id": 0})
+async def get_document(document_id: str, company_id: Optional[str] = None, *, force_admin: bool = False) -> Optional[Dict[str, Any]]:
+    return await TenantAwareCRUD(get_db().documents, company_id=company_id, force_admin=force_admin).find_one({"id": document_id}, {"_id": 0})

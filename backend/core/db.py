@@ -18,11 +18,205 @@ Collections:
 from __future__ import annotations
 
 import os
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from contextvars import ContextVar, Token
+from typing import Any, Optional
+
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 
 _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None
+_request_company_id: ContextVar[Optional[str]] = ContextVar("request_company_id", default=None)
+_request_force_admin: ContextVar[bool] = ContextVar("request_force_admin", default=False)
+
+
+def set_request_company_context(
+    company_id: Optional[str], *, force_admin: bool = False
+) -> tuple[Token, Token]:
+    return (
+        _request_company_id.set(company_id),
+        _request_force_admin.set(force_admin),
+    )
+
+
+def reset_request_company_context(tokens: tuple[Token, Token]) -> None:
+    company_tok, admin_tok = tokens
+    _request_company_id.reset(company_tok)
+    _request_force_admin.reset(admin_tok)
+
+
+def get_request_company_id() -> Optional[str]:
+    return _request_company_id.get()
+
+
+def get_request_force_admin() -> bool:
+    return _request_force_admin.get()
+
+
+class TenantAwareCRUD:
+    def __init__(
+        self,
+        collection: Any,
+        company_id: Optional[str] = None,
+        *,
+        force_admin: bool = False,
+    ):
+        self.collection = getattr(collection, "raw_collection", collection)
+        self.company_id = get_request_company_id() if company_id is None else company_id
+        self.force_admin = force_admin or get_request_force_admin()
+
+    def _add_tenant_filter(self, filter_dict: Optional[dict]) -> dict:
+        base_filter = filter_dict or {}
+        if self.force_admin or self.company_id is None:
+            return base_filter
+        tenant_filter = {"company_id": self.company_id}
+        if not base_filter:
+            return tenant_filter
+        if all(not str(k).startswith("$") for k in base_filter.keys()):
+            merged = dict(base_filter)
+            merged["company_id"] = self.company_id
+            return merged
+        return {"$and": [tenant_filter, base_filter]}
+
+    def _inject_company(self, document: dict) -> dict:
+        payload = dict(document or {})
+        if not self.force_admin and self.company_id:
+            payload["company_id"] = self.company_id
+        return payload
+
+    def _inject_company_into_update(self, update: dict) -> dict:
+        payload = dict(update or {})
+        if self.force_admin or not self.company_id:
+            return payload
+        if any(k.startswith("$") for k in payload.keys()):
+            cleaned = {}
+            for op_payload in payload.values():
+                pass
+            for op, op_payload in payload.items():
+                if isinstance(op_payload, dict):
+                    nested = dict(op_payload)
+                    nested.pop("company_id", None)
+                    cleaned[op] = nested
+                else:
+                    cleaned[op] = op_payload
+            set_on_insert = dict(cleaned.get("$setOnInsert") or {})
+            set_on_insert.pop("company_id", None)
+            set_on_insert["company_id"] = self.company_id
+            cleaned["$setOnInsert"] = set_on_insert
+            return cleaned
+        payload["company_id"] = self.company_id
+        return payload
+
+    def _inject_company_into_pipeline(self, pipeline: list[dict]) -> list[dict]:
+        if self.force_admin or self.company_id is None:
+            return list(pipeline)
+        match_stage = {"$match": {"company_id": self.company_id}}
+        if not pipeline:
+            return [match_stage]
+        cloned = [dict(stage) for stage in pipeline]
+        first = cloned[0]
+        if "$match" in first:
+            first["$match"] = self._add_tenant_filter(first.get("$match") or {})
+            cloned[0] = first
+            return cloned
+        return [match_stage, *cloned]
+
+    async def find_one(self, filter: Optional[dict] = None, *args, **kwargs):
+        return await self.collection.find_one(self._add_tenant_filter(filter), *args, **kwargs)
+
+    def find(self, filter: Optional[dict] = None, *args, **kwargs):
+        return self.collection.find(self._add_tenant_filter(filter), *args, **kwargs)
+
+    async def insert_one(self, document: dict, *args, **kwargs):
+        return await self.collection.insert_one(self._inject_company(document), *args, **kwargs)
+
+    async def update_one(self, filter: Optional[dict], update: dict, *args, **kwargs):
+        return await self.collection.update_one(
+            self._add_tenant_filter(filter),
+            self._inject_company_into_update(update),
+            *args,
+            **kwargs,
+        )
+
+    async def update_many(self, filter: Optional[dict], update: dict, *args, **kwargs):
+        return await self.collection.update_many(
+            self._add_tenant_filter(filter),
+            self._inject_company_into_update(update),
+            *args,
+            **kwargs,
+        )
+
+    async def delete_one(self, filter: Optional[dict], *args, **kwargs):
+        return await self.collection.delete_one(self._add_tenant_filter(filter), *args, **kwargs)
+
+    async def delete_many(self, filter: Optional[dict], *args, **kwargs):
+        return await self.collection.delete_many(self._add_tenant_filter(filter), *args, **kwargs)
+
+    async def count_documents(self, filter: Optional[dict] = None, *args, **kwargs):
+        return await self.collection.count_documents(self._add_tenant_filter(filter), *args, **kwargs)
+
+    def aggregate(self, pipeline: Optional[list[dict]] = None, *args, **kwargs):
+        return self.collection.aggregate(self._inject_company_into_pipeline(pipeline or []), *args, **kwargs)
+
+    async def find_one_and_update(self, filter: Optional[dict], update: dict, *args, **kwargs):
+        return await self.collection.find_one_and_update(
+            self._add_tenant_filter(filter),
+            self._inject_company_into_update(update),
+            *args,
+            **kwargs,
+        )
+
+
+class TenantAwareCollection:
+    def __init__(self, collection: AsyncIOMotorCollection):
+        self.raw_collection = collection
+
+    def _crud(self) -> TenantAwareCRUD:
+        return TenantAwareCRUD(self.raw_collection)
+
+    async def find_one(self, filter: Optional[dict] = None, *args, **kwargs):
+        return await self._crud().find_one(filter, *args, **kwargs)
+
+    def find(self, filter: Optional[dict] = None, *args, **kwargs):
+        return self._crud().find(filter, *args, **kwargs)
+
+    async def insert_one(self, document: dict, *args, **kwargs):
+        return await self._crud().insert_one(document, *args, **kwargs)
+
+    async def update_one(self, filter: Optional[dict], update: dict, *args, **kwargs):
+        return await self._crud().update_one(filter, update, *args, **kwargs)
+
+    async def update_many(self, filter: Optional[dict], update: dict, *args, **kwargs):
+        return await self._crud().update_many(filter, update, *args, **kwargs)
+
+    async def delete_one(self, filter: Optional[dict], *args, **kwargs):
+        return await self._crud().delete_one(filter, *args, **kwargs)
+
+    async def delete_many(self, filter: Optional[dict], *args, **kwargs):
+        return await self._crud().delete_many(filter, *args, **kwargs)
+
+    async def count_documents(self, filter: Optional[dict] = None, *args, **kwargs):
+        return await self._crud().count_documents(filter, *args, **kwargs)
+
+    def aggregate(self, pipeline: Optional[list[dict]] = None, *args, **kwargs):
+        return self._crud().aggregate(pipeline, *args, **kwargs)
+
+    async def find_one_and_update(self, filter: Optional[dict], update: dict, *args, **kwargs):
+        return await self._crud().find_one_and_update(filter, update, *args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self.raw_collection, name)
+
+
+class TenantAwareDatabaseProxy:
+    def __init__(self, db: AsyncIOMotorDatabase):
+        self.raw_db = db
+
+    def __getattr__(self, name: str):
+        attr = getattr(self.raw_db, name)
+        if isinstance(attr, AsyncIOMotorCollection):
+            return TenantAwareCollection(attr)
+        return attr
 
 
 def get_db() -> AsyncIOMotorDatabase:
@@ -31,7 +225,7 @@ def get_db() -> AsyncIOMotorDatabase:
         _client = AsyncIOMotorClient(os.environ["MONGO_URL"])
         _db = _client[os.environ["DB_NAME"]]
     assert _db is not None  # for type checkers
-    return _db
+    return TenantAwareDatabaseProxy(_db)
 
 
 async def ensure_indexes() -> None:

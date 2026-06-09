@@ -28,7 +28,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.roi")
 
@@ -115,7 +115,7 @@ async def _record_cost(
     *,
     company_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    db = get_db()
+    costs = TenantAwareCRUD(get_db().costs, company_id=company_id)
     doc = {
         "id": str(uuid.uuid4()),
         "cost_type": cost_type,
@@ -127,7 +127,7 @@ async def _record_cost(
         "company_id": company_id,
         "created_at": _now(),
     }
-    await db.costs.insert_one(doc)
+    await costs.insert_one(doc)
     doc.pop("_id", None)
     return doc
 
@@ -143,7 +143,7 @@ async def record_deal(
     *,
     company_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    db = get_db()
+    deals = TenantAwareCRUD(get_db().deals, company_id=company_id)
     doc = {
         "deal_id": deal_id,
         "value_usd": float(value_usd),
@@ -152,7 +152,7 @@ async def record_deal(
         "company_id": company_id,
         "created_at": _now(),
     }
-    await db.deals.update_one({"deal_id": deal_id}, {"$set": doc}, upsert=True)
+    await deals.update_one({"deal_id": deal_id}, {"$set": doc}, upsert=True)
     await attribute_deal(deal_id)
     return doc
 
@@ -164,8 +164,8 @@ async def record_interaction(
     *,
     company_id: Optional[str] = None,
 ) -> None:
-    db = get_db()
-    await db.interactions.insert_one({
+    interactions = TenantAwareCRUD(get_db().interactions, company_id=company_id)
+    await interactions.insert_one({
         "id": str(uuid.uuid4()),
         "deal_id": deal_id,
         "agent": agent,
@@ -177,12 +177,11 @@ async def record_interaction(
 
 
 async def attribute_deal(deal_id: str, window_days: int = 7) -> Dict[str, float]:
-    db = get_db()
-    deal = await db.deals.find_one({"deal_id": deal_id}, {"_id": 0})
+    deal = await TenantAwareCRUD(get_db().deals).find_one({"deal_id": deal_id}, {"_id": 0})
     if not deal:
         return {}
     closed = datetime.fromisoformat(deal["closed_at"].replace("Z", "+00:00"))
-    interactions = await db.interactions.find(
+    interactions = await TenantAwareCRUD(get_db().interactions, company_id=deal.get("company_id")).find(
         {"deal_id": deal_id}, {"_id": 0}
     ).to_list(length=1000)
     if not interactions:
@@ -209,8 +208,9 @@ async def attribute_deal(deal_id: str, window_days: int = 7) -> Dict[str, float]
             attribution[agent] = round(attributed, 4)
 
     # persist
+    interactions_crud = TenantAwareCRUD(get_db().interactions, company_id=deal.get("company_id"))
     for agent, revenue in attribution.items():
-        await db.interactions.update_many(
+        await interactions_crud.update_many(
             {"deal_id": deal_id, "agent": agent},
             {"$set": {"attributed_revenue": revenue}},
         )
@@ -231,7 +231,7 @@ def _tenant_match(company_id: Optional[str]) -> Dict[str, Any]:
 async def _sum_costs_since(
     since_iso: str, company_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    db = get_db()
+    costs = TenantAwareCRUD(get_db().costs, company_id=company_id)
     match: Dict[str, Any] = {"created_at": {"$gte": since_iso}}
     match.update(_tenant_match(company_id))
     pipeline = [
@@ -241,7 +241,7 @@ async def _sum_costs_since(
             "total": {"$sum": "$amount_usd"},
         }},
     ]
-    rows = await db.costs.aggregate(pipeline).to_list(length=1000)
+    rows = await costs.aggregate(pipeline).to_list(length=1000)
     by_type: Dict[str, float] = {}
     by_agent: Dict[str, float] = {}
     total = 0.0
@@ -258,7 +258,7 @@ async def _sum_costs_since(
 async def _sum_revenue_since(
     since_iso: str, company_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    db = get_db()
+    interactions = TenantAwareCRUD(get_db().interactions, company_id=company_id)
     match: Dict[str, Any] = {
         "interaction_time": {"$gte": since_iso},
         "attributed_revenue": {"$ne": None},
@@ -268,7 +268,7 @@ async def _sum_revenue_since(
         {"$match": match},
         {"$group": {"_id": "$agent", "total": {"$sum": "$attributed_revenue"}}},
     ]
-    rows = await db.interactions.aggregate(pipeline).to_list(length=1000)
+    rows = await interactions.aggregate(pipeline).to_list(length=1000)
     by_agent: Dict[str, float] = {}
     total = 0.0
     for r in rows:
@@ -347,15 +347,15 @@ async def calculate_hourly_roi(
         "created_at": _now(),
     }
 
-    db = get_db()
+    roi_history = TenantAwareCRUD(get_db().roi_history, company_id=company_id)
     # Keyed by (hour_end, company_id) so tenant snapshots are independent.
-    await db.roi_history.update_one(
+    await roi_history.update_one(
         {"hour_end": snapshot["hour_end"], "company_id": company_id},
         {"$set": snapshot},
         upsert=True,
     )
     if alert:
-        await db.alerts.insert_one(
+        await TenantAwareCRUD(get_db().alerts, company_id=company_id).insert_one(
             {"id": str(uuid.uuid4()), "source": "roi", "severity": "warning",
              "message": alert, "company_id": company_id, "created_at": _now()}
         )
@@ -365,11 +365,11 @@ async def calculate_hourly_roi(
 async def roi_trend(
     hours: int = 24, company_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    db = get_db()
+    roi_history = TenantAwareCRUD(get_db().roi_history, company_id=company_id)
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     query: Dict[str, Any] = {"hour_end": {"$gte": cutoff}}
     query.update(_tenant_match(company_id))
-    return await db.roi_history.find(
+    return await roi_history.find(
         query, {"_id": 0}
     ).sort("hour_end", -1).to_list(length=hours + 4)
 

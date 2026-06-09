@@ -33,7 +33,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 from core.deepseek import get_deepseek
 
 logger = logging.getLogger("nxt8.onboarding")
@@ -526,8 +526,7 @@ async def save_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
         "created_at":               _now(),
         "updated_at":               _now(),
     }
-    db = get_db()
-    await db.client_profiles.update_one(
+    await TenantAwareCRUD(get_db().client_profiles, company_id=doc.get("company_id")).update_one(
         {"id": profile_id}, {"$set": doc}, upsert=True,
     )
     # Mirror the survey into a stable per-user "company manifest" that Hermes
@@ -550,7 +549,7 @@ async def persist_company_manifest(profile: Dict[str, Any]) -> None:
     answer is grounded in the client's real situation — industry, team_size,
     channels, pain_points, goal — without re-asking.
     """
-    db = get_db()
+    manifests = TenantAwareCRUD(get_db().company_manifests, company_id=profile.get("company_id"))
     keys: List[str] = []
     if profile.get("telegram"):
         keys.append(f"tg:{profile['telegram'].lstrip('@').lower()}")
@@ -579,7 +578,7 @@ async def persist_company_manifest(profile: Dict[str, Any]) -> None:
         "keys":                 keys,
     }
     for key in keys:
-        await db.company_manifests.update_one(
+        await manifests.update_one(
             {"_id": key},
             {"$set": manifest, "$setOnInsert": {"created_at": _now()}},
             upsert=True,
@@ -590,7 +589,7 @@ async def get_company_manifest(user_id: Optional[str]) -> Optional[Dict[str, Any
     """Best-effort lookup. Returns None if nothing known about this user yet."""
     if not user_id:
         return None
-    db = get_db()
+    manifests = TenantAwareCRUD(get_db().company_manifests, force_admin=True)
     # Try by persistent browser id key (matches the format save_profile sets).
     candidates = [
         f"profile:{user_id}",
@@ -598,7 +597,7 @@ async def get_company_manifest(user_id: Optional[str]) -> Optional[Dict[str, Any
         f"em:{user_id.lower()}",
     ]
     for k in candidates:
-        doc = await db.company_manifests.find_one({"_id": k})
+        doc = await manifests.find_one({"_id": k})
         if doc:
             doc.pop("_id", None)
             return doc
@@ -645,9 +644,8 @@ def render_company_manifest_block(manifest: Dict[str, Any], lang: str = "ru") ->
     return head + "\n" + "\n".join(rows) + "\n\n" + foot
 
 
-async def get_profile(profile_id: str) -> Optional[Dict[str, Any]]:
-    db = get_db()
-    doc = await db.client_profiles.find_one({"id": profile_id})
+async def get_profile(profile_id: str, company_id: Optional[str] = None, *, force_admin: bool = False) -> Optional[Dict[str, Any]]:
+    doc = await TenantAwareCRUD(get_db().client_profiles, company_id=company_id, force_admin=force_admin).find_one({"id": profile_id})
     if doc:
         doc.pop("_id", None)
     return doc

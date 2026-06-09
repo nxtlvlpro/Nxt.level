@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 from agents import pulse as _pulse
 
 logger = logging.getLogger("nxt8.digest")
@@ -41,18 +41,18 @@ def _iso(dt: datetime) -> str:
 
 async def _find_owner(company_id: str) -> Optional[Dict[str, Any]]:
     """Pick the admin user of the tenant (falls back to oldest user)."""
-    db = get_db()
-    user = await db.users.find_one(
+    users = TenantAwareCRUD(get_db().users, company_id=company_id, force_admin=True)
+    user = await users.find_one(
         {"company_id": company_id, "is_admin": True}, {"_id": 0}
     )
     if user:
         return user
-    return await db.users.find_one({"company_id": company_id}, {"_id": 0})
+    return await users.find_one({"company_id": company_id}, {"_id": 0})
 
 
 async def _already_sent_today(company_id: str) -> bool:
     today_start = _now().replace(hour=0, minute=0, second=0, microsecond=0)
-    return await get_db().digests.count_documents({
+    return await TenantAwareCRUD(get_db().digests, company_id=company_id).count_documents({
         "company_id": company_id,
         "sent_at": {"$gte": _iso(today_start)},
     }) > 0
@@ -252,7 +252,7 @@ async def build_and_send(company_id: str) -> Dict[str, Any]:
     if not channel:
         return {"sent": False, "reason": "no_channel_bound"}
 
-    await get_db().digests.insert_one({
+    await TenantAwareCRUD(get_db().digests, company_id=company_id).insert_one({
         "digest_id": digest_id,
         "company_id": company_id,
         "owner_user_id": owner["user_id"],
