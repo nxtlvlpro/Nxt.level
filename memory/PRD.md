@@ -1,7 +1,29 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.2-hr-mentor-routed-to-nxt8-graph
+**Current version:** v1.18.3-analyst-client-manager-routed-to-nxt8-graph
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.3 (2026-06-09)
+
+**Phase 2 expanded:** в skill-based путь через `nxt8_graph` переведены ещё две
+persona: `analyst` и `client_manager`.
+
+- Добавлены новые skill-файлы:
+  - `backend/skills/analyst.md`
+  - `backend/skills/client_manager.md`
+- В `backend/agents/personas.py` selective routing расширен до:
+  - `hr_mentor`
+  - `analyst`
+  - `client_manager`
+- Для skill-based persona сохранён старый persona-route contract и plan-gate.
+- Добавлена общая сборка контекста для routed persona:
+  - fetchers из legacy-конфигурации
+  - company context block
+  - audit в `persona_requests`
+- Подтверждены реальные tool loops:
+  - `analyst` → `evaluate_action_roi`
+  - `client_manager` → `create_task`
+- Остальные persona всё ещё работают через legacy path и не затронуты.
 
 ## What's new — v1.18.2 (2026-06-09)
 

@@ -1,5 +1,35 @@
 # NXT8 — Release Notes
 
+## v1.18.3-analyst-client-manager-routed-to-nxt8-graph — 2026-06-09
+
+**Status:** ✅ `analyst` и `client_manager` безопасно переведены на новый
+skills-based `nxt8_graph`.
+
+### Added
+- **`backend/skills/analyst.md`** — deep skill-brief для аналитика:
+  SaaS metrics, funnel math, cohorts, A/B tests, North Star, anti-hallucination,
+  пример `evaluate_action_roi`.
+- **`backend/skills/client_manager.md`** — skill-brief для клиентского
+  менеджера: SLA, follow-up discipline, churn prevention, upsell signals,
+  пример `create_task`.
+
+### Changed
+- **`backend/agents/personas.py`**
+  - введён общий `_run_skill_persona(...)`
+  - selective routing теперь включает `hr_mentor`, `analyst`, `client_manager`
+  - добавлена общая подгрузка контекста через legacy fetchers + company block
+  - сохранён response contract для `/api/personas/{persona_id}/chat`
+
+### Validated
+- `POST /api/personas/analyst/chat` → provider=`nxt8_graph`, tool=`evaluate_action_roi`
+- `POST /api/personas/client_manager/chat` → provider=`nxt8_graph`, tool=`create_task`
+- `persona_requests.provider='nxt8_graph'` для обеих persona
+- `analyst` доступен только на `headquarters`
+- `client_manager` доступен на `team+`
+- `bookkeeper` и `marketer` остались на legacy path
+
+---
+
 ## v1.18.2-hr-mentor-routed-to-nxt8-graph — 2026-06-09
 
 **Status:** ✅ `hr_mentor` безопасно переведён на новый `nxt8_graph`
