@@ -1,10 +1,14 @@
-import os
+import logging
 from pathlib import Path
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import TypedDict, List, Dict, Any
+
+import yaml
 
 from langgraph.graph import StateGraph, END
 
 from core.deepseek import get_deepseek
+
+logger = logging.getLogger("nxt8.graph")
 
 
 class AgentState(TypedDict, total=False):
@@ -15,28 +19,55 @@ class AgentState(TypedDict, total=False):
     session_id: str
     tokens_total: int
     confidence: float
+    allowed_tools: List[str]
 
 
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 
-def load_skill_prompt(skill_id: str) -> str:
-    """Динамически собирает системный промпт: Base Charter + Specific Skill."""
-    base_path = SKILLS_DIR / "_base.md"
+def load_skill(skill_id: str) -> tuple[str, dict]:
+    """Загружает скилл, парсит YAML-шапку и возвращает (prompt_text, metadata)."""
     skill_path = SKILLS_DIR / f"{skill_id}.md"
 
-    base_content = base_path.read_text(encoding="utf-8") if base_path.exists() else ""
-    skill_content = skill_path.read_text(encoding="utf-8") if skill_path.exists() else ""
+    if not skill_path.exists():
+        base_path = SKILLS_DIR / "_base.md"
+        return base_path.read_text(encoding="utf-8") if base_path.exists() else "", {}
 
-    return f"{base_content}\n\n---\n\n{skill_content}"
+    content = skill_path.read_text(encoding="utf-8")
+
+    if content.startswith("---"):
+        parts = content.split("---", 2)
+        if len(parts) >= 3:
+            yaml_text = parts[1].strip()
+            prompt_text = parts[2].strip()
+
+            try:
+                metadata = yaml.safe_load(yaml_text) or {}
+            except yaml.YAMLError:
+                metadata = {}
+
+            base_path = SKILLS_DIR / "_base.md"
+            base_text = base_path.read_text(encoding="utf-8") if base_path.exists() else ""
+            final_prompt = f"{base_text}\n\n---\n\n{prompt_text}"
+            return final_prompt, metadata
+
+    return content, {}
 
 
 async def execute_node(state: AgentState) -> Dict[str, Any]:
-    """Единственный узел на данном этапе: собирает промпт и делает 1 вызов LLM."""
     skill_id = state.get("skill_id", "general")
-    system_prompt = load_skill_prompt(skill_id)
+    prompt_text, metadata = load_skill(skill_id)
+    allowed_tools = metadata.get("allowed_tools", [])
 
-    messages = [{"role": "system", "content": system_prompt}] + state.get("messages", [])
+    logger.info(
+        "Skill '%s' loaded. Prompt length: %d chars (~%d tokens). Allowed tools: %s",
+        skill_id,
+        len(prompt_text),
+        len(prompt_text) // 4,
+        allowed_tools,
+    )
+
+    messages = [{"role": "system", "content": prompt_text}] + state.get("messages", [])
 
     ds = get_deepseek()
     response = await ds.chat(
@@ -50,6 +81,7 @@ async def execute_node(state: AgentState) -> Dict[str, Any]:
         "messages": [{"role": "assistant", "content": response.get("content", "")}],
         "tokens_total": response.get("tokens_total", 0),
         "confidence": response.get("confidence", 0.7),
+        "allowed_tools": allowed_tools,
     }
 
 

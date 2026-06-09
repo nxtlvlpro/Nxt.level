@@ -451,6 +451,50 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
     )
 
 
+@api.post("/v2/chat")
+async def chat_v2(payload: dict) -> Dict[str, Any]:
+    """Новый оптимизированный чат на базе Skills-based LangGraph."""
+    from core.nxt8_graph import nxt8_graph
+    import time
+
+    message = (payload.get("message") or "").strip()
+    if not message:
+        return {"error": "message is required"}
+
+    skill_id = payload.get("skill_id", "general")
+    session_id = payload.get("session_id") or f"v2_sess_{uuid.uuid4().hex[:10]}"
+    company_id = payload.get("company_id", "default")
+    user_id = payload.get("user_id", "anonymous")
+
+    t0 = time.time()
+    initial_state = {
+        "messages": [{"role": "user", "content": message}],
+        "skill_id": skill_id,
+        "company_id": company_id,
+        "user_id": user_id,
+        "session_id": session_id,
+    }
+    config = {"configurable": {"thread_id": session_id}}
+
+    try:
+        result = await nxt8_graph.ainvoke(initial_state, config)
+        latency_ms = int((time.time() - t0) * 1000)
+        return {
+            "success": True,
+            "content": result["messages"][-1]["content"],
+            "skill_id": result.get("skill_id", skill_id),
+            "allowed_tools": result.get("allowed_tools", []),
+            "tokens_total": result.get("tokens_total", 0),
+            "confidence": result.get("confidence", 0.7),
+            "session_id": session_id,
+            "latency_ms": latency_ms,
+            "mock": result.get("mock", False),
+        }
+    except Exception as e:  # noqa: BLE001
+        logging.exception("Chat v2 graph execution failed")
+        return {"success": False, "error": str(e)}
+
+
 @api.get("/requests")
 async def list_requests(
     limit: int = 20,

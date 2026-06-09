@@ -143,6 +143,7 @@ PUBLIC_PATH_PATTERNS: list[re.Pattern[str]] = [
     # answers, watch the ticker, and view the alerts/ROI snapshot. These
     # endpoints are intentionally open to traffic without a session.
     re.compile(r"^/api/chat/?$"),
+    re.compile(r"^/api/v2/chat/?$"),
     re.compile(r"^/api/chat/stream/?$"),
     re.compile(r"^/api/hermes/chat/?$"),
     re.compile(r"^/api/hermes/talk/?$"),
