@@ -47,6 +47,10 @@ from agents import skill_creator as skills_agent  # noqa: E402
 from agents import market_radar as market_agent  # noqa: E402
 from agents import hermes_proxy as hermes_agent  # noqa: E402
 from agents import hermes_coo as hermes_coo_agent  # noqa: E402
+from agents.hermes_tools_audit import (  # noqa: E402
+    run_persona_benchmark,
+    scan_system_health,
+)
 from agents import mempalace_bridge as mempalace_agent  # noqa: E402
 from agents import personas as personas_agent  # noqa: E402
 from agents import documents as documents_agent  # noqa: E402
@@ -2864,6 +2868,29 @@ async def hermes_self_assessment_endpoint(window: int = 200) -> Dict[str, Any]:
     mock_rate, Evolution Journal counts, and honest signals."""
     from agents import hermes_evolution as _ev
     return await _ev.hermes_self_assessment({"window": window})
+
+
+@api.post("/hermes/self-audit/run")
+async def hermes_self_audit_run(
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    """Run a manual Hermes self-audit for the authenticated tenant."""
+    company_id = user.company_id
+    health = await scan_system_health({"company_id": company_id, "window": 200})
+    benchmark = await run_persona_benchmark({
+        "company_id": company_id,
+        "query": "Кратко: какой твой главный инструмент и зона ответственности?",
+    })
+    return {
+        "ok": True,
+        "company_id": company_id,
+        "health": health,
+        "benchmark": benchmark,
+        "message": (
+            "Self-audit completed. Telegram alerts are sent only when Hermes later "
+            "submits an improvement or policy proposal."
+        ),
+    }
 
 
 @api.post("/personas/{persona_id}/chat")

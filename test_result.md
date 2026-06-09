@@ -496,9 +496,96 @@ agent_communication:
   - agent: "testing"
     message: "Completed comprehensive backend validation of Hermes Self-Audit + Telegram alerts implementation. All 10 comprehensive tests passed + 26 pytest tests passed. Verified: (1) No import regressions or circular dependencies - all imports successful, (2) scan_system_health and run_persona_benchmark correctly registered in HERMES_TOOLS and callable, (3) run_persona_benchmark excludes Hermes from benchmark (tested 3 personas: analyst, client_manager, bookkeeper - hermes excluded), all session_ids use 'audit_*' format, (4) Benchmark doesn't write to hermes_evolution_log or audit collections - sandbox isolation verified, (5) scan_system_health is read-only, uses TenantAwareCRUD, returns expected shape with avg_confidence/latency/escalation/mock/contradiction metrics, (6) Telegram notification functions exist with correct signatures: notify_first_connected_client(text), notify_improvement(proposal), notify_policy(proposal), (7) propose_improvement writes to DB correctly using TenantAwareCRUD and triggers fire-and-forget telegram notification, (8) propose_policy writes to DB correctly using TenantAwareCRUD and triggers fire-and-forget telegram notification, (9) hermes.md skill file updated with scan_system_health and run_persona_benchmark in allowed_tools, SOUL section has ЦИКЛ САМОАУДИТА (read-only + sandbox), (10) No regression - all 7 old evolution tools still registered and working (propose_improvement, list_evolution_roadmap, approve_proposal, propose_policy, list_policy_proposals, detect_automation_candidates, hermes_self_assessment). Integration tests confirm tools work through HERMES_TOOLS, documented in _TOOLS_DOC, and evolution tools continue working. Backend running without errors. Implementation is production-ready."
 
-user_problem_statement: "Backend-only validation of Hermes Self-Audit + Telegram alerts implementation"
+  - agent: "testing"
+    message: "Completed comprehensive backend validation of manual Hermes self-audit endpoint (POST /api/hermes/self-audit/run). All 6 comprehensive tests passed + 1 pytest test passed (27 total pytest tests including dependencies). Verified: (1) Endpoint exists and is properly registered as async function, (2) Endpoint protected via Depends(require_user) - authentication required, (3) Endpoint correctly tenant-scoped via user.company_id (line 2878), (4) Endpoint calls scan_system_health with company_id and window=200, (5) Endpoint calls run_persona_benchmark with company_id and correct query 'Кратко: какой твой главный инструмент и зона ответственности?', (6) Response structure correct: {ok: True, company_id, health: dict, benchmark: dict, message: str}, (7) Message explicitly states 'Telegram alerts are sent only when Hermes later submits an improvement or policy proposal' - no auto-proposals, (8) Endpoint does NOT call propose_improvement or propose_policy - verified in source code, (9) No route conflicts with existing Hermes routes (/hermes/health, /hermes/evolution/*, /hermes/self-assessment), (10) scan_system_health and run_persona_benchmark correctly imported in server.py (lines 50-53). Backend logs show endpoint responding correctly (401 for unauthenticated requests). Mock call test verified response structure and tenant-scoping work correctly. Implementation is production-ready."
+
+user_problem_statement: "Backend-only validation of manual Hermes self-audit endpoint (POST /api/hermes/self-audit/run)"
 
 backend:
+  - task: "Manual self-audit endpoint implementation"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Endpoint POST /api/hermes/self-audit/run implemented correctly at lines 2873-2893. Protected via Depends(require_user). Uses user.company_id for tenant-scoping (line 2878). Calls scan_system_health with company_id and window=200 (line 2879). Calls run_persona_benchmark with company_id and query 'Кратко: какой твой главный инструмент и зона ответственности?' (lines 2880-2883). Returns consolidated JSON with ok=True, company_id, health, benchmark, message. Message explicitly states 'Telegram alerts are sent only when Hermes later submits an improvement or policy proposal'. Verified via comprehensive backend test and pytest test."
+
+  - task: "Endpoint authentication and tenant-scoping"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Endpoint correctly protected via Depends(_auth_mod.require_user) at line 2875. User parameter type: '_auth_mod.AuthedUser'. Endpoint uses user.company_id for tenant-scoping (line 2878). Backend logs confirm 401 Unauthorized for unauthenticated requests. Mock call test verified company_id correctly passed to scan_system_health and run_persona_benchmark. Tenant isolation working correctly."
+
+  - task: "No auto-proposals created"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Endpoint does NOT auto-create proposals. Source code inspection confirms no calls to propose_improvement or propose_policy. Endpoint only calls scan_system_health (read-only) and run_persona_benchmark (sandbox-only, no DB writes). Response message explicitly states 'Telegram alerts are sent only when Hermes later submits an improvement or policy proposal'. This is correct behavior - alerts only sent when Hermes later calls propose_improvement/propose_policy via evolution tools."
+
+  - task: "Response structure and message"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Response structure correct: {ok: True, company_id: str, health: dict, benchmark: dict, message: str}. Mock call test verified all fields present and correct types. Message: 'Self-audit completed. Telegram alerts are sent only when Hermes later submits an improvement or policy proposal.' Message correctly explains that alerts are NOT sent by this endpoint itself, but only when Hermes later calls propose_improvement/propose_policy. Response suitable for UI/manual trigger."
+
+  - task: "No route conflicts with existing Hermes routes"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ No route conflicts detected. New route /hermes/self-audit/run is unique and doesn't conflict with existing Hermes routes: /hermes/talk, /hermes/health, /hermes/os/cycle, /hermes/os/cycle/stream, /hermes/os/cycle/{cycle_id}, /hermes/os/cycles, /hermes/os/nodes, /hermes/memory/stats, /hermes/memory/short-term, /hermes/memory/knowledge-graph, /hermes/memory/institutional, /hermes/chat, /hermes/daily-digest, /hermes/ultra, /hermes/jobs, /hermes/evolution/roadmap, /hermes/evolution/policies, /hermes/evolution/approve, /hermes/self-assessment. No duplicate self-audit routes found. Endpoint is callable and working."
+
+  - task: "Tools imported correctly in server.py"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ scan_system_health and run_persona_benchmark correctly imported in server.py at lines 50-53: 'from agents.hermes_tools_audit import (run_persona_benchmark, scan_system_health,)'. Both functions are callable and working. No import regressions detected. Backend service running without errors (uptime 38+ minutes). Import smoke test passed."
+
+  - task: "Pytest test for endpoint"
+    implemented: true
+    working: true
+    file: "backend/tests/test_hermes_self_audit_endpoint.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Pytest test test_hermes_self_audit_run_returns_consolidated_payload passed. Test verifies: (1) Endpoint calls scan_system_health with company_id='tenant_manual_audit' and window=200, (2) Endpoint calls run_persona_benchmark with company_id='tenant_manual_audit' and query containing 'главный инструмент', (3) Response has ok=True, company_id='tenant_manual_audit', health with avg_confidence, benchmark with passed/failed counts, message mentioning 'Telegram alerts'. Test uses monkeypatch to mock scan_system_health and run_persona_benchmark. All assertions passed."
+
   - task: "hermes_tools_audit.py module implementation"
     implemented: true
     working: true
@@ -610,14 +697,14 @@ backend:
   - task: "Pytest tests passing"
     implemented: true
     working: true
-    file: "backend/tests/test_hermes_tools_audit.py, backend/tests/test_hermes_evolution.py, backend/tests/test_telegram_bot.py"
+    file: "backend/tests/test_hermes_tools_audit.py, backend/tests/test_hermes_evolution.py, backend/tests/test_telegram_bot.py, backend/tests/test_hermes_self_audit_endpoint.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ All 26 pytest tests passed. test_hermes_tools_audit.py: 2 tests (scan_system_health shape, benchmark subordinates only). test_hermes_evolution.py: 13 tests (directive sections, tool registration, propose_improvement validation/persistence/telegram, propose_policy validation/telegram, automation candidates, self-assessment). test_telegram_bot.py: 11 tests (approval cards, mint/bind/unbind, free text to hermes, callbacks, push notifications for improvements/policies). All tests pass in 0.18s. No failures or errors."
+        comment: "✅ All 27 pytest tests passed (26 previous + 1 new endpoint test). test_hermes_self_audit_endpoint.py: 1 test (endpoint returns consolidated payload with correct structure and tenant-scoping). test_hermes_tools_audit.py: 2 tests (scan_system_health shape, benchmark subordinates only). test_hermes_evolution.py: 13 tests (directive sections, tool registration, propose_improvement validation/persistence/telegram, propose_policy validation/telegram, automation candidates, self-assessment). test_telegram_bot.py: 11 tests (approval cards, mint/bind/unbind, free text to hermes, callbacks, push notifications for improvements/policies). All tests pass in 1.39s. No failures or errors."
 
 frontend:
   - task: "Frontend testing not required"
@@ -630,12 +717,12 @@ frontend:
     status_history:
       - working: "NA"
         agent: "testing"
-        comment: "Frontend testing not required for this backend-only Hermes Self-Audit + Telegram alerts implementation. Changes are isolated to backend modules (agents/hermes_tools_audit.py, agents/hermes.py, agents/hermes_evolution.py, core/telegram_bot.py, skills/hermes.md). No frontend changes needed."
+        comment: "Frontend testing not required for this backend-only manual Hermes self-audit endpoint implementation. Changes are isolated to backend (server.py lines 2873-2893, agents/hermes_tools_audit.py). No frontend changes needed."
 
 metadata:
   created_by: "testing_agent"
-  version: "1.5"
-  test_sequence: 7
+  version: "1.6"
+  test_sequence: 8
   run_ui: false
 
 test_plan:
@@ -643,3 +730,4 @@ test_plan:
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+
