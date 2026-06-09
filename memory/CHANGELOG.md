@@ -1,5 +1,27 @@
 # NXT8 — Release Notes
 
+## v1.18.5-project-coord-routed-to-nxt8-graph — 2026-06-09
+
+**Status:** ✅ `project_coord` переведён на `nxt8_graph`. Подчинённый слой
+persona практически полностью мигрирован на skills-based ядро.
+
+### Added
+- **`backend/skills/project_coord.md`** — skill для межкомандной координации,
+  bridge-задач, owners, blockers и cross-department workflows.
+
+### Changed
+- **`backend/agents/personas.py`**
+  - `project_coord` добавлен в `SKILL_ROUTED_PERSONAS`
+
+### Validated
+- `POST /api/personas/project_coord/chat` → provider=`nxt8_graph`
+- `create_cross_department_bridge` вызывается корректно
+- `persona_requests.provider='nxt8_graph'`
+- plan-gate `headquarters` сохранён
+- `hermes` остаётся на legacy path и НЕ смешан с subordinate migration track
+
+---
+
 ## v1.18.4-bookkeeper-marketer-compliance-routed-to-nxt8-graph — 2026-06-09
 
 **Status:** ✅ `bookkeeper`, `marketer`, `compliance` переведены на skills-based

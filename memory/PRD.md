@@ -1,7 +1,21 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.4-bookkeeper-marketer-compliance-routed-to-nxt8-graph
+**Current version:** v1.18.5-project-coord-routed-to-nxt8-graph
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.5 (2026-06-09)
+
+**Phase 2 almost complete:** переведена последняя subordinate persona —
+`project_coord`. Теперь через skills-based `nxt8_graph` работают все 7
+подчинённых Hermes.
+
+- Добавлен skill-файл `backend/skills/project_coord.md`
+- `SKILL_ROUTED_PERSONAS` теперь включает 7 persona:
+  - `hr_mentor`, `analyst`, `client_manager`, `bookkeeper`, `marketer`, `compliance`, `project_coord`
+- Подтверждён tool-loop для `project_coord`:
+  - `create_cross_department_bridge`
+- Plan-gate сохранён: `project_coord` доступен только на `headquarters`
+- Hermes сознательно НЕ переводился и остаётся отдельным migration-track.
 
 ## What's new — v1.18.4 (2026-06-09)
 
