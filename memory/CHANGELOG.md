@@ -1,5 +1,44 @@
 # NXT8 — Release Notes
 
+## v1.18.8-hermes-self-audit-phase1 — 2026-06-09
+
+**Status:** ✅ Hermes получил безопасный self-audit cycle и Telegram alerts для evolution proposals.
+
+### Added
+- **`backend/agents/hermes_tools_audit.py`**
+  - `scan_system_health(window?)` — tenant-scoped read-only health summary
+  - `run_persona_benchmark(query?)` — sandbox benchmark по subordinate routed persona
+- **`backend/tests/test_hermes_tools_audit.py`**
+  - покрытие read-only health summary
+  - покрытие sandbox benchmark без Hermes
+
+### Changed
+- **`backend/agents/hermes.py`**
+  - новые tools: `scan_system_health`, `run_persona_benchmark`
+  - обновлён `_TOOLS_DOC`
+- **`backend/skills/hermes.md`**
+  - новые `allowed_tools`
+  - добавлен раздел `ЦИКЛ САМОАУДИТА (read-only + sandbox)`
+- **`backend/core/telegram_bot.py`**
+  - новые helpers: `notify_first_connected_client`, `notify_improvement`, `notify_policy`
+- **`backend/agents/hermes_evolution.py`**
+  - `propose_improvement` и `propose_policy` теперь отправляют fire-and-forget Telegram notifications после записи в БД
+- **`backend/tests/test_hermes_evolution.py`**
+  - добавлены проверки на Telegram notification hook
+- **`backend/tests/test_telegram_bot.py`**
+  - добавлены проверки owner alerts для improvement/policy
+
+### Validated
+- `pytest -q /app/backend/tests/test_hermes_tools_audit.py /app/backend/tests/test_hermes_evolution.py /app/backend/tests/test_telegram_bot.py` → **26/26 PASS**
+- import smoke:
+  - `scan_system_health` registered → **True**
+  - `run_persona_benchmark` registered → **True**
+  - `notify_improvement` exists → **True**
+  - `notify_policy` exists → **True**
+- независимая backend-валидация → **PASS**
+
+---
+
 ## v1.18.7-p0-delegation-depth-guard — 2026-06-09
 
 **Status:** ✅ P0-защита от циклической межагентной рекурсии закрыта.

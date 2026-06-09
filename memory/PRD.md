@@ -1,7 +1,46 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.7-p0-delegation-depth-guard
+**Current version:** v1.18.8-hermes-self-audit-phase1
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.8 (2026-06-09)
+
+**Hermes Self-Audit Phase 1 + Telegram alerts completed.** Добавлен
+безопасный цикл самоаудита Hermes в read-only / sandbox режиме и мгновенные
+уведомления владельцу через существующий Telegram bridge.
+
+- `backend/agents/hermes_tools_audit.py`
+  - новый read-only tool `scan_system_health(window?)`
+  - новый sandbox tool `run_persona_benchmark(query?)`
+  - benchmark запускается только для subordinate routed persona
+  - benchmark использует изолированные `audit_*` session_id
+  - benchmark не пишет результаты в Mongo
+- `backend/agents/hermes.py`
+  - `scan_system_health` зарегистрирован в `HERMES_TOOLS`
+  - `run_persona_benchmark` зарегистрирован в `HERMES_TOOLS`
+  - tool docs Hermes обновлены под self-audit loop
+- `backend/skills/hermes.md`
+  - добавлены `scan_system_health` и `run_persona_benchmark` в `allowed_tools`
+  - добавлен блок `ЦИКЛ САМОАУДИТА (read-only + sandbox)`
+- `backend/core/telegram_bot.py`
+  - добавлены `notify_first_connected_client(...)`
+  - добавлены `notify_improvement(...)` и `notify_policy(...)`
+- `backend/agents/hermes_evolution.py`
+  - `propose_improvement(...)` теперь fire-and-forget шлёт Telegram alert
+  - `propose_policy(...)` теперь fire-and-forget шлёт Telegram alert
+- Добавлены регрессионные тесты:
+  - `backend/tests/test_hermes_tools_audit.py`
+  - расширен `backend/tests/test_hermes_evolution.py`
+  - расширен `backend/tests/test_telegram_bot.py`
+
+**Validated**
+- `pytest -q /app/backend/tests/test_hermes_tools_audit.py /app/backend/tests/test_hermes_evolution.py /app/backend/tests/test_telegram_bot.py` → **26/26 PASS**
+- import smoke:
+  - `scan_system_health in HERMES_TOOLS` → `True`
+  - `run_persona_benchmark in HERMES_TOOLS` → `True`
+  - `telegram_bot.notify_improvement` → `True`
+  - `telegram_bot.notify_policy` → `True`
+- независимая backend-валидация → **PASS**
 
 ## What's new — v1.18.7 (2026-06-09)
 
