@@ -1,7 +1,30 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.1-scheduler-lease-lock
+**Current version:** v1.18.2-hr-mentor-routed-to-nxt8-graph
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.2 (2026-06-09)
+
+**Phase 2 (safe scope B) completed for `hr_mentor`.** Только persona
+`hr_mentor` переведена на новый `nxt8_graph` внутри compatibility shim
+`backend/agents/personas.py`, без затрагивания остальных persona.
+
+- `/api/personas/hr_mentor/chat` теперь использует `core/nxt8_graph.py`
+  вместо legacy-пайплайна.
+- Сохранён старый контракт ответа: `success`, `persona_id`,
+  `persona_name`, `session_id`, `content`, `tool_traces`, `iterations`,
+  `confidence`, `provider`, `mock`, `plan_id`, `tokens_total`.
+- Plan-gate сохранён: `hr_mentor` остаётся доступным только на нужных
+  тарифах (`team+`).
+- Tool loop подтверждён и в persona-route: `award_skill_points` реально
+  вызывается, `persona_requests.provider='nxt8_graph'`.
+- Исправлен дефект с `pattern='unknown'`: теперь `pattern` явно
+  передаётся в tool-call, а fallback-инференс в `agents/ai_mentor.py`
+  нормализует `role_task_format` по `reason`, если LLM пропустил поле.
+- Чистота данных подтверждена в `db.user_profiles`:
+  `skill_points=10`, `patterns_used=['role_task_format']`,
+  `last_pattern='role_task_format'`.
+- Остальные persona по-прежнему идут через legacy-путь и не затронуты.
 
 ## What's new — v1.18.1 (2026-06-09)
 

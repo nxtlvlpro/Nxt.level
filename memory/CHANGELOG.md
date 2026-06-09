@@ -1,5 +1,35 @@
 # NXT8 — Release Notes
 
+## v1.18.2-hr-mentor-routed-to-nxt8-graph — 2026-06-09
+
+**Status:** ✅ `hr_mentor` безопасно переведён на новый `nxt8_graph`
+без поломки старого persona API.
+
+### Changed — Phase 2 safe migration (scope B)
+- **`backend/agents/personas.py`**
+  - добавлен selective routing: только `run_persona('hr_mentor', ...)`
+    идёт через `nxt8_graph`
+  - остальные persona продолжают работать через legacy
+  - сохранён старый response contract persona-route
+  - сохранён plan-gate (`team+`)
+- **`backend/core/nxt8_graph.py`**
+  - tool-contract усилен, чтобы `award_skill_points` всегда передавал
+    `pattern`, `points`, `reason`
+- **`backend/skills/hr_mentor.md`**
+  - добавлен явный JSON-пример вызова `award_skill_points`
+- **`backend/agents/hermes.py` + `backend/agents/ai_mentor.py`**
+  - исправлен баг `pattern='unknown'`
+  - введён безопасный fallback `infer_pattern(...)` по `reason`
+
+### Validated
+- `POST /api/personas/hr_mentor/chat` → provider=`nxt8_graph`
+- `award_skill_points` реально выполняется через tool loop
+- `persona_requests.provider = 'nxt8_graph'`
+- `user_profiles.last_pattern = 'role_task_format'`
+- другие persona не затронуты (legacy path preserved)
+
+---
+
 ## v1.18.1-scheduler-lease-lock — 2026-06-09
 
 **Status:** ✅ Scheduler защищён от duplicate execution при нескольких
