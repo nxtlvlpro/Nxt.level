@@ -491,3 +491,155 @@ agent_communication:
     message: "Completed comprehensive backend validation of project_coord migration to nxt8_graph (Wave 3). All 8 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_project_coord.py covering: routing verification (project_coord routes to nxt8_graph), response contract validation (all required fields present), tool loop execution (create_cross_department_bridge invoked for cross-dept tasks), audit record verification (provider='nxt8_graph' for all test records), plan-gate enforcement (headquarters-only, correctly blocks operations and team plans), non-regression (analyst, client_manager, bookkeeper still work), hermes separation (hermes NOT in SKILL_ROUTED_PERSONAS, uses legacy path), and skill file validation (project_coord.md valid with 9 allowed_tools). All tests passed (8/8). Backend logs confirm tool invocations working correctly. SKILL_ROUTED_PERSONAS now contains 7 personas: hr_mentor, analyst, client_manager, bookkeeper, marketer, compliance, project_coord. No issues found."
   - agent: "testing"
     message: "Completed comprehensive backend validation of inter-agent delegation depth counter fix (P0 recursion protection). Verified MAX_DELEGATION_DEPTH=3 correctly enforced in both delegate_to_agent and ask_colleague. All depth counter requirements met: (1) depth increments during calls, (2) depth resets via try/finally after success, (3) depth resets via try/finally after exception, (4) depth limit blocks at >=3 with exact error message. Created two comprehensive test suites: /app/backend_test_inter_agent_depth.py (10 tests covering success/exception/limit/sequential scenarios) and /app/backend_test_escalate_depth.py (3 scenarios verifying escalate_to_hermes preserves depth context). All pytest tests passed (9/9). All custom tests passed (13/13). No edge cases or bugs found. Implementation is correct and production-ready."
+
+
+  - agent: "testing"
+    message: "Completed comprehensive backend validation of Hermes Self-Audit + Telegram alerts implementation. All 10 comprehensive tests passed + 26 pytest tests passed. Verified: (1) No import regressions or circular dependencies - all imports successful, (2) scan_system_health and run_persona_benchmark correctly registered in HERMES_TOOLS and callable, (3) run_persona_benchmark excludes Hermes from benchmark (tested 3 personas: analyst, client_manager, bookkeeper - hermes excluded), all session_ids use 'audit_*' format, (4) Benchmark doesn't write to hermes_evolution_log or audit collections - sandbox isolation verified, (5) scan_system_health is read-only, uses TenantAwareCRUD, returns expected shape with avg_confidence/latency/escalation/mock/contradiction metrics, (6) Telegram notification functions exist with correct signatures: notify_first_connected_client(text), notify_improvement(proposal), notify_policy(proposal), (7) propose_improvement writes to DB correctly using TenantAwareCRUD and triggers fire-and-forget telegram notification, (8) propose_policy writes to DB correctly using TenantAwareCRUD and triggers fire-and-forget telegram notification, (9) hermes.md skill file updated with scan_system_health and run_persona_benchmark in allowed_tools, SOUL section has ЦИКЛ САМОАУДИТА (read-only + sandbox), (10) No regression - all 7 old evolution tools still registered and working (propose_improvement, list_evolution_roadmap, approve_proposal, propose_policy, list_policy_proposals, detect_automation_candidates, hermes_self_assessment). Integration tests confirm tools work through HERMES_TOOLS, documented in _TOOLS_DOC, and evolution tools continue working. Backend running without errors. Implementation is production-ready."
+
+user_problem_statement: "Backend-only validation of Hermes Self-Audit + Telegram alerts implementation"
+
+backend:
+  - task: "hermes_tools_audit.py module implementation"
+    implemented: true
+    working: true
+    file: "backend/agents/hermes_tools_audit.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Module implemented correctly. scan_system_health: read-only, requires company_id, uses TenantAwareCRUD for tenant-scoped requests and contradictions, returns avg_confidence/avg_latency_ms/escalation_rate/mock_rate/low_confidence_rate/contradiction_count. run_persona_benchmark: sandbox only, excludes Hermes from SKILL_ROUTED_PERSONAS, uses isolated session_id format 'audit_*', doesn't write benchmark results to Mongo. Both functions tested and working correctly."
+
+  - task: "Hermes tools registration"
+    implemented: true
+    working: true
+    file: "backend/agents/hermes.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Tools correctly registered in HERMES_TOOLS dict. scan_system_health and run_persona_benchmark added as _t_scan_system_health and _t_run_persona_benchmark wrappers. Both callable and working. Tools also documented in _TOOLS_DOC with correct descriptions: 'scan_system_health(window?)' for read-only health metrics and 'run_persona_benchmark(query?)' for sandbox persona testing. No import regressions detected."
+
+  - task: "Hermes skill file update"
+    implemented: true
+    working: true
+    file: "backend/skills/hermes.md"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Skill file properly updated. YAML frontmatter has 19 allowed_tools including scan_system_health and run_persona_benchmark. SOUL section has new 'ЦИКЛ САМОАУДИТА (read-only + sandbox)' block with 6 rules: (1) Use scan_system_health for diagnostics, (2) Use run_persona_benchmark only for routed subordinate personas in isolated audit_* sessions, (3) Benchmark results not written to DB, (4) If degradation detected, propose_improvement with hypothesis, (5) Never change code/prompts directly - all through Approval Gate, (6) Don't run self-audit in background - only on explicit request. Skill file valid and parseable."
+
+  - task: "Telegram notification functions"
+    implemented: true
+    working: true
+    file: "backend/core/telegram_bot.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Three new notification functions implemented correctly. notify_first_connected_client(text): sends message to first connected chat sorted by bound_at, returns bool. notify_improvement(proposal): formats improvement proposal with area/description/benefit/priority and sends to first connected chat. notify_policy(proposal): formats policy proposal with title/scope/rule and sends to first connected chat. All functions handle missing telegram token gracefully, log warnings when no clients connected, and return bool success status. Tested with 26 pytest tests - all passed."
+
+  - task: "Evolution telegram integration"
+    implemented: true
+    working: true
+    file: "backend/agents/hermes_evolution.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Telegram notifications correctly integrated into evolution functions. propose_improvement: after TenantAwareCRUD.insert_one, calls asyncio.create_task(tg.notify_improvement(entry)) in try/except block (fire-and-forget, non-blocking). propose_policy: after TenantAwareCRUD.insert_one, calls asyncio.create_task(tg.notify_policy(entry)) in try/except block. Both functions continue writing to DB correctly and trigger notifications without blocking. Verified with comprehensive tests - DB writes work, notifications triggered, no errors on failure."
+
+  - task: "No import regressions"
+    implemented: true
+    working: true
+    file: "backend/agents/hermes.py, backend/agents/hermes_tools_audit.py, backend/agents/hermes_evolution.py, backend/core/telegram_bot.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ No circular imports or import regressions detected. All modules import successfully in any order. hermes_tools_audit imports TenantAwareCRUD and get_db from core.db. hermes.py imports from hermes_tools_audit and hermes_evolution. hermes_evolution.py imports telegram_bot. All imports work correctly. Backend service running without errors. Tested import order variations - all successful."
+
+  - task: "Benchmark excludes Hermes"
+    implemented: true
+    working: true
+    file: "backend/agents/hermes_tools_audit.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ run_persona_benchmark correctly excludes Hermes. Line 95: 'personas = sorted(pid for pid in skill_routed_personas if pid != \"hermes\")'. Tested with mock SKILL_ROUTED_PERSONAS containing {hermes, analyst, client_manager, bookkeeper} - benchmark only tested 3 personas (analyst, client_manager, bookkeeper), hermes excluded. All session_ids use 'audit_*' format (line 99: f'audit_{pid}_{uuid.uuid4().hex[:8]}'). Verified with comprehensive test - works correctly."
+
+  - task: "Benchmark no DB writes"
+    implemented: true
+    working: true
+    file: "backend/agents/hermes_tools_audit.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Benchmark doesn't write to audit/evolution collections. Function only calls run_persona with isolated session_id and returns results in memory (lines 96-140). No insert_one, update_one, or any DB write operations. Verified by counting hermes_evolution_log records before/after benchmark - count unchanged. Sandbox isolation verified - benchmark results stay in context only, not persisted to DB."
+
+  - task: "Non-regression old tools"
+    implemented: true
+    working: true
+    file: "backend/agents/hermes.py, backend/agents/hermes_evolution.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All old evolution tools still working correctly. Verified 7 tools registered and callable: propose_improvement, list_evolution_roadmap, approve_proposal, propose_policy, list_policy_proposals, detect_automation_candidates, hermes_self_assessment. Tested detect_automation_candidates - returns expected shape with ok=True, candidates list, window/min_count params. No regression in existing functionality. Inter-agent delegation, telegram approvals, and evolution journal all continue working."
+
+  - task: "Pytest tests passing"
+    implemented: true
+    working: true
+    file: "backend/tests/test_hermes_tools_audit.py, backend/tests/test_hermes_evolution.py, backend/tests/test_telegram_bot.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All 26 pytest tests passed. test_hermes_tools_audit.py: 2 tests (scan_system_health shape, benchmark subordinates only). test_hermes_evolution.py: 13 tests (directive sections, tool registration, propose_improvement validation/persistence/telegram, propose_policy validation/telegram, automation candidates, self-assessment). test_telegram_bot.py: 11 tests (approval cards, mint/bind/unbind, free text to hermes, callbacks, push notifications for improvements/policies). All tests pass in 0.18s. No failures or errors."
+
+frontend:
+  - task: "Frontend testing not required"
+    implemented: false
+    working: "NA"
+    file: "N/A"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Frontend testing not required for this backend-only Hermes Self-Audit + Telegram alerts implementation. Changes are isolated to backend modules (agents/hermes_tools_audit.py, agents/hermes.py, agents/hermes_evolution.py, core/telegram_bot.py, skills/hermes.md). No frontend changes needed."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.5"
+  test_sequence: 7
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"

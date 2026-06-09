@@ -715,6 +715,10 @@ from agents.hermes_evolution import (   # noqa: E402
     detect_automation_candidates as _ev_detect_automation_candidates,
     hermes_self_assessment as _ev_hermes_self_assessment,
 )
+from agents.hermes_tools_audit import (  # noqa: E402
+    run_persona_benchmark as _audit_run_persona_benchmark,
+    scan_system_health as _audit_scan_system_health,
+)
 
 
 async def _t_propose_improvement(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -743,6 +747,14 @@ async def _t_detect_automation_candidates(args: Dict[str, Any]) -> Dict[str, Any
 
 async def _t_hermes_self_assessment(args: Dict[str, Any]) -> Dict[str, Any]:
     return await _ev_hermes_self_assessment(args)
+
+
+async def _t_scan_system_health(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _audit_scan_system_health(args)
+
+
+async def _t_run_persona_benchmark(args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _audit_run_persona_benchmark(args)
 
 
 # ---------------------------------------------------------------------
@@ -804,6 +816,8 @@ HERMES_TOOLS: Dict[str, Any] = {
     "list_policy_proposals":         _t_list_policy_proposals,
     "detect_automation_candidates":  _t_detect_automation_candidates,
     "hermes_self_assessment":        _t_hermes_self_assessment,
+    "scan_system_health":            _t_scan_system_health,
+    "run_persona_benchmark":         _t_run_persona_benchmark,
     # Inter-agent communication
     "delegate_to_agent":             _t_delegate_to_agent,
     "escalate_to_hermes":            _t_escalate_to_hermes,
@@ -874,6 +888,8 @@ _TOOLS_DOC = (
     "- `list_policy_proposals(status?, limit?)` — прочитать список предложенных правил.\n"
     "- `detect_automation_candidates(window?, min_count?)` — найти повторяющиеся ручные intent'ы для автоматизации.\n"
     "- `hermes_self_assessment(window?)` — посмотреть свои метрики (confidence/escalation/mock_rate + журнал).\n"
+    "- `scan_system_health(window?)` — read-only срез по confidence/latency/escalation/mock/contradictions для текущего tenant.\n"
+    "- `run_persona_benchmark(query?)` — sandbox-проверка routed subordinate persona в изолированных `audit_*` сессиях, без автозаписи benchmark-результатов в journal.\n"
     "- `delegate_to_agent(agent_id, task, context?)` — как CEO передать конкретную задачу подчинённому "
     "(hr_mentor/client_manager/project_coord/analyst/bookkeeper/marketer/compliance) и получить его ответ. "
     "ИСПОЛЬЗУЙ когда вопрос узкоспециализированный — не тяни одеяло на себя.\n"

@@ -15,6 +15,7 @@ fenced-JSON tool block during a normal chat turn.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections import Counter
@@ -86,6 +87,12 @@ async def propose_improvement(args: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at":       _now(),
     }
     await TenantAwareCRUD(get_db().hermes_evolution_log, company_id=args.get("company_id")).insert_one(entry)
+    try:
+        from core import telegram_bot as tg
+
+        asyncio.create_task(tg.notify_improvement(entry))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Failed to notify improvement: %s", e)
     entry.pop("_id", None)
     return {"ok": True, "id": entry["id"], "area": area, "title": entry["title"],
             "priority": priority, "status": "proposed"}
@@ -169,6 +176,12 @@ async def propose_policy(args: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at":     _now(),
     }
     await TenantAwareCRUD(get_db().policy_proposals, company_id=args.get("company_id")).insert_one(entry)
+    try:
+        from core import telegram_bot as tg
+
+        asyncio.create_task(tg.notify_policy(entry))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Failed to notify policy: %s", e)
     entry.pop("_id", None)
     return {"ok": True, "id": entry["id"], "title": title, "scope": entry["scope"],
             "severity": entry["severity"], "status": "proposed"}

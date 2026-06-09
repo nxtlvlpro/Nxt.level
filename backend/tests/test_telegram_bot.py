@@ -339,3 +339,66 @@ def test_notify_without_binding_is_noop() -> None:
         assert not [c for c in bus.calls if c["method"] == "sendMessage"]
     finally:
         bus._restore()
+
+
+def test_notify_improvement_sends_to_first_connected_chat() -> None:
+    _setup_env()
+    bus = _new_bus()
+    try:
+        client_id = "tg_owner_improvement"
+        mint = _run(tg.mint_link_token(client_id))
+        _run(tg.handle_update({
+            "message": {
+                "chat": {"id": 800101},
+                "from": {"id": 800101, "username": "owner"},
+                "text": f"/start {mint['token']}",
+            }
+        }))
+        bus.calls.clear()
+
+        ok = _run(tg.notify_improvement({
+            "area": "process",
+            "description": "Escalation rate is rising",
+            "expected_benefit": "Lower CEO load",
+            "priority": "P1",
+        }))
+
+        assert ok is True
+        pushed = [c for c in bus.calls if c["method"] == "sendMessage"]
+        assert pushed, "expected a sendMessage push"
+        assert "Hermes Self-Audit Alert" in pushed[0].get("text", "")
+        assert "Escalation rate is rising" in pushed[0].get("text", "")
+    finally:
+        bus._restore()
+        _run(tg.unbind("tg_owner_improvement"))
+
+
+def test_notify_policy_sends_to_first_connected_chat() -> None:
+    _setup_env()
+    bus = _new_bus()
+    try:
+        client_id = "tg_owner_policy"
+        mint = _run(tg.mint_link_token(client_id))
+        _run(tg.handle_update({
+            "message": {
+                "chat": {"id": 800102},
+                "from": {"id": 800102, "username": "owner2"},
+                "text": f"/start {mint['token']}",
+            }
+        }))
+        bus.calls.clear()
+
+        ok = _run(tg.notify_policy({
+            "title": "Refund SLA",
+            "scope": "sla",
+            "proposed_rule": "Refund tickets must be acknowledged within 4 hours",
+        }))
+
+        assert ok is True
+        pushed = [c for c in bus.calls if c["method"] == "sendMessage"]
+        assert pushed, "expected a sendMessage push"
+        assert "Hermes Policy Proposal" in pushed[0].get("text", "")
+        assert "Refund SLA" in pushed[0].get("text", "")
+    finally:
+        bus._restore()
+        _run(tg.unbind("tg_owner_policy"))

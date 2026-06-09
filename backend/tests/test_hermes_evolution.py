@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import pytest
+from unittest.mock import patch
 
 from agents import hermes_evolution as ev
 from agents.hermes_directive import DIRECTIVE
@@ -50,6 +51,7 @@ def test_evolution_tools_registered():
         "propose_improvement", "list_evolution_roadmap", "approve_proposal",
         "propose_policy", "list_policy_proposals",
         "detect_automation_candidates", "hermes_self_assessment",
+        "scan_system_health", "run_persona_benchmark",
     ]:
         assert name in HERMES_TOOLS, f"tool not registered: {name}"
 
@@ -93,6 +95,31 @@ def test_propose_improvement_persists_valid_entry():
     assert appr["entry"]["status"] == "approved"
 
 
+def test_propose_improvement_triggers_telegram_notification():
+    seen = {}
+
+    async def _fake_notify(entry):
+        seen["entry"] = entry
+        return True
+
+    with patch("core.telegram_bot.notify_improvement", _fake_notify), patch(
+        "asyncio.create_task",
+        side_effect=lambda coro: asyncio.get_event_loop().create_task(coro),
+    ):
+        res = _run(ev.propose_improvement({
+            "area": "process",
+            "description": "High escalation rate in bookkeeper flows",
+            "expected_benefit": "Lower CEO load",
+            "priority": "P1",
+            "company_id": TEST_COMPANY_ID,
+        }))
+        _run(asyncio.sleep(0))
+
+    assert res["ok"] is True
+    assert seen["entry"]["area"] == "process"
+    assert seen["entry"]["priority"] == "P1"
+
+
 # -------------------------------------------------------- propose_policy
 
 
@@ -116,6 +143,30 @@ def test_propose_policy_happy_path():
     listing = _run(ev.list_policy_proposals({"status": "proposed", "limit": 100, "company_id": TEST_COMPANY_ID}))
     assert listing["ok"] is True
     assert any(p["id"] == res["id"] for p in listing["proposals"])
+
+
+def test_propose_policy_triggers_telegram_notification():
+    seen = {}
+
+    async def _fake_notify(entry):
+        seen["entry"] = entry
+        return True
+
+    with patch("core.telegram_bot.notify_policy", _fake_notify), patch(
+        "asyncio.create_task",
+        side_effect=lambda coro: asyncio.get_event_loop().create_task(coro),
+    ):
+        res = _run(ev.propose_policy({
+            "title": "Escalation SLA",
+            "scope": "escalation",
+            "proposed_rule": "Critical escalations must be acknowledged within 15 minutes",
+            "severity": "high",
+            "company_id": TEST_COMPANY_ID,
+        }))
+        _run(asyncio.sleep(0))
+
+    assert res["ok"] is True
+    assert seen["entry"]["title"] == "Escalation SLA"
 
 
 # ----------------------------------------------- automation candidates

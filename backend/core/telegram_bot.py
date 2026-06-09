@@ -330,6 +330,53 @@ async def notify_pending_approval(approval: Dict[str, Any]) -> None:
         logger.warning("telegram notify_pending_approval failed: %s", e)
 
 
+async def _get_first_connected_chat() -> Optional[Dict[str, Any]]:
+    rows = await get_db().telegram_chats.find(
+        {},
+        {"_id": 0, "chat_id": 1, "client_id": 1, "username": 1, "first_name": 1},
+    ).sort("bound_at", 1).limit(1).to_list(length=1)
+    return rows[0] if rows else None
+
+
+async def notify_first_connected_client(text: str) -> bool:
+    """Send a best-effort system notification to the first connected owner chat."""
+    if not is_enabled():
+        logger.warning("telegram disabled: cannot send owner notification")
+        return False
+    chat = await _get_first_connected_chat()
+    if not chat:
+        logger.warning("No Telegram clients connected to send notification")
+        return False
+    result = await send_message(int(chat["chat_id"]), text)
+    return bool(result.get("ok"))
+
+
+async def notify_improvement(proposal: Dict[str, Any]) -> bool:
+    """Push a Hermes self-improvement proposal to Telegram."""
+    text = (
+        "🤖 Hermes Self-Audit Alert\n\n"
+        f"📍 Area: {proposal.get('area') or 'unknown'}\n"
+        f"📝 Issue: {proposal.get('description') or 'no description'}\n"
+        f"🚀 Benefit: {proposal.get('expected_benefit') or 'optimization'}\n"
+        f"🔥 Priority: {proposal.get('priority') or 'P2'}"
+    )
+    return await notify_first_connected_client(text)
+
+
+async def notify_policy(proposal: Dict[str, Any]) -> bool:
+    """Push a Hermes policy proposal to Telegram."""
+    rule = (proposal.get("proposed_rule") or "...").strip()
+    if len(rule) > 120:
+        rule = rule[:117] + "..."
+    text = (
+        "📜 Hermes Policy Proposal\n\n"
+        f"📍 Title: {proposal.get('title') or 'unknown'}\n"
+        f"📂 Scope: {proposal.get('scope') or 'general'}\n"
+        f"📝 Rule: {rule}"
+    )
+    return await notify_first_connected_client(text)
+
+
 # ---------------------------------------------------------------------
 # Incoming updates
 # ---------------------------------------------------------------------
