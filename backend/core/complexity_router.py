@@ -26,6 +26,8 @@ logger = logging.getLogger("nxt8.complexity_router")
 
 MODEL_CHEAP = "deepseek-chat"
 MODEL_REASONER = "deepseek-reasoner"
+ANALYTICAL_INTENTS = {"analyst", "bookkeeper"}
+INTENT_REASONER_HINTS = {"planner", "deep_reasoning", "validation", "analyst"}
 
 # ---------------------------------------------------------------------
 # Heuristic signals
@@ -45,6 +47,21 @@ _REASONING_PATTERNS: List[re.Pattern] = [
     re.compile(r"\b(debug|trace|root\s+cause|почему\s+падает|stack\s*trace|exception|traceback)\b", re.I),
     re.compile(r"\b(algorithm|алгоритм|complexity|complexity|O\(\w+\))\b", re.I),
 ]
+
+_ANALYST_PATTERNS: List[re.Pattern] = [
+    re.compile(r"\b(mrr|arr|cac|ltv|arpu|aov|gmv|nps|roi|romi|roas)\b", re.I),
+    re.compile(r"\b(churn|retention|cohort|funnel|conversion|payback|margin|burn|runway)\b", re.I),
+    re.compile(r"\b(unit\s+economics|contribution\s+margin|take\s*rate|pricing|forecast|sensitivity)\b", re.I),
+    re.compile(r"\b(a/?b\s*test|stat(istical)?\s+sig(nificance)?|p-?value|north\s*star)\b", re.I),
+    re.compile(r"\b(sql|python|schema|query|debug|traceback|stack\s*trace|root\s*cause|refactor|architecture)\b", re.I),
+    re.compile(r"\b(юнит-экономик|когорт|ретеншн|конверс|отток|маржин|выручк|прогноз|чувствительност)\b", re.I),
+    re.compile(r"\b(ценообразован|a/b|статзначим|p-value|корнева(я|я причина)|sql|python|схем[аы])\b", re.I),
+]
+
+_NUMERIC_FRAGMENT_RE = re.compile(
+    r"(?:\b\d+(?:[.,]\d+)?\b|[%$€₽]|\b(?:usd|eur|rub|руб|mr[r]?|arr|cac|ltv|roi)\b)",
+    re.I,
+)
 
 # Tokens that signal a CHEAP task — fast chat, no reasoning needed.
 _CHEAP_PATTERNS: List[re.Pattern] = [
@@ -134,6 +151,8 @@ def pick_model(
         if isinstance(m, dict) and m.get("role") == "user"
     ).strip()
     body_len = len(blob)
+    intent_norm = (intent or "").strip().lower()
+    role_norm = (role or "").strip().lower()
 
     # Cheap-bias signals.
     if any(p.search(blob) for p in _CHEAP_PATTERNS):
@@ -142,14 +161,31 @@ def pick_model(
 
     # Reasoner-bias signals.
     reasoner_hits = sum(1 for p in _REASONING_PATTERNS if p.search(blob))
+    analyst_hits = sum(1 for p in _ANALYST_PATTERNS if p.search(blob))
+    numeric_hits = len(_NUMERIC_FRAGMENT_RE.findall(blob))
+    is_analytical_intent = intent_norm in ANALYTICAL_INTENTS or role_norm in ANALYTICAL_INTENTS
+
+    score = reasoner_hits
+    if analyst_hits:
+        score += min(2, analyst_hits)
+    if numeric_hits >= 3:
+        score += 1
+    if body_len >= HEAVY_CONTEXT_CHARS:
+        score += 1
+    if is_analytical_intent and (analyst_hits >= 1 or numeric_hits >= 2 or reasoner_hits >= 1):
+        score += 1
+
+    if is_analytical_intent and score >= 2:
+        _bump(MODEL_REASONER)
+        return MODEL_REASONER
 
     # Long body alone is *not* enough — needs at least 1 reasoning signal.
-    if reasoner_hits >= 2 or (reasoner_hits >= 1 and body_len >= HEAVY_CONTEXT_CHARS):
+    if score >= 3 or (score >= 2 and body_len >= HEAVY_CONTEXT_CHARS):
         _bump(MODEL_REASONER)
         return MODEL_REASONER
 
     # Intent hints from callers.
-    if intent in {"planner", "deep_reasoning", "validation"} and reasoner_hits >= 1:
+    if intent_norm in INTENT_REASONER_HINTS and score >= 1:
         _bump(MODEL_REASONER)
         return MODEL_REASONER
 

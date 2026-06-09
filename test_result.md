@@ -499,7 +499,140 @@ agent_communication:
   - agent: "testing"
     message: "Completed comprehensive backend validation of manual Hermes self-audit endpoint (POST /api/hermes/self-audit/run). All 6 comprehensive tests passed + 1 pytest test passed (27 total pytest tests including dependencies). Verified: (1) Endpoint exists and is properly registered as async function, (2) Endpoint protected via Depends(require_user) - authentication required, (3) Endpoint correctly tenant-scoped via user.company_id (line 2878), (4) Endpoint calls scan_system_health with company_id and window=200, (5) Endpoint calls run_persona_benchmark with company_id and correct query 'Кратко: какой твой главный инструмент и зона ответственности?', (6) Response structure correct: {ok: True, company_id, health: dict, benchmark: dict, message: str}, (7) Message explicitly states 'Telegram alerts are sent only when Hermes later submits an improvement or policy proposal' - no auto-proposals, (8) Endpoint does NOT call propose_improvement or propose_policy - verified in source code, (9) No route conflicts with existing Hermes routes (/hermes/health, /hermes/evolution/*, /hermes/self-assessment), (10) scan_system_health and run_persona_benchmark correctly imported in server.py (lines 50-53). Backend logs show endpoint responding correctly (401 for unauthenticated requests). Mock call test verified response structure and tenant-scoping work correctly. Implementation is production-ready."
 
-user_problem_statement: "Backend-only validation of manual Hermes self-audit endpoint (POST /api/hermes/self-audit/run)"
+user_problem_statement: "Backend-only validation of complexity_router.py fix for analyst/bookkeeper routing to deepseek-reasoner"
+
+
+  - task: "New constants ANALYTICAL_INTENTS and INTENT_REASONER_HINTS"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ ANALYTICAL_INTENTS = {'analyst', 'bookkeeper'} correctly defined at line 29. INTENT_REASONER_HINTS = {'planner', 'deep_reasoning', 'validation', 'analyst'} correctly defined at line 30. Both constants are used in score-based routing logic (lines 166, 188). Verified via comprehensive tests."
+
+  - task: "Analyst patterns for finance/code keywords"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ _ANALYST_PATTERNS (lines 51-59) includes all required keywords: MRR, ARR, CAC, LTV, churn, retention, cohort, funnel, conversion, payback, margin, burn, runway, unit economics, pricing, forecast, sensitivity, A/B test, stat sig, p-value, north star, SQL, Python, schema, query, debug, traceback, stack trace, root cause, refactor, architecture. Russian equivalents included: юнит-экономик, когорт, ретеншн, конверс, отток, маржин, выручк, прогноз, чувствительност, ценообразован, статзначим. All 42 test keywords matched correctly."
+
+  - task: "Numeric fragment regex _NUMERIC_FRAGMENT_RE"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ _NUMERIC_FRAGMENT_RE (lines 61-64) correctly matches numeric/money patterns: digits with decimals, currency symbols ($, €, ₽, %), financial acronyms (USD, EUR, RUB, MRR, ARR, CAC, LTV, ROI). Used in score calculation at line 165. Verified with 9 test cases - all matched correctly."
+
+  - task: "Score-based routing for analyst intent"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Score-based routing (lines 168-180) correctly routes analyst intent: (1) Simple pings stay on cheap model (score=0), (2) Finance keywords (MRR, CAC, LTV, churn) route to reasoner (analyst_hits + score boost), (3) Code/debug keywords (SQL, Python, root cause, refactor) route to reasoner, (4) Numeric fragments (3+) add +1 to score, (5) Analytical intent + (analyst_hits>=1 OR numeric_hits>=2 OR reasoning_hits>=1) adds +1 to score, (6) Score>=2 with analytical intent routes to reasoner. Verified with 50+ test cases."
+
+  - task: "Score-based routing for bookkeeper intent"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Score-based routing works for bookkeeper intent (bookkeeper in ANALYTICAL_INTENTS at line 29). Simple pings stay on cheap model. Finance keywords (unit economics, margin, forecast) route to reasoner. Same scoring logic as analyst. Verified with 10+ test cases."
+
+  - task: "Simple requests don't accidentally route to reasoner"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Simple/cheap requests correctly stay on cheap model: greetings (Привет, Hi, Hello, Спасибо, Thanks), simple pings (Ping, Как дела?), rephrase/translate requests. Cheap patterns (lines 67-71) have priority and return early (lines 158-160). Verified with 20+ simple requests - all stayed on cheap model, no accidental reasoner routing."
+
+  - task: "nxt8_graph.execute_node uses pick_model"
+    implemented: true
+    working: true
+    file: "backend/core/nxt8_graph.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ execute_node (line 127) calls pick_model with messages and intent=skill_id. Result stored in model_to_use (line 127) and passed to deepseek.chat via model_override parameter (line 132). Verified with integration tests: (1) Simple analyst ping uses cheap model, (2) Finance analysis uses reasoner, (3) Code debug uses reasoner, (4) Bookkeeper with finance keywords uses reasoner, (5) General skill with greeting uses cheap. All 5 integration tests passed."
+
+  - task: "No import regressions"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py, backend/core/nxt8_graph.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ No import errors or circular dependencies. All imports successful: complexity_router, nxt8_graph, deepseek. Key functions callable: pick_model, stats, reset_stats, execute_node. Python linting passed with 0 blocking issues, 0 advisory findings. Backend service running without errors."
+
+  - task: "Router API signature unchanged"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ pick_model signature (lines 117-135) unchanged and backward compatible: pick_model(messages, *, force=None, intent='', role=''). All parameters present with correct defaults. No breaking changes to API. Existing callers will continue working."
+
+  - task: "Review request examples work correctly"
+    implemented: true
+    working: true
+    file: "backend/core/complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All 3 examples from review request work correctly: (1) Simple analyst ping 'Ping' uses cheap model, (2) Finance/cohort request 'Сделай cohort-анализ по MRR, CAC, LTV и churn, сравни 3 сценария ценообразования и посчитай payback period' uses reasoner, (3) Code/debug request 'Найди root cause по stack trace, предложи refactor SQL query и объясни архитектурный trade-off' uses reasoner. Verified via direct tests."
+
+  - task: "Pytest tests passing"
+    implemented: true
+    working: true
+    file: "backend/tests/test_complexity_router.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All 4 pytest tests passed in 0.26s: (1) test_pick_model_keeps_simple_analyst_ping_on_cheap_model, (2) test_pick_model_routes_financial_analyst_request_to_reasoner, (3) test_pick_model_routes_code_debug_request_to_reasoner, (4) test_execute_node_passes_router_choice_to_deepseek. No failures or errors."
 
 backend:
   - task: "Manual self-audit endpoint implementation"
@@ -603,6 +736,10 @@ backend:
     working: true
     file: "backend/agents/hermes.py"
     stuck_count: 0
+
+  - agent: "testing"
+    message: "Completed comprehensive backend validation of complexity_router.py fix for analyst/bookkeeper routing. All 10 backend tasks verified and working correctly. Created 3 comprehensive test suites: (1) /app/backend_test_complexity_router_edge_cases.py (19 edge case tests covering greetings, analyst/bookkeeper pings, finance keywords, code debug, numeric fragments, heavy context, force overrides, system messages, intent hints, stats tracking, Russian keywords, A/B test keywords, review examples), (2) /app/backend_test_nxt8_graph_router_integration.py (2 integration tests verifying execute_node uses pick_model and passes model_override to deepseek), (3) /app/backend_test_complexity_router_verification.py (10 verification tests covering new constants, analyst patterns, numeric regex, score-based routing, simple requests, execute_node integration, import regressions, API signature, review examples). All pytest tests passed (4/4). All custom tests passed (31/31). Key findings: (1) ANALYTICAL_INTENTS and INTENT_REASONER_HINTS correctly defined and used, (2) _ANALYST_PATTERNS includes all finance/code/Russian keywords (42/42 matched), (3) _NUMERIC_FRAGMENT_RE matches numeric/money patterns correctly, (4) Score-based routing works for analyst/bookkeeper - simple pings stay cheap, heavy finance/code queries route to reasoner, (5) nxt8_graph.execute_node correctly uses pick_model and passes result to deepseek via model_override, (6) No import regressions or API breaking changes, (7) All 3 review request examples work correctly. No issues found. Implementation is production-ready."
+
     priority: "high"
     needs_retesting: false
     status_history:
