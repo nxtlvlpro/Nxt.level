@@ -142,6 +142,40 @@ function AuditBenchmarkRow({ row }) {
   );
 }
 
+function findingTone(urgency) {
+  if (urgency === "high") {
+    return "border-rose-400/30 bg-rose-500/10 text-rose-100";
+  }
+  if (urgency === "medium") {
+    return "border-amber-400/30 bg-amber-500/10 text-amber-100";
+  }
+  return "border-emerald-400/30 bg-emerald-500/10 text-emerald-100";
+}
+
+function AnalystFindingRow({ finding }) {
+  return (
+    <li
+      className={`rounded-xl border px-3 py-3 space-y-1 ${findingTone(finding.urgency)}`}
+      data-testid={`analyst-finding-${finding.id}`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <strong className="text-sm uppercase tracking-[0.18em]" data-testid={`analyst-finding-type-${finding.id}`}>
+          {finding.type}
+        </strong>
+        <span className="text-[10px] uppercase tracking-[0.18em]" data-testid={`analyst-finding-urgency-${finding.id}`}>
+          {finding.urgency}
+        </span>
+      </div>
+      <div className="text-[11px] text-white/60" data-testid={`analyst-finding-time-${finding.id}`}>
+        {finding.timestamp ? new Date(finding.timestamp).toLocaleTimeString() : "—"}
+      </div>
+      <div className="text-[12px] text-white/80 leading-relaxed" data-testid={`analyst-finding-summary-${finding.id}`}>
+        {finding.summary || "—"}
+      </div>
+    </li>
+  );
+}
+
 function JobRow({ job }) {
   return (
     <div
@@ -270,6 +304,7 @@ export default function HermesPanel({ onBack }) {
   const [jobs, setJobs] = useState([]);
   const [telegram, setTelegram] = useState(null);
   const [audit, setAudit] = useState(null);
+  const [analystFindings, setAnalystFindings] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState("");
   const [firstLoaded, setFirstLoaded] = useState(false);
@@ -289,6 +324,18 @@ export default function HermesPanel({ onBack }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const loadFindings = async () => {
+      try {
+        const res = await api.analystFindings(5);
+        setAnalystFindings(res.findings || []);
+      } catch (err) {
+        console.warn("Не удалось загрузить findings аналитика", err);
+      }
+    };
+    loadFindings();
+  }, []);
 
   const runAudit = async () => {
     if (auditLoading) return;
@@ -364,86 +411,109 @@ export default function HermesPanel({ onBack }) {
         </div>
       )}
 
-      <div className="space-y-3" data-testid="hermes-audit-card">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <SectionHeader
-            title="self-audit · operator console"
-            right={auditRows.length ? `${auditRows.length} routed agents` : "manual trigger"}
-          />
-          <button
-            type="button"
-            onClick={openTelegram}
-            disabled={!telegramReady}
-            title={telegramReady ? "Открыть чат Hermes в Telegram" : "Подключите Telegram, чтобы открыть чат"}
-            className="neo-btn rounded-full px-3 py-1.5 text-sky-300 text-[10px] uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40"
-            data-testid="hermes-view-telegram-button"
-          >
-            <ArrowUpRight className="w-3 h-3" />
-            View in Telegram
-          </button>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)] gap-4 items-start">
+        <div className="space-y-3" data-testid="hermes-audit-card">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <SectionHeader
+              title="self-audit · operator console"
+              right={auditRows.length ? `${auditRows.length} routed agents` : "manual trigger"}
+            />
+            <button
+              type="button"
+              onClick={openTelegram}
+              disabled={!telegramReady}
+              title={telegramReady ? "Открыть чат Hermes в Telegram" : "Подключите Telegram, чтобы открыть чат"}
+              className="neo-btn rounded-full px-3 py-1.5 text-sky-300 text-[10px] uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40"
+              data-testid="hermes-view-telegram-button"
+            >
+              <ArrowUpRight className="w-3 h-3" />
+              View in Telegram
+            </button>
+          </div>
+
+          {auditError ? (
+            <div
+              className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-3 text-[11px] text-rose-200"
+              data-testid="hermes-audit-error"
+            >
+              {auditError}
+            </div>
+          ) : null}
+
+          {!audit ? (
+            <div
+              className="rounded-2xl border border-dashed border-white/10 bg-brand-dark/30 px-4 py-5 text-[12px] text-white/55 leading-relaxed"
+              data-testid="hermes-audit-empty"
+            >
+              Нажмите <span className="text-white">Run Audit</span>, чтобы получить health-report по tenant и sandbox benchmark по routed агентам. Telegram-кнопка останется read-only на этом этапе.
+            </div>
+          ) : (
+            <div className="space-y-4" data-testid="hermes-audit-results">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <AuditMetricCard
+                  label="avg confidence"
+                  value={formatConfidence(auditHealth?.avg_confidence)}
+                  hint={`scanned · ${auditHealth?.scanned ?? 0} · contradictions · ${auditHealth?.contradiction_count ?? 0}`}
+                  danger={lowConfidence}
+                  testId="hermes-audit-health-confidence"
+                />
+                <AuditMetricCard
+                  label="avg latency"
+                  value={formatLatency(auditHealth?.avg_latency_ms)}
+                  hint={`escalation rate · ${formatConfidence(auditHealth?.escalation_rate)} · mock rate · ${formatConfidence(auditHealth?.mock_rate)}`}
+                  danger={false}
+                  testId="hermes-audit-health-latency"
+                />
+              </div>
+
+              <div
+                className="rounded-2xl border border-white/8 bg-brand-dark/35 p-4 space-y-3"
+                data-testid="hermes-audit-benchmark-panel"
+              >
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.24em] text-white/45" data-testid="hermes-audit-benchmark-title">
+                      benchmark
+                    </div>
+                    <div className="mt-1 text-sm text-white/80" data-testid="hermes-audit-benchmark-summary">
+                      passed · {audit?.benchmark?.passed ?? 0} / {audit?.benchmark?.total_personas ?? auditRows.length}
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-white/45" data-testid="hermes-audit-message">
+                    {audit?.message || "Self-audit completed"}
+                  </div>
+                </div>
+
+                <div className="space-y-2" data-testid="hermes-audit-benchmark-list">
+                  {auditRows.map((row) => (
+                    <AuditBenchmarkRow key={row.persona} row={row} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {auditError ? (
-          <div
-            className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-3 text-[11px] text-rose-200"
-            data-testid="hermes-audit-error"
-          >
-            {auditError}
+        <div
+          className="rounded-2xl border border-white/8 bg-brand-dark/35 p-4 space-y-3"
+          data-testid="analyst-findings-card"
+        >
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <SectionHeader title="🔍 Аналитик: Самодиагностика" right={`${analystFindings.length} findings`} />
           </div>
-        ) : null}
 
-        {!audit ? (
-          <div
-            className="rounded-2xl border border-dashed border-white/10 bg-brand-dark/30 px-4 py-5 text-[12px] text-white/55 leading-relaxed"
-            data-testid="hermes-audit-empty"
-          >
-            Нажмите <span className="text-white">Run Audit</span>, чтобы получить health-report по tenant и sandbox benchmark по routed агентам. Telegram-кнопка останется read-only на этом этапе.
-          </div>
-        ) : (
-          <div className="space-y-4" data-testid="hermes-audit-results">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <AuditMetricCard
-                label="avg confidence"
-                value={formatConfidence(auditHealth?.avg_confidence)}
-                hint={`scanned · ${auditHealth?.scanned ?? 0} · contradictions · ${auditHealth?.contradiction_count ?? 0}`}
-                danger={lowConfidence}
-                testId="hermes-audit-health-confidence"
-              />
-              <AuditMetricCard
-                label="avg latency"
-                value={formatLatency(auditHealth?.avg_latency_ms)}
-                hint={`escalation rate · ${formatConfidence(auditHealth?.escalation_rate)} · mock rate · ${formatConfidence(auditHealth?.mock_rate)}`}
-                danger={false}
-                testId="hermes-audit-health-latency"
-              />
-            </div>
-
-            <div
-              className="rounded-2xl border border-white/8 bg-brand-dark/35 p-4 space-y-3"
-              data-testid="hermes-audit-benchmark-panel"
-            >
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.24em] text-white/45" data-testid="hermes-audit-benchmark-title">
-                    benchmark
-                  </div>
-                  <div className="mt-1 text-sm text-white/80" data-testid="hermes-audit-benchmark-summary">
-                    passed · {audit?.benchmark?.passed ?? 0} / {audit?.benchmark?.total_personas ?? auditRows.length}
-                  </div>
-                </div>
-                <div className="text-[11px] text-white/45" data-testid="hermes-audit-message">
-                  {audit?.message || "Self-audit completed"}
-                </div>
-              </div>
-
-              <div className="space-y-2" data-testid="hermes-audit-benchmark-list">
-                {auditRows.map((row) => (
-                  <AuditBenchmarkRow key={row.persona} row={row} />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+          {analystFindings.length === 0 ? (
+            <p className="text-[12px] text-white/55" data-testid="analyst-findings-empty">
+              <small>Нет активных находок</small>
+            </p>
+          ) : (
+            <ul className="space-y-2 findings-list" data-testid="analyst-findings-list">
+              {analystFindings.slice(0, 5).map((f) => (
+                <AnalystFindingRow key={f.id} finding={f} />
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       <div className="flex justify-between items-center">

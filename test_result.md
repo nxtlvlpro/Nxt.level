@@ -469,6 +469,18 @@ frontend:
         agent: "testing"
         comment: "✅ Hermes Self-Audit UI card fully functional. All UI components render correctly: (1) Panel opens from OPS view via Hermes widget, (2) 'Run Audit' button present and clickable (data-testid='hermes-run-audit-button'), (3) 'View in Telegram' button present and correctly disabled when Telegram not connected (data-testid='hermes-view-telegram-button'), (4) Empty state displays with Russian instructions (data-testid='hermes-audit-empty'), (5) Error state element exists (data-testid='hermes-audit-error'), (6) All expected data-testid attributes present as specified. Button triggers API call to POST /api/hermes/self-audit/run correctly. The 'not_authenticated' error after clicking is an AUTH ISSUE (401 from backend), NOT a UI regression. Layout verified: no overflow, proper rendering (1472x488.75px), no JavaScript errors. UI implementation is production-ready."
 
+  - task: "Analyst Findings Card in HermesPanel"
+    implemented: true
+    working: true
+    file: "frontend/src/components/views/ops/HermesPanel.jsx, frontend/src/lib/api.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Analyst findings card fully functional in HermesPanel. All UI components verified via comprehensive Playwright test: (1) Card renders correctly with data-testid='analyst-findings-card' in grid layout next to Hermes Self-Audit card, (2) Title displays correctly: '🔍 Аналитик: Самодиагностика' with findings count, (3) Empty state works correctly with data-testid='analyst-findings-empty' showing 'Нет активных находок', (4) API integration correct: api.analystFindings(5) calls GET /api/analyst/findings?limit=5, (5) Error handling graceful: try/catch with console.warn, doesn't crash UI on API failure, (6) Layout integrity verified: card dimensions 556.42x80.39px, no overflow issues, properly positioned in xl:grid-cols layout, (7) All required data-testid attributes present: analyst-findings-card, analyst-findings-empty, analyst-findings-list, analyst-finding-{id}, analyst-finding-type-{id}, analyst-finding-urgency-{id}, analyst-finding-time-{id}, analyst-finding-summary-{id}, (8) AnalystFindingRow component structure correct with type/urgency/timestamp/summary fields and proper color coding (high=rose, medium=amber, low=emerald), (9) No console errors detected, (10) Desktop layout (1920x1080) doesn't break. Backend endpoint exists at server.py:2896 (GET /api/analyst/findings, auth-protected, tenant-scoped). UI implementation is production-ready and handles both empty and populated states correctly."
+
 metadata:
   created_by: "testing_agent"
   version: "1.4"
@@ -499,7 +511,7 @@ agent_communication:
   - agent: "testing"
     message: "Completed comprehensive backend validation of manual Hermes self-audit endpoint (POST /api/hermes/self-audit/run). All 6 comprehensive tests passed + 1 pytest test passed (27 total pytest tests including dependencies). Verified: (1) Endpoint exists and is properly registered as async function, (2) Endpoint protected via Depends(require_user) - authentication required, (3) Endpoint correctly tenant-scoped via user.company_id (line 2878), (4) Endpoint calls scan_system_health with company_id and window=200, (5) Endpoint calls run_persona_benchmark with company_id and correct query 'Кратко: какой твой главный инструмент и зона ответственности?', (6) Response structure correct: {ok: True, company_id, health: dict, benchmark: dict, message: str}, (7) Message explicitly states 'Telegram alerts are sent only when Hermes later submits an improvement or policy proposal' - no auto-proposals, (8) Endpoint does NOT call propose_improvement or propose_policy - verified in source code, (9) No route conflicts with existing Hermes routes (/hermes/health, /hermes/evolution/*, /hermes/self-assessment), (10) scan_system_health and run_persona_benchmark correctly imported in server.py (lines 50-53). Backend logs show endpoint responding correctly (401 for unauthenticated requests). Mock call test verified response structure and tenant-scoping work correctly. Implementation is production-ready."
 
-user_problem_statement: "Backend-only validation of complexity_router.py fix for analyst/bookkeeper routing to deepseek-reasoner"
+user_problem_statement: "Frontend UI testing of analyst findings card in HermesPanel (Ops View)"
 
 
   - task: "New constants ANALYTICAL_INTENTS and INTENT_REASONER_HINTS"
@@ -858,8 +870,8 @@ frontend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.7"
-  test_sequence: 9
+  version: "1.8"
+  test_sequence: 10
   run_ui: true
 
 test_plan:
@@ -871,4 +883,6 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "Completed comprehensive frontend UI testing of Hermes Self-Audit card in Ops View. All UI components verified working correctly via Playwright automation. Panel renders successfully, all buttons present with correct data-testid attributes, empty state displays properly, layout has no overflow issues. The 'not_authenticated' error encountered when clicking 'Run Audit' is confirmed to be an authentication issue (401 from backend), NOT a UI regression. The UI correctly makes the API call to POST /api/hermes/self-audit/run. Main agent's smoke test observation was accurate - this is a credential/session issue, not a frontend problem. UI implementation is production-ready and working as designed."
+  - agent: "testing"
+    message: "Completed comprehensive frontend UI testing of analyst findings card in HermesPanel (Ops View). All requirements verified via Playwright automation: (1) New card renders correctly next to Hermes Self-Audit card with data-testid='analyst-findings-card', (2) Title '🔍 Аналитик: Самодиагностика' displays with findings count, (3) Empty state works correctly showing 'Нет активных находок' with data-testid='analyst-findings-empty', (4) API integration correct: api.analystFindings(5) → GET /api/analyst/findings?limit=5, (5) Layout doesn't break on desktop width (1920x1080), card properly positioned in grid (556.42x80.39px), no overflow issues, (6) All required data-testid attributes present and correct, (7) Error handling graceful: try/catch with console.warn, UI doesn't crash on API failure, (8) AnalystFindingRow component structure verified with type/urgency/timestamp/summary fields and proper color coding, (9) No console errors detected. Backend endpoint verified at server.py:2896 (auth-protected, tenant-scoped). UI implementation is production-ready and handles both empty and populated states correctly. No issues found."
 
