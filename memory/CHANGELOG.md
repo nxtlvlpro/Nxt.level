@@ -1,5 +1,19 @@
 # NXT8 — Release Notes
 
+## v1.18.23-no-legacy-source-guard — 2026-06-09
+
+**Status:** ✅ Добавлен CI-guard против возврата `LEGACY_SOURCE_DISABLED` в active `.py` файлы.
+
+### Added
+- **`backend/tests/test_no_legacy_source_disabled.py`**
+  - проверяет 5 active shim/modules на отсутствие `LEGACY_SOURCE_DISABLED`
+
+### Validated
+- `pytest -q /app/backend/tests/test_no_legacy_source_disabled.py` → **5/5 PASS**
+- все guarded files подтверждены как clean
+
+---
+
 ## v1.18.22-no-silent-except-guard — 2026-06-09
 
 **Status:** ✅ Добавлен CI-guard против `except ...: pass` в runtime-коде.

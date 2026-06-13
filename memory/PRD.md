@@ -1,7 +1,26 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.22-no-silent-except-guard
+**Current version:** v1.18.23-no-legacy-source-guard
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.23 (2026-06-09)
+
+**CI guard added against `LEGACY_SOURCE_DISABLED` in active modules.** После
+очистки legacy blobs сборка теперь автоматически падает, если кто-то вернёт их
+в ключевые shim-файлы.
+
+- Added:
+  - `backend/tests/test_no_legacy_source_disabled.py`
+- Guard coverage:
+  - `backend/agents/personas.py`
+  - `backend/agents/joker.py`
+  - `backend/agents/orchestrator.py`
+  - `backend/agents/hermes_os_graph.py`
+  - `backend/agents/hermes_graph_v2.py`
+
+**Validated**
+- `pytest -q /app/backend/tests/test_no_legacy_source_disabled.py` → **5/5 PASS**
+- runtime check confirms all guarded files are free of `LEGACY_SOURCE_DISABLED`
 
 ## What's new — v1.18.22 (2026-06-09)
 
