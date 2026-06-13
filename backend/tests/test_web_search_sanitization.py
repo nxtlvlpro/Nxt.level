@@ -23,3 +23,10 @@ def test_sanitize_web_results_normalizes_fields():
     assert cleaned == [
         {"title": "Market update", "url": "https://example.com/news", "snippet": "Fresh data."}
     ]
+
+
+def test_sanitize_web_results_can_blank_fetch_content():
+    cleaned = sanitize_web_results([
+        {"snippet": "tenant_id=client-abc leaked in body"}
+    ])
+    assert cleaned == []

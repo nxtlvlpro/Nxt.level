@@ -1,5 +1,25 @@
 # NXT8 — Release Notes
 
+## v1.18.19-fetch-url-sanitized — 2026-06-09
+
+**Status:** ✅ `fetch_url` теперь проходит tenant-safe sanitization перед подачей в LLM.
+
+### Changed
+- **`backend/agents/hermes.py`**
+  - в `_t_fetch_url(...)` после извлечения `text` добавлен sanitizer:
+    - `sanitized_snippets = sanitize_web_results([{"snippet": text}])`
+    - `text = sanitized_snippets[0]["snippet"] if sanitized_snippets else "(содержимое удалено из соображений безопасности)"`
+
+### Added
+- **`backend/tests/test_web_search_sanitization.py`**
+  - новый кейс: чувствительный page-content удаляется полностью
+
+### Validated
+- `pytest -q /app/backend/tests/test_web_search_sanitization.py` → **3/3 PASS**
+- runtime smoke → unsafe fetched content becomes safe fallback text
+
+---
+
 ## v1.18.18-detect-bottlenecks-failsoft — 2026-06-09
 
 **Status:** ✅ `detect_bottlenecks` больше не роняет sandbox audit при отсутствии DB.

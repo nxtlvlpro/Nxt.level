@@ -1,7 +1,23 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.18-detect-bottlenecks-failsoft
+**Current version:** v1.18.19-fetch-url-sanitized
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.19 (2026-06-09)
+
+**`fetch_url` is now tenant-safe.** После загрузки внешнего page-content текст
+проходит через тот же sanitizer, что и `web_search`, до попадания в LLM.
+
+- `backend/agents/hermes.py`
+  - в `_t_fetch_url(...)` добавлена post-fetch sanitization:
+    - `sanitized_snippets = sanitize_web_results([{"snippet": text}])`
+    - fallback content: `"(содержимое удалено из соображений безопасности)"`
+- `backend/tests/test_web_search_sanitization.py`
+  - добавлен test case, что чувствительный body контент может быть полностью удалён
+
+**Validated**
+- `pytest -q /app/backend/tests/test_web_search_sanitization.py` → **3/3 PASS**
+- runtime smoke: sensitive `fetch_url`-content now maps to safe fallback string
 
 ## What's new — v1.18.18 (2026-06-09)
 

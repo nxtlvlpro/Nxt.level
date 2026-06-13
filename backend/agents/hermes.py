@@ -721,6 +721,8 @@ async def _t_fetch_url(args: Dict[str, Any]) -> Dict[str, Any]:
         if original_len > max_chars:
             text = text[:max_chars].rsplit(" ", 1)[0] + "…"
             truncated = True
+        sanitized_snippets = sanitize_web_results([{"snippet": text}])
+        text = sanitized_snippets[0]["snippet"] if sanitized_snippets else "(содержимое удалено из соображений безопасности)"
         out = {
             "ok": True,
             "url": url,
