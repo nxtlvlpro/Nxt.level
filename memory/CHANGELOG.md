@@ -1,5 +1,20 @@
 # NXT8 — Release Notes
 
+## v1.18.22-no-silent-except-guard — 2026-06-09
+
+**Status:** ✅ Добавлен CI-guard против `except ...: pass` в runtime-коде.
+
+### Added
+- **`backend/tests/test_no_silent_exceptions.py`**
+  - AST-based guard на silent exceptions
+  - покрывает 9 ключевых runtime modules
+
+### Validated
+- `pytest -q /app/backend/tests/test_no_silent_exceptions.py` → **9/9 PASS**
+- все runtime modules из списка проходят проверку
+
+---
+
 ## v1.18.21-observability-warning-logs — 2026-06-09
 
 **Status:** ✅ Ключевые silent `pass` в runtime-коде заменены на `logger.warning(...)`.

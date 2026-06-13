@@ -1,7 +1,30 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.21-observability-warning-logs
+**Current version:** v1.18.22-no-silent-except-guard
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.22 (2026-06-09)
+
+**CI guard added against silent exceptions.** Теперь runtime-код защищён
+автотестом, который падает, если в целевых модулях снова появится
+`except ...: pass`.
+
+- Added:
+  - `backend/tests/test_no_silent_exceptions.py`
+- Guard coverage:
+  - `backend/server.py`
+  - `backend/core/auth.py`
+  - `backend/core/db.py`
+  - `backend/core/deepseek.py`
+  - `backend/core/telegram_bot.py`
+  - `backend/core/scheduler.py`
+  - `backend/agents/ai_mentor.py`
+  - `backend/agents/hermes_evolution.py`
+  - `backend/agents/hermes.py`
+
+**Validated**
+- `pytest -q /app/backend/tests/test_no_silent_exceptions.py` → **9/9 PASS**
+- runtime modules all report `has_silent_except(...) == False`
 
 ## What's new — v1.18.21 (2026-06-09)
 
