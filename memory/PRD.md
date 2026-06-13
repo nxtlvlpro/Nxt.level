@@ -1,7 +1,26 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.28-analyst-findings-ui
+**Current version:** v1.18.29-analyst-findings-workflow
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.29 (2026-06-09)
+
+**Analyst findings are now actionable from Ops UI.** Findings can be marked as
+resolved or escalated directly to Hermes from the same panel.
+
+- Backend actions added:
+  - `POST /api/analyst/findings/{finding_id}/resolve`
+  - `POST /api/analyst/findings/{finding_id}/escalate`
+- Frontend actions added in `HermesPanel.jsx`:
+  - `handleEscalate(id)`
+  - `handleMarkResolved(id)`
+  - CTA buttons for unresolved findings
+  - `✓ Решено` badge for resolved findings
+
+**Validated**
+- `pytest -q /app/backend/tests/test_analyst_findings_actions.py` → **2/2 PASS**
+- independent frontend verification → **PASS**
+- UI shows CTA layer, remains stable, handles API/auth failures gracefully
 
 ## What's new — v1.18.28 (2026-06-09)
 

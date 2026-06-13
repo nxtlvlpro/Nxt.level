@@ -1,5 +1,25 @@
 # NXT8 — Release Notes
 
+## v1.18.29-analyst-findings-workflow — 2026-06-09
+
+**Status:** ✅ Findings `analyst` стали управляемыми из Ops UI.
+
+### Added
+- **Backend**
+  - `POST /api/analyst/findings/{finding_id}/resolve`
+  - `POST /api/analyst/findings/{finding_id}/escalate`
+- **Frontend**
+  - CTA buttons in `HermesPanel.jsx`:
+    - `➔ Эскалировать Гермесу`
+    - `✓ Отметить как решённое`
+  - resolved badge: `✓ Решено`
+
+### Validated
+- `pytest -q /app/backend/tests/test_analyst_findings_actions.py` → **2/2 PASS**
+- independent frontend verification → **PASS**
+
+---
+
 ## v1.18.28-analyst-findings-ui — 2026-06-09
 
 **Status:** ✅ Findings `analyst` выведены в Ops UI рядом с Hermes Self-Audit.
