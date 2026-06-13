@@ -1,5 +1,27 @@
 # NXT8 — Release Notes
 
+## v1.18.16-web-search-sanitization — 2026-06-09
+
+**Status:** ✅ Внешние результаты `web_search` санитизируются перед подачей агентам.
+
+### Added
+- **`backend/agents/hermes.py`**
+  - `sanitize_web_results(results)`
+  - blocked URL markers: `.nxt8.`, `/tenant/`, `.myclient.com`
+  - blocked snippet/title markers: `tenant_id=`, `client_id=`, `session_id=`, `@myclient.com`
+- **`backend/tests/test_web_search_sanitization.py`**
+  - coverage для фильтрации и нормализации
+
+### Changed
+- **`backend/agents/hermes.py`**
+  - `_t_web_search(...)` теперь возвращает уже очищенный `results`
+
+### Validated
+- `pytest -q /app/backend/tests/test_web_search_sanitization.py` → **2/2 PASS**
+- runtime smoke → unsafe web hit removed, safe hit preserved
+
+---
+
 ## v1.18.15-role-boundary-client-vs-project — 2026-06-09
 
 **Status:** ✅ `client_manager` и `project_coord` разведены по зонам ответственности.

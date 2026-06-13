@@ -1,7 +1,32 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.15-role-boundary-client-vs-project
+**Current version:** v1.18.16-web-search-sanitization
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.16 (2026-06-09)
+
+**Web search results are now sanitized before entering agent context.**
+Закрыт риск случайной утечки tenant-specific данных через внешний `web_search`.
+
+- `backend/agents/hermes.py`
+  - добавлена `sanitize_web_results(results)`
+  - блокируются tenant-like URL markers:
+    - `.nxt8.`
+    - `/tenant/`
+    - `.myclient.com`
+  - блокируются сниппеты/заголовки с sensitive markers:
+    - `tenant_id=`
+    - `client_id=`
+    - `session_id=`
+    - `@myclient.com`
+  - `_t_web_search(...)` теперь пропускает выдачу через sanitizer до возврата агенту
+- `backend/tests/test_web_search_sanitization.py`
+  - тест на drop blocked URLs/snippets
+  - тест на нормализацию полей
+
+**Validated**
+- `pytest -q /app/backend/tests/test_web_search_sanitization.py` → **2/2 PASS**
+- runtime smoke: unsafe result filtered out, safe result preserved
 
 ## What's new — v1.18.15 (2026-06-09)
 

@@ -589,6 +589,39 @@ async def _t_evaluate_action_roi(args: Dict[str, Any]) -> Dict[str, Any]:
 # Always rate-limited inside the lib; we cap max_results to keep replies tight.
 
 WEB_SEARCH_MAX_RESULTS = 8
+WEB_SEARCH_BLOCKED_URL_MARKERS = (".nxt8.", "/tenant/", ".myclient.com")
+WEB_SEARCH_BLOCKED_SNIPPET_MARKERS = (
+    "tenant_id=",
+    "client_id=",
+    "session_id=",
+    "@myclient.com",
+)
+
+
+def sanitize_web_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Remove obviously tenant-specific or sensitive external search results."""
+    cleaned: List[Dict[str, Any]] = []
+    for r in results:
+        url = str(r.get("url") or "").strip()
+        snippet = str(r.get("snippet") or "").strip()
+        title = str(r.get("title") or "").strip()
+
+        lower_url = url.lower()
+        lower_snippet = snippet.lower()
+        lower_title = title.lower()
+
+        if any(marker in lower_url for marker in WEB_SEARCH_BLOCKED_URL_MARKERS):
+            continue
+        if any(marker in lower_snippet or marker in lower_title for marker in WEB_SEARCH_BLOCKED_SNIPPET_MARKERS):
+            continue
+
+        cleaned.append({
+            **r,
+            "title": title,
+            "url": url,
+            "snippet": snippet,
+        })
+    return cleaned
 
 
 async def _t_web_search(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -621,7 +654,7 @@ async def _t_web_search(args: Dict[str, Any]) -> Dict[str, Any]:
                 "url": h.get("href") or h.get("url") or "",
                 "snippet": (h.get("body") or "").strip(),
             })
-        return out
+        return sanitize_web_results(out)
 
     try:
         results = await asyncio.to_thread(_do_search)
