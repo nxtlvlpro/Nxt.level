@@ -1,7 +1,29 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.14-prompt-policy-registry
+**Current version:** v1.18.15-role-boundary-client-vs-project
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.15 (2026-06-09)
+
+**Role overlap reduced between `client_manager` and `project_coord`.** Их зоны
+ответственности разведены в active system prompts и deep prompts, чтобы
+избежать двойных действий по одному запросу.
+
+- `client_manager`
+  - зафиксирован как агент только для клиентских коммуникаций:
+    follow-up, meeting summaries, upsell, churn-prevention
+  - явный запрет на внутренние проекты / cross-department bridge / team coordination
+- `project_coord`
+  - усилен как агент только для внутренних задач, мостов между отделами и сроков
+  - явный запрет на прямые сообщения клиентам и внешний follow-up
+- Updated files:
+  - `backend/agents/legacy/personas_legacy.py`
+  - `backend/agents/persona_prompts.py`
+  - `backend/tests/test_role_boundary_prompts.py`
+
+**Validated**
+- `pytest -q /app/backend/tests/test_role_boundary_prompts.py` → **3/3 PASS**
+- runtime-check confirms role boundaries in both system and deep prompts
 
 ## What's new — v1.18.14 (2026-06-09)
 

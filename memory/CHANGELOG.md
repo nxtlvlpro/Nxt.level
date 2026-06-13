@@ -1,5 +1,30 @@
 # NXT8 — Release Notes
 
+## v1.18.15-role-boundary-client-vs-project — 2026-06-09
+
+**Status:** ✅ `client_manager` и `project_coord` разведены по зонам ответственности.
+
+### Changed
+- **`backend/agents/legacy/personas_legacy.py`**
+  - `client_manager`: фокус только на клиентских коммуникациях, follow-up, upsell
+  - `project_coord`: фокус только на внутренних проектах, мостах между отделами и сроках
+- **`backend/agents/persona_prompts.py`**
+  - те же role-boundary правила добавлены в deep prompts обоих агентов
+
+### Added
+- **`backend/tests/test_role_boundary_prompts.py`**
+  - проверка runtime `system_prompt` для `client_manager`
+  - проверка runtime `system_prompt` для `project_coord`
+  - проверка deep prompts на те же границы ролей
+
+### Validated
+- `pytest -q /app/backend/tests/test_role_boundary_prompts.py` → **3/3 PASS**
+- runtime preview:
+  - `client_manager` = customer communications only
+  - `project_coord` = internal coordination only
+
+---
+
 ## v1.18.14-prompt-policy-registry — 2026-06-09
 
 **Status:** ✅ Prompt-layer NXT8 переведён на централизованный policy registry.
