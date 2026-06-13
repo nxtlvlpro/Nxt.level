@@ -1,0 +1,83 @@
+{
+  "project_info": {
+    "name": "NXT8 Multi-agent OS - 3D Agent Room",
+    "type": "Dashboard / 3D Cinematic Entry Point",
+    "archetype": "Archetype 5 (Luxury / Cinematic) mixed with High-Contrast Tech",
+    "theme": "DARK",
+    "description": "Standalone 3D Agent Room page providing a visually strong, static cinematic environment with voxel-like agents, glowing desk pods, and a digital skyline."
+  },
+  "design_system": {
+    "colors": {
+      "background": "#050507",
+      "surface_glass": "rgba(10, 10, 15, 0.65)",
+      "border_glass": "rgba(255, 255, 255, 0.08)",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#A0A0AB",
+      "accent_cyan": "#00E5FF",
+      "accent_magenta": "#FF0055",
+      "accent_amber": "#FFB000",
+      "accent_green": "#00FF66"
+    },
+    "typography": {
+      "heading_font": "'Outfit', sans-serif",
+      "body_font": "'IBM Plex Mono', monospace",
+      "tracking_tight": "-0.02em",
+      "tracking_widest": "0.2em"
+    },
+    "surfaces": {
+      "detail_panel": "backdrop-blur-xl bg-[#050507]/80 border-l border-white/10 shadow-[-8px_0_32px_rgba(0,0,0,0.8)]",
+      "floating_label": "backdrop-blur-md bg-black/50 border border-white/20 rounded-full px-3 py-1 text-xs text-white uppercase tracking-widest"
+    }
+  },
+  "threejs_architecture": {
+    "setup": {
+      "renderer": "WebGLRenderer with antialias: true, alpha: true",
+      "toneMapping": "THREE.ACESFilmicToneMapping",
+      "toneMappingExposure": 1.2,
+      "fog": "THREE.FogExp2('#050507', 0.015)"
+    },
+    "camera": {
+      "type": "PerspectiveCamera",
+      "fov": 45,
+      "position": [0, 8, 15],
+      "lookAt": [0, 0, 0]
+    },
+    "lighting": {
+      "ambient": "HemisphereLight(0x11111a, 0x000000, 1)",
+      "neon_halos": "PointLights positioned above/under each agent pod with colors matching agent roles (cyan, magenta, amber) and intensity 2.0"
+    },
+    "scene_objects": {
+      "floor": "PlaneGeometry, deeply reflective standard material (roughness 0.1, metalness 0.9), overlaid with a subtle grid texture",
+      "digital_wall": "Curved plane in the background with a custom shader or wireframe material to simulate glowing vertical data streams / skyline",
+      "pods": "Cylinder geometries acting as high-tech desks, dark metal materials with emissive rings",
+      "agents": "Grouped BoxGeometries (voxels) representing the physical form of the OS agents, utilizing MeshStandardMaterial with emissive maps, floating slightly above pods"
+    },
+    "animations": {
+      "library": "GSAP (for camera movement and smooth UI transitions)",
+      "idle": "Agents bobbing up and down slightly using Math.sin(time * speed), slow rotation of the pods",
+      "interaction": "On raycaster intersect, hovered agent pod glows brighter, scaling up by 1.05"
+    }
+  },
+  "ui_overlay_architecture": {
+    "layout": {
+      "wrapper": "Absolute positioned full-screen div over canvas, pointer-events-none (except for interactive elements)",
+      "floating_labels": "HTML elements mapped to 3D coordinates via Vector3.project(camera). Glassmorphism pills attached to each agent.",
+      "detail_panel": "Fixed right panel (width 400px), slides in on agent click (pointer-events-auto). Contains agent persona details, token stats, and 'Initialize' CTA.",
+      "entry_points": "Top-left absolute positioned button to return to the main NXT8 dashboard navigation."
+    },
+    "interactions": {
+      "agent_click": "Camera lerps (via GSAP) to focus closely on the selected pod, detail panel slides in from the right, unselected pods dim.",
+      "data_testids": "MANDATORY on interactive elements: [data-testid='agent-pod-label'], [data-testid='agent-detail-panel'], [data-testid='activate-agent-btn'], [data-testid='back-to-nav-btn']"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Create index.html and any necessary JS/CSS assets in /frontend/public/agents-room/.",
+    "Import Three.js, GSAP, and Tailwind via CDN in the HTML file.",
+    "Implement a cinematic, dark 3D scene matching the styling of Archetype 5 (Luxury) and tech OS elements. DO NOT use generic Vercel/Stripe styles.",
+    "Construct voxel agents using groups of Three.js BoxGeometries. Assign a distinct neon accent color (cyan, magenta, etc.) to each agent's pod.",
+    "Add a glassmorphism UI overlay for the detail panel using raw HTML/Tailwind classes.",
+    "Ensure all interactive UI elements have the specified data-testid attributes for testing.",
+    "DO NOT use React or Shadcn here, as this is specifically a standalone static Three.js HTML page.",
+    "Use GSAP to animate camera transitions when an agent is selected, moving the view to a dramatic, close-up isometric angle."
+  ]
+}
