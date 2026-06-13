@@ -642,6 +642,7 @@
     @media (max-width: 980px) {
       html, body {
         overflow: auto;
+        overflow-x: hidden;
       }
 
       .app-shell {
@@ -708,6 +709,20 @@
     }
 
     @media (max-width: 700px) {
+      #labels-layer {
+        overflow: hidden;
+      }
+
+      .agent-label {
+        min-width: 112px;
+        padding: 8px 10px;
+        font-size: 10px;
+      }
+
+      .label-sub {
+        font-size: 8px;
+      }
+
       .browser-bar {
         padding: 10px 12px;
         flex-wrap: wrap;

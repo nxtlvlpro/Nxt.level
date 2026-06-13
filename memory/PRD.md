@@ -1,7 +1,35 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.30-3d-agent-room-static
+**Current version:** v1.18.31-3d-agent-room-cinematic-v2
 **Last updated:** 2026-06-13 by E1
+
+## What's new — v1.18.31 (2026-06-13)
+
+**3D Agent Room redesigned into a cinematic v2 experience.** Статическая сцена
+полностью переработана визуально под референс: browser-like top bar,
+cinematic dark room, digital wall, desk pods дугой, floating labels, glass
+detail panel и более выразительная камера.
+
+- Rebuilt standalone scene:
+  - `frontend/public/agents-room/index.html`
+- Preserved existing entry points:
+  - `frontend/src/components/BottomNav.jsx`
+  - `frontend/src/components/SideNav.jsx`
+
+**Included in this delivery**
+- browser-like верхняя панель с CTA назад в dashboard
+- cinematic floor + digital skyline walls + atmosphere particles
+- desk-pod layout по дуге, ближе к референсу
+- floating labels над агентами
+- GSAP camera focus при выборе агента
+- detail panel с richer profile layout
+- small mobile overflow mitigation
+
+**Validated**
+- desktop smoke after redesign → **PASS**
+- click-to-select + detail panel update → **PASS**
+- mobile smoke after redesign/fix → **PASS**
+- independent frontend verification → **PASS**
 
 ## What's new — v1.18.30 (2026-06-13)
 

@@ -1,5 +1,29 @@
 # NXT8 — Release Notes
 
+## v1.18.31-3d-agent-room-cinematic-v2 — 2026-06-13
+
+**Status:** ✅ 3D Agent Room визуально переработана под cinematic reference.
+
+### Changed
+- **`frontend/public/agents-room/index.html`**
+  - full scene redesign
+  - browser-like top bar
+  - digital walls вместо простой сцены
+  - desk-pods arranged in arc layout
+  - floating labels + GSAP camera focus
+  - richer right-side profile panel
+  - mobile overflow mitigation for labels
+
+### Validated
+- desktop cinematic scene load → **PASS**
+- detail panel interaction after agent selection → **PASS**
+- mobile smoke after overflow fix → **PASS**
+- independent frontend verification → **PASS**
+
+---
+
+## v1.18.30-3d-agent-room-static — 2026-06-13
+
 ## v1.18.30-3d-agent-room-static — 2026-06-13
 
 **Status:** ✅ Статическая 3D Agent Room интегрирована в frontend как отдельная страница.

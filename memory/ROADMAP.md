@@ -1,6 +1,11 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.18.30-3d-agent-room-static (2026-06-13)
+**Текущая версия:** v1.18.31-3d-agent-room-cinematic-v2 (2026-06-13)
+
+## ✅ Done — 3D Agent Room Cinematic v2 (2026-06-13)
+- Standalone room redesigned visually toward cinematic reference
+- Browser-like top bar, digital walls, arc pod layout, floating labels, richer detail panel
+- Selection flow and responsive behavior validated after redesign
 
 ## ✅ Done — 3D Agent Room Static Integration (2026-06-13)
 - Standalone page `/agents-room/` integrated via `frontend/public/agents-room/index.html`
