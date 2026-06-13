@@ -28,6 +28,35 @@ def test_run_analyst_scan_for_all_invokes_run_persona(monkeypatch):
     assert all(call["user_id"] == "system_analyst_scan" for call in calls)
 
 
+def test_run_analyst_scan_for_all_persists_findings(monkeypatch):
+    stored = []
+
+    class _FakeCollection:
+        async def insert_one(self, doc):
+            stored.append(doc)
+
+    class _FakeDB:
+        analyst_findings = _FakeCollection()
+
+    async def _fake_list_active_tenants(*, force=False):
+        return ["tenant_a"]
+
+    async def _fake_run_persona(**kwargs):
+        return {"content": "escalation_rate выросла, есть противоречия между агентами"}
+
+    monkeypatch.setattr(scheduler, "list_active_tenants", _fake_list_active_tenants)
+    monkeypatch.setattr("agents.personas.run_persona", _fake_run_persona)
+    monkeypatch.setattr(scheduler, "get_db", lambda: _FakeDB())
+
+    _run(scheduler._run_analyst_scan_for_all())
+
+    assert len(stored) == 1
+    assert stored[0]["tenant_id"] == "tenant_a"
+    assert stored[0]["company_id"] == "tenant_a"
+    assert stored[0]["type"] in {"contradiction", "escalation_spike"}
+    assert stored[0]["resolved"] is False
+
+
 def test_start_registers_analyst_self_scan_job(monkeypatch):
     class _FakeScheduler:
         def __init__(self, timezone=None):

@@ -1,5 +1,28 @@
 # NXT8 — Release Notes
 
+## v1.18.27-analyst-findings-persistence — 2026-06-09
+
+**Status:** ✅ Результаты self-scan `analyst` теперь сохраняются и доступны через API.
+
+### Changed
+- **`backend/core/scheduler.py`**
+  - self-scan теперь формирует `finding` и пишет его в `analyst_findings`
+  - added `_classify_analyst_finding(content)`
+- **`backend/server.py`**
+  - added `GET /api/analyst/findings?limit=10`
+
+### Added
+- **`backend/tests/test_analyst_self_scan_scheduler.py`**
+  - persistence coverage for findings
+- **`backend/tests/test_analyst_findings_endpoint.py`**
+  - API coverage for latest findings
+
+### Validated
+- `pytest -q /app/backend/tests/test_analyst_self_scan_scheduler.py /app/backend/tests/test_analyst_findings_endpoint.py` → **4/4 PASS**
+- classifier smoke → returns `('escalation_spike', 'high')` on escalation-heavy content
+
+---
+
 ## v1.18.26-analyst-self-scan-scheduler — 2026-06-09
 
 **Status:** ✅ `analyst` self-scan подключён к реальному scheduler trigger.

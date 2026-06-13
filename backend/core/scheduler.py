@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -33,6 +34,19 @@ from core.db import get_db
 from core.scheduler_lock import run_exclusive
 
 logger = logging.getLogger("nxt8.scheduler")
+
+
+def _classify_analyst_finding(content: str) -> tuple[str, str]:
+    lower = (content or "").lower()
+    if "mock_rate" in lower or "mock rate" in lower or "mock" in lower:
+        return "mock_rate_high", "medium"
+    if "contrad" in lower or "противореч" in lower:
+        return "contradiction", "high"
+    if "escalation_rate" in lower or "escalation" in lower or "эскалац" in lower:
+        return "escalation_spike", "high"
+    if "avg_confidence" in lower or "confidence" in lower or "уверен" in lower:
+        return "confidence_drop", "medium"
+    return "confidence_drop", "low"
 
 
 def _flag(name: str, default: str = "true") -> bool:
@@ -211,7 +225,7 @@ async def _run_analyst_scan_for_all() -> None:
 
     for tenant in tenants:
         try:
-            await run_persona(
+            result = await run_persona(
                 persona_id="analyst",
                 message=(
                     "Проведи self-scan системы: проверь avg_confidence, "
@@ -222,6 +236,22 @@ async def _run_analyst_scan_for_all() -> None:
                 session_id=f"analyst_self_scan_{tenant}",
                 plan_id="headquarters",
             )
+            finding_type, urgency = _classify_analyst_finding(result.get("content", ""))
+            finding = {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "type": finding_type,
+                "summary": (result.get("content", "") or "")[:500],
+                "details": result.get("content", ""),
+                "urgency": urgency,
+                "resolved": False,
+                "tenant_id": tenant,
+                "company_id": tenant,
+            }
+            try:
+                await get_db().analyst_findings.insert_one(finding)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Analyst finding persistence failed for %s: %s", tenant, e)
         except Exception as e:  # noqa: BLE001
             logger.warning("Analyst self-scan failed for %s: %s", tenant, e)
 

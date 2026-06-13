@@ -1,7 +1,27 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.26-analyst-self-scan-scheduler
+**Current version:** v1.18.27-analyst-findings-persistence
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.27 (2026-06-09)
+
+**Analyst self-scan findings are now stored and exposed via API.** Система не
+только запускает periodic self-scan, но и сохраняет результаты в Mongo с
+tenant scoping и отдаёт их через отдельный endpoint.
+
+- `backend/core/scheduler.py`
+  - `_run_analyst_scan_for_all()` now persists findings into `analyst_findings`
+  - added `_classify_analyst_finding(content)` for `type` / `urgency`
+- `backend/server.py`
+  - added `GET /api/analyst/findings?limit=10`
+  - tenant-aware via `require_user` + `TenantAwareCRUD`
+- Tests added/extended:
+  - `backend/tests/test_analyst_self_scan_scheduler.py`
+  - `backend/tests/test_analyst_findings_endpoint.py`
+
+**Validated**
+- `pytest -q /app/backend/tests/test_analyst_self_scan_scheduler.py /app/backend/tests/test_analyst_findings_endpoint.py` → **4/4 PASS**
+- runtime classifier smoke confirms urgency/type classification path
 
 ## What's new — v1.18.26 (2026-06-09)
 

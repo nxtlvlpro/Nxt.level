@@ -2893,6 +2893,18 @@ async def hermes_self_audit_run(
     }
 
 
+@api.get("/analyst/findings")
+async def analyst_findings_list(
+    limit: int = 10,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    safe_limit = max(1, min(int(limit), 100))
+    rows = await TenantAwareCRUD(get_db().analyst_findings, company_id=user.company_id).find(
+        {}, {"_id": 0}
+    ).sort("timestamp", -1).limit(safe_limit).to_list(length=safe_limit)
+    return {"ok": True, "findings": rows, "count": len(rows)}
+
+
 @api.post("/personas/{persona_id}/chat")
 async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, Any]:
     """Chat with a specific persona. Enforces tariff gate."""
