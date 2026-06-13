@@ -1,5 +1,23 @@
 # NXT8 — Release Notes
 
+## v1.18.28-analyst-findings-ui — 2026-06-09
+
+**Status:** ✅ Findings `analyst` выведены в Ops UI рядом с Hermes Self-Audit.
+
+### Changed
+- **`frontend/src/components/views/ops/HermesPanel.jsx`**
+  - added `analystFindings` loader
+  - added `AnalystFindingRow`
+  - added findings card with title `🔍 Аналитик: Самодиагностика`
+- **`frontend/src/lib/api.js`**
+  - added `analystFindings(limit=5)` API helper
+
+### Validated
+- independent frontend verification → **PASS**
+- card visible, empty state works, UI resilient to API/auth issues
+
+---
+
 ## v1.18.27-analyst-findings-persistence — 2026-06-09
 
 **Status:** ✅ Результаты self-scan `analyst` теперь сохраняются и доступны через API.

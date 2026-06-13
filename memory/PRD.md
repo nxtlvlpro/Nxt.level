@@ -1,7 +1,24 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.27-analyst-findings-persistence
+**Current version:** v1.18.28-analyst-findings-ui
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.28 (2026-06-09)
+
+**Analyst findings are now visible in Ops UI.** Рядом с Hermes Self-Audit в
+`HermesPanel` появилась новая карточка самодиагностики Analyst.
+
+- `frontend/src/components/views/ops/HermesPanel.jsx`
+  - added `analystFindings` state
+  - added findings loader `useEffect(...)`
+  - added `AnalystFindingRow`
+  - added `🔍 Аналитик: Самодиагностика` card with empty + list states
+- `frontend/src/lib/api.js`
+  - added `api.analystFindings(limit)` → `GET /api/analyst/findings?limit=...`
+
+**Validated**
+- independent frontend verification → **PASS**
+- new card renders correctly, layout holds, empty state works, API failure does not crash UI
 
 ## What's new — v1.18.27 (2026-06-09)
 
