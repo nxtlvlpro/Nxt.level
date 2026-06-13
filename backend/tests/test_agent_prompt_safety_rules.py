@@ -1,8 +1,9 @@
 from agents.personas import PERSONAS
 from agents.persona_prompts import get_prompt
+from agents.prompt_policy_registry import PERSONA_RESPONSE_SAFETY_TARGETS
 
 
-TARGETS = ["bookkeeper", "analyst", "marketer", "project_coord", "hr_mentor", "compliance"]
+TARGETS = list(PERSONA_RESPONSE_SAFETY_TARGETS)
 
 
 def _assert_rules(text: str):

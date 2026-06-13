@@ -15,7 +15,7 @@ it with HOW to think, not WHO you are.
 
 from __future__ import annotations
 
-from agents.prompt_fragments import RESPONSE_SAFETY_RULES_FRAGMENT, SAFETY_RULE_TARGETS
+from agents.prompt_policy_registry import PERSONA_PROMPT_FRAGMENT_REGISTRY
 
 PROMPTS = {
 
@@ -1351,9 +1351,12 @@ PROMPTS = {
     ),
 }
 
-for _pid in SAFETY_RULE_TARGETS:
-    if _pid in PROMPTS and RESPONSE_SAFETY_RULES_FRAGMENT not in PROMPTS[_pid]:
-        PROMPTS[_pid] += RESPONSE_SAFETY_RULES_FRAGMENT
+for _pid, _fragments in PERSONA_PROMPT_FRAGMENT_REGISTRY.items():
+    if _pid not in PROMPTS:
+        continue
+    for _fragment in _fragments:
+        if _fragment not in PROMPTS[_pid]:
+            PROMPTS[_pid] += _fragment
 
 
 def get_prompt(persona_id: str) -> str:

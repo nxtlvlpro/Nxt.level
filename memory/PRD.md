@@ -1,7 +1,35 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.13-shared-prompt-fragment
+**Current version:** v1.18.14-prompt-policy-registry
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.14 (2026-06-09)
+
+**Prompt-policy registry introduced.** Prompt-layer NXT8 стал модульным и
+аудируемым: safety-rules и Hermes anti-hallucination/search-first вынесены в
+registry и подключаются централизованно.
+
+- Added:
+  - `backend/agents/prompt_policy_registry.py`
+  - централизованный `PERSONA_PROMPT_FRAGMENT_REGISTRY`
+  - `PERSONA_RESPONSE_SAFETY_TARGETS`
+  - `SKILL_PROMPT_FRAGMENT_REGISTRY`
+- Expanded persona safety coverage:
+  - `client_manager`
+  - `hermes`
+- Hermes anti-hallucination/search-first moved to composable skill fragment:
+  - `HERMES_ANTI_HALLUCINATION_FRAGMENT` in `backend/agents/prompt_fragments.py`
+  - auto-injected via `backend/core/nxt8_graph.py::load_skill`
+- `backend/skills/hermes.md`
+  - duplicate anti-hallucination/search-first lines removed from static skill file
+  - runtime fragment injection now source-of-truth
+
+**Validated**
+- `pytest -q /app/backend/tests/test_agent_prompt_safety_rules.py /app/backend/tests/test_prompt_policy_registry.py` → **5/5 PASS**
+- runtime-check:
+  - `client_manager`: system/deep safety = True/True
+  - `hermes`: system/deep safety = True/True
+  - `load_skill('hermes')` contains composable Hermes safety fragment
 
 ## What's new — v1.18.13 (2026-06-09)
 

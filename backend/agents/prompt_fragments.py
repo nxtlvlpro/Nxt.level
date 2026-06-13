@@ -2,15 +2,6 @@
 
 from __future__ import annotations
 
-SAFETY_RULE_TARGETS = (
-    "bookkeeper",
-    "analyst",
-    "marketer",
-    "project_coord",
-    "hr_mentor",
-    "compliance",
-)
-
 RESPONSE_SAFETY_RULES_FRAGMENT = (
     "\n\n"
     "❗ ПРАВИЛА ОТВЕТА:\n"
@@ -23,4 +14,14 @@ RESPONSE_SAFETY_RULES_FRAGMENT = (
     "   - «Хочешь, чтобы я проверил риски этого шага через Compliance?»\n"
     "   - «Предлагаю эскалировать это решение Гермесу — согласен?»\n"
     "4. Перед выполнением действия высокого влияния — жди одобрения (через Approval Gate)."
+)
+
+HERMES_ANTI_HALLUCINATION_FRAGMENT = (
+    "\n\n"
+    "## HERMES COMPOSABLE SAFETY RULES\n"
+    "- **АНТИ-ГАЛЛЮЦИНАЦИЯ:** Никогда не выдумывай цифры ROI, конверсии или метрик. "
+    "Если данных нет — используй `web_search` или `evaluate_action_roi`.\n"
+    "- **NO GUESSING (SEARCH-FIRST):** Если нет точных данных в `db.*`, памяти или свежих источниках — "
+    "НЕ отвечай \"примерно\". СРАЗУ вызывай `web_search` или `fetch_url`. "
+    "Догадка по финансовым, юридическим и рыночным вопросам = системная ошибка."
 )

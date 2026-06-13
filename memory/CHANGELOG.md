@@ -1,5 +1,42 @@
 # NXT8 — Release Notes
 
+## v1.18.14-prompt-policy-registry — 2026-06-09
+
+**Status:** ✅ Prompt-layer NXT8 переведён на централизованный policy registry.
+
+### Added
+- **`backend/agents/prompt_policy_registry.py`**
+  - `PERSONA_RESPONSE_SAFETY_TARGETS`
+  - `PERSONA_PROMPT_FRAGMENT_REGISTRY`
+  - `SKILL_PROMPT_FRAGMENT_REGISTRY`
+- **`backend/tests/test_prompt_policy_registry.py`**
+  - coverage для registry
+  - проверка `client_manager` и `hermes`
+  - проверка Hermes skill-fragment через `load_skill('hermes')`
+
+### Changed
+- **`backend/agents/prompt_fragments.py`**
+  - добавлен `HERMES_ANTI_HALLUCINATION_FRAGMENT`
+- **`backend/agents/legacy/personas_legacy.py`**
+  - теперь использует registry, а не прямой список targets
+- **`backend/agents/persona_prompts.py`**
+  - теперь использует registry, а не прямой список targets
+- **`backend/core/nxt8_graph.py`**
+  - skill fragments auto-injected from `SKILL_PROMPT_FRAGMENT_REGISTRY`
+- **`backend/skills/hermes.md`**
+  - удалены дублирующиеся anti-hallucination/search-first строки; runtime fragment = source of truth
+- **`backend/tests/test_agent_prompt_safety_rules.py`**
+  - targets теперь берутся из registry
+
+### Validated
+- `pytest -q /app/backend/tests/test_agent_prompt_safety_rules.py /app/backend/tests/test_prompt_policy_registry.py` → **5/5 PASS**
+- runtime verification:
+  - `client_manager` safety rules applied in system/deep prompts
+  - `hermes` safety rules applied in system/deep prompts
+  - Hermes skill prompt includes composable safety fragment
+
+---
+
 ## v1.18.13-shared-prompt-fragment — 2026-06-09
 
 **Status:** ✅ Safety-addon вынесен в единый shared prompt fragment.

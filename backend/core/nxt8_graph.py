@@ -10,6 +10,7 @@ import yaml
 from langgraph.graph import StateGraph, END
 
 from agents.hermes import HERMES_TOOLS
+from agents.prompt_policy_registry import SKILL_PROMPT_FRAGMENT_REGISTRY
 from core.access_guard import check_access
 from core.complexity_router import pick_model
 from core.deepseek import get_deepseek
@@ -81,7 +82,8 @@ def load_skill(skill_id: str) -> tuple[str, dict]:
 
             base_path = SKILLS_DIR / "_base.md"
             base_text = base_path.read_text(encoding="utf-8") if base_path.exists() else ""
-            final_prompt = f"{base_text}\n\n---\n\n{prompt_text}"
+            skill_fragments = "".join(SKILL_PROMPT_FRAGMENT_REGISTRY.get(skill_id, ()))
+            final_prompt = f"{base_text}\n\n---\n\n{prompt_text}{skill_fragments}"
             return final_prompt, metadata
 
     return content, {}

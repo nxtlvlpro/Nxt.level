@@ -34,7 +34,7 @@ from agents import mentor as mentor_agent
 from agents import roi as roi_agent
 from agents.hermes_max_tools_and_coo import HERMES_TOOLS
 from agents.manifests import render_manifest_for_prompt
-from agents.prompt_fragments import RESPONSE_SAFETY_RULES_FRAGMENT, SAFETY_RULE_TARGETS
+from agents.prompt_policy_registry import PERSONA_PROMPT_FRAGMENT_REGISTRY
 from agents.persona_prompts import get_prompt as get_deep_prompt
 from agents.agent_charter import CHARTER
 from core.company_context import get_settings as get_company_settings, render_company_block
@@ -259,9 +259,12 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-for _pid in SAFETY_RULE_TARGETS:
-    if _pid in PERSONAS and RESPONSE_SAFETY_RULES_FRAGMENT not in PERSONAS[_pid]["system_prompt"]:
-        PERSONAS[_pid]["system_prompt"] += RESPONSE_SAFETY_RULES_FRAGMENT
+for _pid, _fragments in PERSONA_PROMPT_FRAGMENT_REGISTRY.items():
+    if _pid not in PERSONAS:
+        continue
+    for _fragment in _fragments:
+        if _fragment not in PERSONAS[_pid]["system_prompt"]:
+            PERSONAS[_pid]["system_prompt"] += _fragment
 
 
 # All 7 subordinates can escalate up to Hermes AND ask peers. Inject the
