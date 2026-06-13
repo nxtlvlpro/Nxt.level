@@ -1,7 +1,34 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.11-complexity-router-analyst-reasoner
+**Current version:** v1.18.12-agent-prompt-safety-rules
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.12 (2026-06-09)
+
+**Security audit: response-safety rules injected into 6 key agents.** Для
+`bookkeeper`, `analyst`, `marketer`, `project_coord`, `hr_mentor`,
+`compliance` добавлен единый блок prompt-правил против выдумывания цифр,
+безосновательных ответов без `web_search`, и обхода Approval Gate.
+
+- Обновлён активный legacy-слой system prompts:
+  - `backend/agents/legacy/personas_legacy.py`
+- Обновлён shim-слой для консистентности:
+  - `backend/agents/personas.py`
+- Обновлены deep prompts для тех же 6 агентов:
+  - `backend/agents/persona_prompts.py`
+- Добавлен тест:
+  - `backend/tests/test_agent_prompt_safety_rules.py`
+
+**Injected rules**
+- запрет на выдумывание ROI / CAC / налоговых ставок / DORA / retention / benchmarks
+- `Нет данных для этого расчёта` при отсутствии данных
+- обязательный `web_search` для внешних знаний
+- один проактивный next step в конце ответа
+- ожидание Approval Gate перед high-impact действием
+
+**Validated**
+- `pytest -q /app/backend/tests/test_agent_prompt_safety_rules.py` → **2/2 PASS**
+- runtime-check: все 6 агентов содержат safety-rules и в `system_prompt`, и в deep prompt
 
 ## What's new — v1.18.11 (2026-06-09)
 

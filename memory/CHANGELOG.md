@@ -1,5 +1,34 @@
 # NXT8 — Release Notes
 
+## v1.18.12-agent-prompt-safety-rules — 2026-06-09
+
+**Status:** ✅ Во все 6 ключевых агентских prompt-слоёв добавлены единые response-safety правила.
+
+### Changed
+- **`backend/agents/legacy/personas_legacy.py`**
+  - обновлены `system_prompt` для:
+    - `bookkeeper`
+    - `analyst`
+    - `marketer`
+    - `project_coord`
+    - `hr_mentor`
+    - `compliance`
+- **`backend/agents/personas.py`**
+  - те же safety-rules зеркально добавлены в shim-layer
+- **`backend/agents/persona_prompts.py`**
+  - safety-rules добавлены в deep prompts этих же 6 агентов
+
+### Added
+- **`backend/tests/test_agent_prompt_safety_rules.py`**
+  - проверка, что все 6 `system_prompt` содержат блок `ПРАВИЛА ОТВЕТА`
+  - проверка, что все 6 deep prompt тоже содержат этот блок
+
+### Validated
+- `pytest -q /app/backend/tests/test_agent_prompt_safety_rules.py` → **2/2 PASS**
+- runtime verification → все 6 агентов: `system=True`, `deep=True`
+
+---
+
 ## v1.18.11-complexity-router-analyst-reasoner — 2026-06-09
 
 **Status:** ✅ Analyst/Bookkeeper heavy requests теперь корректнее роутятся на `deepseek-reasoner`.
