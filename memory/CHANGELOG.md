@@ -1,5 +1,25 @@
 # NXT8 — Release Notes
 
+## v1.18.24-quality-audit-suite — 2026-06-09
+
+**Status:** ✅ Создан единый `quality_audit` suite для guard-тестов качества.
+
+### Added
+- **`backend/tests/quality/__init__.py`**
+  - `run_quality_suite()`
+  - consolidated quality output
+
+### Changed
+- moved into `backend/tests/quality/`:
+  - `test_no_silent_exceptions.py`
+  - `test_no_legacy_source_disabled.py`
+
+### Validated
+- `pytest -q /app/backend/tests/quality` → **14/14 PASS**
+- `python /app/backend/tests/quality/__init__.py` → **2/2 PASS**
+
+---
+
 ## v1.18.23-no-legacy-source-guard — 2026-06-09
 
 **Status:** ✅ Добавлен CI-guard против возврата `LEGACY_SOURCE_DISABLED` в active `.py` файлы.
