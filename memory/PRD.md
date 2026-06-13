@@ -1,7 +1,37 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.24-quality-audit-suite
+**Current version:** v1.18.25-analyst-proactive-night-scan
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.25 (2026-06-09)
+
+**`analyst` upgraded into a proactive night analyst at prompt-level.** Без
+дублирования Hermes добавлен проактивный self-scan блок: Analyst теперь не
+только отвечает на запросы, но и формулирует сигналы/гипотезы для системного
+улучшения.
+
+- Updated active system prompt:
+  - `backend/agents/legacy/personas_legacy.py`
+- Updated deep prompt:
+  - `backend/agents/persona_prompts.py`
+- New tests:
+  - `backend/tests/test_analyst_proactive_prompt.py`
+
+**Prompt changes**
+- every-6-hours self-scan framing
+- checks for:
+  - `avg_confidence < 0.7`
+  - `escalation_rate > 15%`
+  - `contradictions > 5`
+  - `high mock_rate`
+- root-cause via `search_memory`
+- one suggested action
+- escalation via `escalate_to_hermes(reason="...")`
+- ROI framing via `evaluate_action_roi`
+
+**Validated**
+- `pytest -q /app/backend/tests/test_analyst_proactive_prompt.py` → **2/2 PASS**
+- runtime verification confirms proactive block present in both system and deep prompts
 
 ## What's new — v1.18.24 (2026-06-09)
 

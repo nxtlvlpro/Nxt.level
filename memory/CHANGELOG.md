@@ -1,5 +1,26 @@
 # NXT8 — Release Notes
 
+## v1.18.25-analyst-proactive-night-scan — 2026-06-09
+
+**Status:** ✅ `analyst` усилен как проактивный "ночной аналитик" на уровне prompt-layer.
+
+### Changed
+- **`backend/agents/legacy/personas_legacy.py`**
+  - в `analyst.system_prompt` добавлен блок `❗ ТЫ — ПРОАКТИВНЫЙ АНАЛИТИК`
+- **`backend/agents/persona_prompts.py`**
+  - в deep prompt Analyst добавлен блок `## ПРОАКТИВНЫЙ НОЧНОЙ АНАЛИТИК`
+
+### Added
+- **`backend/tests/test_analyst_proactive_prompt.py`**
+  - system prompt coverage
+  - deep prompt coverage
+
+### Validated
+- `pytest -q /app/backend/tests/test_analyst_proactive_prompt.py` → **2/2 PASS**
+- runtime check confirms proactive analyst block in both prompt layers
+
+---
+
 ## v1.18.24-quality-audit-suite — 2026-06-09
 
 **Status:** ✅ Создан единый `quality_audit` suite для guard-тестов качества.
