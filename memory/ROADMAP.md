@@ -1,6 +1,28 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.10.0-telegram-channel (2026-06-04)
+**Текущая версия:** v1.18.30-3d-agent-room-static (2026-06-13)
+
+## ✅ Done — 3D Agent Room Static Integration (2026-06-13)
+- Standalone page `/agents-room/` integrated via `frontend/public/agents-room/index.html`
+- Mobile and desktop navigation now include `🤖 Агенты` links opening room in a new tab
+- 3D room supports click-to-inspect agent detail flow
+- Responsive layout validated on desktop / tablet / mobile
+
+## P0 — Active
+
+- [ ] **Live Data Wiring for 3D Agent Room** — подключить `/api/ops/live-agents`,
+      чтобы статусы и метрики в 3D-комнате отражали реальные данные системы.
+- [ ] **Data Access Guard** — `core/access_guard.py` нужно интегрировать в
+      tool-call middleware (manifests описывают read/write права, но они
+      не enforce'ятся). Approval Gate уже решил часть (write actions),
+      но read-доступ из чужого scope ещё открыт.
+
+## P1 — Current Engineering Queue
+
+- [ ] **Hermes real reasoning in preview** — убрать preview `mock=true` для внутреннего self-audit
+- [ ] **Tool-layer overlap** — убрать `create_task` из `client_manager`, оставить создание задач `project_coord`
+- [ ] **Mini-history in Analyst Findings UI** — показать `resolved by`, `escalated at`, `task_id`
+- [ ] **Frontend hygiene** — убрать оставшиеся пустые `catch` в клиентском коде
 
 ## ✅ Done — WhatsApp Channel via Twilio (2026-06-05)
 - `core/whatsapp_bot.py` + `/api/whatsapp/*` endpoints (connect/status/disconnect/webhook)

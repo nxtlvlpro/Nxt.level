@@ -1,7 +1,34 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.29-analyst-findings-workflow
-**Last updated:** 2026-06-09 by E1
+**Current version:** v1.18.30-3d-agent-room-static
+**Last updated:** 2026-06-13 by E1
+
+## What's new — v1.18.30 (2026-06-13)
+
+**3D Agent Room integrated as a standalone frontend experience.** Добавлена
+отдельная статическая страница `/agents-room/` с 3D-сценой агентов, панелью
+команды, правой панелью деталей и ссылками из основной навигации.
+
+- Added standalone page:
+  - `frontend/public/agents-room/index.html`
+- Updated navigation entry points:
+  - `frontend/src/components/BottomNav.jsx`
+  - `frontend/src/components/SideNav.jsx`
+
+**Included in this delivery**
+- 3D Three.js сцена с 8 агентами и анимацией
+- интерактивный список агентов слева
+- detail panel справа по клику на агента
+- responsive layout для desktop / tablet / mobile
+- отдельные ссылки `🤖 Агенты` в mobile и desktop nav
+- test IDs для ключевых UI-элементов страницы и навигации
+
+**Validated**
+- JS lint on changed nav files → **PASS**
+- smoke check `/agents-room/` → **PASS**
+- mobile nav link visible with `href=/agents-room/` and `target=_blank` → **PASS**
+- desktop nav link visible with `href=/agents-room/` and `target=_blank` → **PASS**
+- independent frontend verification → **PASS**
 
 ## What's new — v1.18.29 (2026-06-09)
 

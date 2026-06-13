@@ -1,5 +1,32 @@
 # NXT8 — Release Notes
 
+## v1.18.30-3d-agent-room-static — 2026-06-13
+
+**Status:** ✅ Статическая 3D Agent Room интегрирована в frontend как отдельная страница.
+
+### Added
+- **Frontend**
+  - `frontend/public/agents-room/index.html`
+    - standalone Three.js сцена
+    - 8 визуальных агентов
+    - team panel + detail panel
+    - responsive layout and data-testid coverage
+
+### Changed
+- **`frontend/src/components/BottomNav.jsx`**
+  - added `🤖 Агенты` link to `/agents-room/` with `target="_blank"`
+- **`frontend/src/components/SideNav.jsx`**
+  - added desktop `🤖 Агенты` link to `/agents-room/` with `target="_blank"`
+
+### Validated
+- lint on changed nav files → **PASS**
+- `/agents-room/` smoke load → **PASS**
+- mobile nav link visibility + attributes → **PASS**
+- desktop nav link visibility + attributes → **PASS**
+- independent frontend verification → **PASS**
+
+---
+
 ## v1.18.29-analyst-findings-workflow — 2026-06-09
 
 **Status:** ✅ Findings `analyst` стали управляемыми из Ops UI.
