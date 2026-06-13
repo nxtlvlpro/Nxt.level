@@ -1,5 +1,32 @@
 # NXT8 — Release Notes
 
+## v1.18.20-legacy-source-cleanup — 2026-06-09
+
+**Status:** ✅ Мёртвые `LEGACY_SOURCE_DISABLED` блоки удалены из active shim-файлов.
+
+### Changed
+- Cleaned:
+  - `backend/agents/personas.py`
+  - `backend/agents/joker.py`
+  - `backend/agents/orchestrator.py`
+  - `backend/agents/hermes_os_graph.py`
+  - `backend/agents/hermes_graph_v2.py`
+
+### Added
+- backup files:
+  - `personas.py.bak`
+  - `joker.py.bak`
+  - `orchestrator.py.bak`
+  - `hermes_os_graph.py.bak`
+  - `hermes_graph_v2.py.bak`
+
+### Validated
+- `python -m py_compile /app/backend/agents/*.py` → **PASS**
+- `rg -n "LEGACY_SOURCE_DISABLED" /app/backend/agents` → matches only `*.bak`
+- lint on cleaned files → **PASS**
+
+---
+
 ## v1.18.19-fetch-url-sanitized — 2026-06-09
 
 **Status:** ✅ `fetch_url` теперь проходит tenant-safe sanitization перед подачей в LLM.

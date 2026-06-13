@@ -1,7 +1,27 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.19-fetch-url-sanitized
+**Current version:** v1.18.20-legacy-source-cleanup
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.20 (2026-06-09)
+
+**Dead legacy source blocks removed safely.** Из active agent shim-файлов удалены
+большие `LEGACY_SOURCE_DISABLED` raw-string блоки, которые не выполнялись, но
+мешали аудиту и сопровождению.
+
+- Cleaned files:
+  - `backend/agents/personas.py`
+  - `backend/agents/joker.py`
+  - `backend/agents/orchestrator.py`
+  - `backend/agents/hermes_os_graph.py`
+  - `backend/agents/hermes_graph_v2.py`
+- Backups created:
+  - `*.py.bak` for each cleaned file
+
+**Validated**
+- `python -m py_compile /app/backend/agents/*.py` → **PASS**
+- `LEGACY_SOURCE_DISABLED` no longer present in active `.py` files
+- Python lint on cleaned files → **PASS**
 
 ## What's new — v1.18.19 (2026-06-09)
 

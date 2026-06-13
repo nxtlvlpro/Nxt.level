@@ -1,0 +1,199 @@
+"""Compatibility shim for the legacy JOKER sandbox during Phase 1 cleanup."""
+
+from __future__ import annotations
+
+from agents.legacy import joker_legacy as _legacy
+
+respond = _legacy.respond
+stats = _legacy.stats
+
+
+def __getattr__(name: str):
+    return getattr(_legacy, name)
+
+
+LEGACY_SOURCE_DISABLED = r'''
+
+# ---------------------------------------------------------------------
+# Rate limiting via own audit ledger
+# ---------------------------------------------------------------------
+
+
+async def _recent_turn_count(session_id: str) -> int:
+    if not session_id:
+        return 0
+    db = get_db()
+    since = datetime.now(timezone.utc) - timedelta(minutes=RATE_LIMIT_WINDOW_MIN)
+    try:
+        return await db.joker_audit.count_documents({
+            "session_id": session_id,
+            "ts": {"$gte": since.isoformat()},
+        })
+    except Exception as e:  # noqa: BLE001
+        logger.warning("joker_audit count failed: %s", e)
+        return 0
+
+
+async def _audit(
+    session_id: str,
+    user_id: Optional[str],
+    message: str,
+    reply: str,
+    tokens_total: int,
+    downgraded: bool,
+    request_id: str,
+    lang: str,
+) -> None:
+    db = get_db()
+    doc = {
+        "id": request_id,
+        "session_id": session_id or "",
+        "user_id": user_id or "",
+        "lang": lang,
+        "message": (message or "")[:500],
+        "reply": (reply or "")[:500],
+        "tokens_total": int(tokens_total or 0),
+        "downgraded": bool(downgraded),
+        "channel": "joker",
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await db.joker_audit.insert_one(doc)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("joker_audit insert failed: %s", e)
+
+
+# ---------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------
+
+
+def _trim_history(history: Optional[List[Dict[str, Any]]], keep: int) -> List[Dict[str, str]]:
+    if not history:
+        return []
+    trimmed: List[Dict[str, str]] = []
+    for m in history[-keep:]:
+        role = m.get("role", "user")
+        content = m.get("content")
+        if not isinstance(content, str):
+            content = ""
+        if role not in ("user", "assistant"):
+            role = "user"
+        trimmed.append({"role": role, "content": content[:600]})
+    return trimmed
+
+
+async def respond(
+    message: str,
+    session_id: Optional[str] = None,
+    history: Optional[List[Dict[str, Any]]] = None,
+    user_id: Optional[str] = None,
+    lang: str = "en",
+) -> Dict[str, Any]:
+    """
+    Generate a sandboxed reply.
+
+    Returns:
+        {
+            "content":      str,         # the reply text
+            "routed_to":    "joker",
+            "downgraded":   bool,
+            "tokens_total": int,
+            "mock":         bool,
+            "request_id":   str,
+            "session_id":   str,
+        }
+    """
+    sid = (session_id or str(uuid.uuid4())).strip()
+    request_id = str(uuid.uuid4())
+    lang_key = "ru" if (lang or "").lower().startswith("ru") else "en"
+    system_prompt = _SYSTEM_PROMPTS[lang_key]
+
+    # Apply rate-limit downgrade if needed.
+    prior_count = await _recent_turn_count(sid)
+    downgraded = prior_count >= RATE_LIMIT_MAX
+    max_tokens = DOWNGRADED_MAX_TOKENS if downgraded else DEFAULT_MAX_TOKENS
+    keep_history = DOWNGRADED_HISTORY if downgraded else MAX_HISTORY_TURNS
+
+    msgs: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    msgs.extend(_trim_history(history, keep_history))
+    msgs.append({"role": "user", "content": (message or "").strip()[:1000]})
+
+    tokens_total = 0
+    mock = False
+    content = ""
+    try:
+        deepseek = get_deepseek()
+        resp = await deepseek.chat(
+            messages=msgs,
+            temperature=0.8,   # slightly higher → more playful
+            max_tokens=max_tokens,
+            request_logprobs=False,
+        )
+        content = (resp.get("content") or "").strip()
+        tokens_total = int(resp.get("tokens_total") or 0)
+        mock = bool(resp.get("mock"))
+    except Exception:  # noqa: BLE001
+        logger.exception("joker LLM call failed")
+        content = (
+            "🎭 Системная пауза. Попробуй ещё раз через секунду."
+            if lang_key == "ru"
+            else "🎭 Sandbox hiccup — give me a sec and try again."
+        )
+        mock = True
+
+    # Hard ceiling on length so JOKER can never produce a wall of text.
+    if len(content) > 800:
+        content = content[:800].rstrip() + "…"
+
+    await _audit(
+        session_id=sid,
+        user_id=user_id,
+        message=message,
+        reply=content,
+        tokens_total=tokens_total,
+        downgraded=downgraded,
+        request_id=request_id,
+        lang=lang_key,
+    )
+
+    return {
+        "content": content,
+        "routed_to": "joker",
+        "downgraded": downgraded,
+        "tokens_total": tokens_total,
+        "mock": mock,
+        "request_id": request_id,
+        "session_id": sid,
+    }
+ 
+
+# Convenience: stats endpoint helper.
+async def stats(window_minutes: int = 60) -> Dict[str, Any]:
+    db = get_db()
+    since = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    pipeline = [
+        {"$match": {"ts": {"$gte": since.isoformat()}}},
+        {"$group": {
+            "_id": None,
+            "turns": {"$sum": 1},
+            "tokens": {"$sum": "$tokens_total"},
+            "downgraded": {"$sum": {"$cond": ["$downgraded", 1, 0]}},
+        }},
+    ]
+    try:
+        cur = db.joker_audit.aggregate(pipeline)
+        rows = [r async for r in cur]
+        if not rows:
+            return {"turns": 0, "tokens": 0, "downgraded": 0, "window_minutes": window_minutes}
+        r = rows[0]
+        return {
+            "turns": int(r.get("turns") or 0),
+            "tokens": int(r.get("tokens") or 0),
+            "downgraded": int(r.get("downgraded") or 0),
+            "window_minutes": window_minutes,
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.warning("joker stats failed: %s", e)
+        return {"turns": 0, "tokens": 0, "downgraded": 0, "window_minutes": window_minutes, "error": str(e)}
+'''
