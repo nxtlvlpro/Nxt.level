@@ -1,5 +1,34 @@
 # NXT8 — Release Notes
 
+## v1.18.13-shared-prompt-fragment — 2026-06-09
+
+**Status:** ✅ Safety-addon вынесен в единый shared prompt fragment.
+
+### Added
+- **`backend/agents/prompt_fragments.py`**
+  - `RESPONSE_SAFETY_RULES_FRAGMENT`
+  - `SAFETY_RULE_TARGETS`
+
+### Changed
+- **`backend/agents/legacy/personas_legacy.py`**
+  - удалено ручное дублирование safety-блока в 6 `system_prompt`
+  - добавлено автоматическое `+= RESPONSE_SAFETY_RULES_FRAGMENT` для target agents
+- **`backend/agents/persona_prompts.py`**
+  - удалено ручное дублирование safety-блока в 6 deep prompts
+  - добавлено автоматическое `+= RESPONSE_SAFETY_RULES_FRAGMENT` для target agents
+
+### Validated
+- `pytest -q /app/backend/tests/test_agent_prompt_safety_rules.py` → **2/2 PASS**
+- runtime verification:
+  - `bookkeeper` → system/deep = True/True
+  - `analyst` → system/deep = True/True
+  - `marketer` → system/deep = True/True
+  - `project_coord` → system/deep = True/True
+  - `hr_mentor` → system/deep = True/True
+  - `compliance` → system/deep = True/True
+
+---
+
 ## v1.18.12-agent-prompt-safety-rules — 2026-06-09
 
 **Status:** ✅ Во все 6 ключевых агентских prompt-слоёв добавлены единые response-safety правила.

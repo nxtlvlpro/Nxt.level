@@ -1,7 +1,27 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.12-agent-prompt-safety-rules
+**Current version:** v1.18.13-shared-prompt-fragment
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.13 (2026-06-09)
+
+**Response-safety rules centralized into one shared prompt fragment.** Вместо
+ручного дублирования safety-addon теперь хранится в одном месте и
+автоматически подключается к целевым агентам.
+
+- Новый shared module:
+  - `backend/agents/prompt_fragments.py`
+  - `RESPONSE_SAFETY_RULES_FRAGMENT`
+  - `SAFETY_RULE_TARGETS`
+- Active legacy system prompts now append the shared fragment automatically:
+  - `backend/agents/legacy/personas_legacy.py`
+- Deep prompts now append the same fragment automatically:
+  - `backend/agents/persona_prompts.py`
+- Fragment is intentionally reusable for future rollout to `client_manager` and `hermes`
+
+**Validated**
+- `pytest -q /app/backend/tests/test_agent_prompt_safety_rules.py` → **2/2 PASS**
+- runtime-check: all target agents contain the shared fragment in both `system_prompt` and deep prompt
 
 ## What's new — v1.18.12 (2026-06-09)
 
