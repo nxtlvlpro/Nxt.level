@@ -49,14 +49,17 @@ def _int(name: str, default: int) -> int:
 PULSE_ENABLED = _flag("PULSE_ENABLED", "true")
 DIGEST_ENABLED = _flag("DIGEST_ENABLED", "true")
 SESSION_CLEANUP_ENABLED = _flag("SESSION_CLEANUP_ENABLED", "true")
+ANALYST_SELF_SCAN_ENABLED = _flag("ANALYST_SELF_SCAN_ENABLED", "true")
 PULSE_INTERVAL_MINUTES = _int("PULSE_INTERVAL_MINUTES", 60)
 DIGEST_HOUR = _int("DIGEST_HOUR", 9)
 SESSION_CLEANUP_HOUR = _int("SESSION_CLEANUP_HOUR", 3)
+ANALYST_SELF_SCAN_INTERVAL_HOURS = _int("ANALYST_SELF_SCAN_INTERVAL_HOURS", 6)
 TENANT_INACTIVE_DAYS = _int("TENANT_INACTIVE_DAYS", 7)
 DEFAULT_TZ = (os.environ.get("DIGEST_DEFAULT_TIMEZONE") or "Europe/Moscow").strip()
 PULSE_LOCK_LEASE_SECONDS = 30 * 60
 DIGEST_LOCK_LEASE_SECONDS = 2 * 60 * 60
 SESSION_CLEANUP_LOCK_LEASE_SECONDS = 30 * 60
+ANALYST_SELF_SCAN_LOCK_LEASE_SECONDS = 30 * 60
 
 
 _scheduler: Optional[AsyncIOScheduler] = None
@@ -196,6 +199,33 @@ async def _run_session_cleanup() -> None:
     logger.info("session_cleanup done: deleted=%d", deleted)
 
 
+async def _run_analyst_scan_for_all() -> None:
+    """Run periodic analyst self-scan across active tenants."""
+    if not ANALYST_SELF_SCAN_ENABLED:
+        return
+    tenants = await list_active_tenants()
+    if not tenants:
+        logger.info("analyst_self_scan: 0 active tenants")
+        return
+    from agents.personas import run_persona
+
+    for tenant in tenants:
+        try:
+            await run_persona(
+                persona_id="analyst",
+                message=(
+                    "Проведи self-scan системы: проверь avg_confidence, "
+                    "escalation_rate, mock_rate, contradictions за последние 6 часов."
+                ),
+                company_id=tenant,
+                user_id="system_analyst_scan",
+                session_id=f"analyst_self_scan_{tenant}",
+                plan_id="headquarters",
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Analyst self-scan failed for %s: %s", tenant, e)
+
+
 async def _run_pulse_for_all_locked() -> None:
     await run_exclusive("pulse_tick", PULSE_LOCK_LEASE_SECONDS, _run_pulse_for_all)
 
@@ -212,6 +242,14 @@ async def _run_session_cleanup_locked() -> None:
     )
 
 
+async def _run_analyst_scan_locked() -> None:
+    await run_exclusive(
+        "analyst_self_scan",
+        ANALYST_SELF_SCAN_LOCK_LEASE_SECONDS,
+        _run_analyst_scan_for_all,
+    )
+
+
 # ---------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------
@@ -222,8 +260,8 @@ def start() -> None:
     global _scheduler
     if _scheduler is not None:
         return
-    if not (PULSE_ENABLED or DIGEST_ENABLED or SESSION_CLEANUP_ENABLED):
-        logger.info("scheduler disabled (PULSE, DIGEST and SESSION_CLEANUP all off)")
+    if not (PULSE_ENABLED or DIGEST_ENABLED or SESSION_CLEANUP_ENABLED or ANALYST_SELF_SCAN_ENABLED):
+        logger.info("scheduler disabled (PULSE, DIGEST, SESSION_CLEANUP and ANALYST_SELF_SCAN all off)")
         return
 
     sch = AsyncIOScheduler(timezone="UTC")
@@ -271,11 +309,22 @@ def start() -> None:
             replace_existing=True,
         )
 
+    if ANALYST_SELF_SCAN_ENABLED:
+        sch.add_job(
+            _run_analyst_scan_locked,
+            IntervalTrigger(hours=max(1, ANALYST_SELF_SCAN_INTERVAL_HOURS)),
+            id="analyst_self_scan",
+            name=f"Analyst self-scan every {ANALYST_SELF_SCAN_INTERVAL_HOURS}h",
+            max_instances=1,
+            coalesce=True,
+            replace_existing=True,
+        )
+
     sch.start()
     _scheduler = sch
     logger.info(
-        "scheduler started · pulse_every=%dm digest_at=%02d:00 session_cleanup_at=%02d:00 %s",
-        PULSE_INTERVAL_MINUTES, DIGEST_HOUR, SESSION_CLEANUP_HOUR, DEFAULT_TZ,
+        "scheduler started · pulse_every=%dm digest_at=%02d:00 session_cleanup_at=%02d:00 analyst_scan_every=%dh %s",
+        PULSE_INTERVAL_MINUTES, DIGEST_HOUR, SESSION_CLEANUP_HOUR, ANALYST_SELF_SCAN_INTERVAL_HOURS, DEFAULT_TZ,
     )
 
 

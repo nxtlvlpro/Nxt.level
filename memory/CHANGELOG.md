@@ -1,5 +1,27 @@
 # NXT8 — Release Notes
 
+## v1.18.26-analyst-self-scan-scheduler — 2026-06-09
+
+**Status:** ✅ `analyst` self-scan подключён к реальному scheduler trigger.
+
+### Changed
+- **`backend/core/scheduler.py`**
+  - added analyst self-scan env flags
+  - added `_run_analyst_scan_for_all()`
+  - added `_run_analyst_scan_locked()`
+  - registered scheduler job `id="analyst_self_scan"` every 6h by default
+
+### Added
+- **`backend/tests/test_analyst_self_scan_scheduler.py`**
+  - validates `run_persona("analyst", ...)` dispatch per tenant
+  - validates scheduler registration of `analyst_self_scan`
+
+### Validated
+- `pytest -q /app/backend/tests/test_analyst_self_scan_scheduler.py` → **2/2 PASS**
+- runtime config → enabled, interval=6h
+
+---
+
 ## v1.18.25-analyst-proactive-night-scan — 2026-06-09
 
 **Status:** ✅ `analyst` усилен как проактивный "ночной аналитик" на уровне prompt-layer.
