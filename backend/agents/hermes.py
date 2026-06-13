@@ -177,25 +177,35 @@ async def _t_monitor_sla_violations(args: Dict[str, Any]) -> Dict[str, Any]:
 
 async def _t_detect_bottlenecks(args: Dict[str, Any]) -> Dict[str, Any]:
     from agents import diagnostics as diagnostics_agent
-    department = (args.get("department") or "all").lower()
-    diag = await diagnostics_agent.summary(window=200)
-    contradictions = await diagnostics_agent.list_contradictions(limit=10)
-    company_id = args.get("company_id", DEFAULT_COMPANY)
-    db = get_db()
-    # Read from unified tasks + legacy followups (back-compat)
-    pending_new = await db.tasks.find(
-        {"company_id": company_id, "kind": "followup", "status": "open"},
-        {"_id": 0},
-    ).sort("due_at", 1).to_list(length=20)
-    pending_legacy = await db.followups.find(
-        {"company_id": company_id, "status": "open"},
-        {"_id": 0},
-    ).sort("due_at", 1).to_list(length=20)
-    pending = pending_new + pending_legacy
-    return {"ok": True, "company_id": company_id, "department": department,
-            "health": diag, "recent_contradictions": contradictions,
-            "open_followups_count": len(pending),
-            "open_followups_sample": pending[:5]}
+    try:
+        department = (args.get("department") or "all").lower()
+        diag = await diagnostics_agent.summary(window=200)
+        contradictions = await diagnostics_agent.list_contradictions(limit=10)
+        company_id = args.get("company_id", DEFAULT_COMPANY)
+        db = get_db()
+        # Read from unified tasks + legacy followups (back-compat)
+        pending_new = await db.tasks.find(
+            {"company_id": company_id, "kind": "followup", "status": "open"},
+            {"_id": 0},
+        ).sort("due_at", 1).to_list(length=20)
+        pending_legacy = await db.followups.find(
+            {"company_id": company_id, "status": "open"},
+            {"_id": 0},
+        ).sort("due_at", 1).to_list(length=20)
+        pending = pending_new + pending_legacy
+        return {"ok": True, "company_id": company_id, "department": department,
+                "health": diag, "recent_contradictions": contradictions,
+                "open_followups_count": len(pending),
+                "open_followups_sample": pending[:5]}
+    except Exception as e:  # noqa: BLE001
+        if "MONGO_URL" in str(e) or "database" in str(e).lower():
+            return {
+                "ok": False,
+                "error": "diagnostics unavailable in current context",
+                "warning_only": True,
+                "details": "DB not configured (sandbox mode)",
+            }
+        raise
 
 
 async def _t_generate_daily_digest(args: Dict[str, Any]) -> Dict[str, Any]:

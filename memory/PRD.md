@@ -1,7 +1,26 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.17-hr-mentor-sandbox-fallback
+**Current version:** v1.18.18-detect-bottlenecks-failsoft
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.18 (2026-06-09)
+
+**`detect_bottlenecks` is now sandbox-safe.** В preview / audit-контексте при
+отсутствии DB инструмент больше не падает, а возвращает structured warning.
+
+- `backend/agents/hermes.py`
+  - `_t_detect_bottlenecks(...)` обёрнут в `try/except`
+  - при `MONGO_URL` / `database`-ошибках возвращает:
+    - `ok: false`
+    - `error: "diagnostics unavailable in current context"`
+    - `warning_only: true`
+    - `details: "DB not configured (sandbox mode)"`
+- `backend/tests/test_detect_bottlenecks_sandbox.py`
+  - добавлен regression test для sandbox fail-soft поведения
+
+**Validated**
+- `pytest -q /app/backend/tests/test_detect_bottlenecks_sandbox.py` → **1/1 PASS**
+- direct sandbox call now returns structured warning dict instead of crash
 
 ## What's new — v1.18.17 (2026-06-09)
 

@@ -1,5 +1,27 @@
 # NXT8 — Release Notes
 
+## v1.18.18-detect-bottlenecks-failsoft — 2026-06-09
+
+**Status:** ✅ `detect_bottlenecks` больше не роняет sandbox audit при отсутствии DB.
+
+### Changed
+- **`backend/agents/hermes.py`**
+  - `_t_detect_bottlenecks(...)` теперь fail-soft обрабатывает ошибки окружения (`MONGO_URL`, database)
+  - возвращает structured warning response вместо exception
+
+### Added
+- **`backend/tests/test_detect_bottlenecks_sandbox.py`**
+  - regression test для sandbox fallback
+
+### Validated
+- `pytest -q /app/backend/tests/test_detect_bottlenecks_sandbox.py` → **1/1 PASS**
+- direct sandbox call returns:
+  - `ok: false`
+  - `warning_only: true`
+  - `details: "DB not configured (sandbox mode)"`
+
+---
+
 ## v1.18.17-hr-mentor-sandbox-fallback — 2026-06-09
 
 **Status:** ✅ `hr_mentor` benchmark в sandbox больше не падает сырой ошибкой `MONGO_URL`.
