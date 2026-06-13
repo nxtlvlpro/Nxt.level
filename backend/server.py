@@ -2905,6 +2905,82 @@ async def analyst_findings_list(
     return {"ok": True, "findings": rows, "count": len(rows)}
 
 
+@api.post("/analyst/findings/{finding_id}/resolve")
+async def analyst_findings_resolve(
+    finding_id: str,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    findings = TenantAwareCRUD(get_db().analyst_findings, company_id=user.company_id)
+    found = await findings.find_one({"id": finding_id}, {"_id": 0})
+    if not found:
+        raise HTTPException(status_code=404, detail="finding_not_found")
+    await findings.update_one(
+        {"id": finding_id},
+        {"$set": {
+            "resolved": True,
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "resolved_by": user.user_id,
+        }},
+    )
+    return {"ok": True, "id": finding_id, "resolved": True}
+
+
+@api.post("/analyst/findings/{finding_id}/escalate")
+async def analyst_findings_escalate(
+    finding_id: str,
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
+) -> Dict[str, Any]:
+    findings = TenantAwareCRUD(get_db().analyst_findings, company_id=user.company_id)
+    finding = await findings.find_one({"id": finding_id}, {"_id": 0})
+    if not finding:
+        raise HTTPException(status_code=404, detail="finding_not_found")
+
+    from agents.hermes import _t_create_task
+    from agents.inter_agent import escalate_to_hermes
+
+    priority = (finding.get("urgency") or "medium").lower()
+    if priority not in {"low", "medium", "high", "critical"}:
+        priority = "medium"
+
+    task_res = await _t_create_task({
+        "title": f"Analyst finding: {finding.get('type') or 'issue'}",
+        "description": (finding.get("details") or finding.get("summary") or "")[:2000],
+        "department": "ops",
+        "priority": priority,
+        "kind": "followup",
+        "company_id": user.company_id,
+        "user_id": user.user_id,
+    })
+    escalation_res = await escalate_to_hermes({
+        "reason": f"Analyst finding требует внимания: {finding.get('summary') or finding.get('type') or finding_id}",
+        "evidence": (finding.get("details") or "")[:4000],
+        "urgency": priority,
+        "from_agent": "analyst",
+        "question": "Нужна оценка Hermes и назначение owner для устранения риска.",
+        "company_id": user.company_id,
+        "user_id": user.user_id,
+    })
+
+    escalation_id = escalation_res.get("escalation_id") if isinstance(escalation_res, dict) else None
+    task_id = task_res.get("task", {}).get("id") if isinstance(task_res, dict) else None
+
+    await findings.update_one(
+        {"id": finding_id},
+        {"$set": {
+            "escalated": True,
+            "escalated_at": datetime.now(timezone.utc).isoformat(),
+            "escalation_id": escalation_id,
+            "task_id": task_id,
+        }},
+    )
+    return {
+        "ok": True,
+        "id": finding_id,
+        "task_id": task_id,
+        "escalation_id": escalation_id,
+    }
+
+
 @api.post("/personas/{persona_id}/chat")
 async def persona_chat(persona_id: str, req: PersonaChatRequest) -> Dict[str, Any]:
     """Chat with a specific persona. Enforces tariff gate."""

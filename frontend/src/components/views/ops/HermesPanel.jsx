@@ -172,6 +172,11 @@ function AnalystFindingRow({ finding }) {
       <div className="text-[12px] text-white/80 leading-relaxed" data-testid={`analyst-finding-summary-${finding.id}`}>
         {finding.summary || "—"}
       </div>
+      {finding.resolved ? (
+        <span className="text-green-400 text-[9px]" data-testid={`analyst-finding-resolved-${finding.id}`}>
+          ✓ Решено
+        </span>
+      ) : null}
     </li>
   );
 }
@@ -356,6 +361,27 @@ export default function HermesPanel({ onBack }) {
     window.open(`https://t.me/${telegram.bot_username}`, "_blank", "noopener,noreferrer");
   };
 
+  const handleEscalate = async (id) => {
+    try {
+      await api.escalateFinding(id);
+      const res = await api.analystFindings(5);
+      setAnalystFindings(res.findings || []);
+    } catch (err) {
+      console.warn("Не удалось эскалировать finding аналитика", err);
+    }
+  };
+
+  const handleMarkResolved = async (id) => {
+    try {
+      await api.markFindingResolved(id);
+      setAnalystFindings((prev) => prev.map((finding) => (
+        finding.id === id ? { ...finding, resolved: true } : finding
+      )));
+    } catch (err) {
+      console.warn("Не удалось отметить finding как решённый", err);
+    }
+  };
+
   const status = health?.status || (firstLoaded ? "offline" : "loading");
   const auditHealth = audit?.health || null;
   const auditRows = audit?.benchmark?.benchmark || [];
@@ -509,7 +535,27 @@ export default function HermesPanel({ onBack }) {
           ) : (
             <ul className="space-y-2 findings-list" data-testid="analyst-findings-list">
               {analystFindings.slice(0, 5).map((f) => (
-                <AnalystFindingRow key={f.id} finding={f} />
+                <li key={f.id} className="space-y-2 list-none" data-testid={`analyst-finding-wrapper-${f.id}`}>
+                  <AnalystFindingRow finding={f} />
+                  {!f.resolved ? (
+                    <div className="flex gap-2 mt-2 text-[9px]" data-testid={`analyst-finding-actions-${f.id}`}>
+                      <button
+                        onClick={() => handleEscalate(f.id)}
+                        className="text-orange-400 hover:text-orange-300 underline"
+                        data-testid={`escalate-finding-${f.id}`}
+                      >
+                        ➔ Эскалировать Гермесу
+                      </button>
+                      <button
+                        onClick={() => handleMarkResolved(f.id)}
+                        className="text-slate-400 hover:text-slate-300 underline"
+                        data-testid={`resolve-finding-${f.id}`}
+                      >
+                        ✓ Отметить как решённое
+                      </button>
+                    </div>
+                  ) : null}
+                </li>
               ))}
             </ul>
           )}

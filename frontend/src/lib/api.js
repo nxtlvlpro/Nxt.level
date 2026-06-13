@@ -186,6 +186,8 @@ export const api = {
     http.post("/hermes/chat", payload).then((r) => r.data),
   hermesSelfAudit: () => http.post("/hermes/self-audit/run", {}).then((r) => r.data),
   analystFindings: (limit = 5) => http.get(`/analyst/findings?limit=${limit}`).then((r) => r.data),
+  escalateFinding: (id) => http.post(`/analyst/findings/${id}/escalate`, {}).then((r) => r.data),
+  markFindingResolved: (id) => http.post(`/analyst/findings/${id}/resolve`, {}).then((r) => r.data),
   hermesJobsList: () => http.get("/hermes/jobs").then((r) => r.data),
   hermesJobCreate: (payload) =>
     http.post("/hermes/jobs", payload).then((r) => r.data),
