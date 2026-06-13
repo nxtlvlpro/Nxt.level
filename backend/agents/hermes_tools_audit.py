@@ -118,6 +118,17 @@ async def run_persona_benchmark(args: Dict[str, Any]) -> Dict[str, Any]:
             })
         except Exception as e:  # noqa: BLE001
             latency_ms = round((time.perf_counter() - started) * 1000, 1)
+            if "MONGO_URL" in str(e):
+                results.append({
+                    "persona": pid,
+                    "success": False,
+                    "error": "DB unavailable in sandbox mode",
+                    "provider": "nxt8_graph",
+                    "mock": True,
+                    "latency_ms": latency_ms,
+                    "session_id": session_id,
+                })
+                continue
             results.append({
                 "persona": pid,
                 "success": False,

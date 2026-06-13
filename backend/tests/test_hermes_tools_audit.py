@@ -78,3 +78,25 @@ def test_run_persona_benchmark_uses_subordinates_only(monkeypatch):
     assert all(call["user_id"] == "hermes_audit" for call in calls)
     assert all(call["session_id"].startswith("audit_") for call in calls)
     assert all(call["persona_id"] != "hermes" for call in calls)
+
+
+def test_run_persona_benchmark_handles_missing_mongo_url(monkeypatch):
+    async def _fake_run_persona(**kwargs):
+        if kwargs["persona_id"] == "hr_mentor":
+            raise KeyError("MONGO_URL")
+        return {"success": True, "confidence": 0.9, "provider": "nxt8_graph"}
+
+    monkeypatch.setattr(
+        audit,
+        "_get_persona_runtime",
+        lambda: ({"hermes", "hr_mentor", "analyst"}, _fake_run_persona),
+    )
+
+    res = _run(audit.run_persona_benchmark({"company_id": "tenant_c"}))
+    assert res["ok"] is True
+    assert res["failed"] == 1
+    failing = next(row for row in res["benchmark"] if row["persona"] == "hr_mentor")
+    assert failing["success"] is False
+    assert failing["error"] == "DB unavailable in sandbox mode"
+    assert failing["provider"] == "nxt8_graph"
+    assert failing["mock"] is True

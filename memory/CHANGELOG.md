@@ -1,5 +1,27 @@
 # NXT8 — Release Notes
 
+## v1.18.17-hr-mentor-sandbox-fallback — 2026-06-09
+
+**Status:** ✅ `hr_mentor` benchmark в sandbox больше не падает сырой ошибкой `MONGO_URL`.
+
+### Changed
+- **`backend/agents/hermes_tools_audit.py`**
+  - `run_persona_benchmark(...)` теперь перехватывает `MONGO_URL`-ошибку и возвращает structured result:
+    - `success: false`
+    - `error: "DB unavailable in sandbox mode"`
+    - `provider: "nxt8_graph"`
+    - `mock: true`
+
+### Added
+- **`backend/tests/test_hermes_tools_audit.py`**
+  - regression test: missing Mongo env in sandbox benchmark
+
+### Validated
+- `pytest -q /app/backend/tests/test_hermes_tools_audit.py` → **3/3 PASS**
+- runtime benchmark → `hr_mentor` now reports graceful sandbox failure instead of raw exception
+
+---
+
 ## v1.18.16-web-search-sanitization — 2026-06-09
 
 **Status:** ✅ Внешние результаты `web_search` санитизируются перед подачей агентам.
