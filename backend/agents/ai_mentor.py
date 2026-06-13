@@ -544,8 +544,8 @@ async def build_user_skill_block(user_id: str, company_id: str) -> str:
             .limit(5)
         )
         last_tasks = [(d.get("title") or "").strip() for d in await cursor.to_list(length=5)]
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Suppressed error during mentor task context fetch: %s", type(e).__name__)
 
     lines = [
         "ПРОФИЛЬ СОТРУДНИКА:",

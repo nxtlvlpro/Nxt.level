@@ -321,8 +321,8 @@ async def _resolve_user_from_token(token: str) -> Optional[AuthedUser]:
                 {"user_id": user["user_id"]},
                 {"$set": {"company_id": company_id}},
             )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Suppressed error during user company backfill: %s", type(e).__name__)
     return AuthedUser(
         user_id=user["user_id"],
         email=user.get("email", ""),

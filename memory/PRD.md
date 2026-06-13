@@ -1,7 +1,31 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.20-legacy-source-cleanup
+**Current version:** v1.18.21-observability-warning-logs
 **Last updated:** 2026-06-09 by E1
+
+## What's new — v1.18.21 (2026-06-09)
+
+**Key silent `pass` blocks replaced with warning logs.** Поведение осталось
+fail-silent, но система теперь оставляет trace в логах для отладки и аудита.
+
+- Updated files:
+  - `backend/server.py`
+  - `backend/core/auth.py`
+  - `backend/agents/ai_mentor.py`
+  - `backend/core/deepseek.py`
+  - `backend/core/telegram_bot.py`
+  - `backend/core/scheduler.py`
+  - `backend/agents/hermes_evolution.py`
+- Change pattern:
+  - `except ...: pass`
+  - → `except ... as e: logger.warning("Suppressed error ...: %s", type(e).__name__)`
+- No logic changes:
+  - suppressed flows still stay fail-silent
+  - only observability improved
+
+**Validated**
+- lint on changed files → **PASS**
+- `python -m py_compile` on changed files → **PASS**
 
 ## What's new — v1.18.20 (2026-06-09)
 

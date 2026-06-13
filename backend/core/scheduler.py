@@ -123,8 +123,8 @@ async def _run_pulse_for_all() -> None:
             "ok": not errs,
             "errors": errs[:5],
         })
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Suppressed error during pulse_tick cron logging: %s", type(e).__name__)
     logger.info("pulse_tick done: tenants=%d nudges=%d errors=%d", len(tenants), nudges, len(errs))
 
 
@@ -154,8 +154,8 @@ async def _run_digest_for_all() -> None:
             "sent": sent,
             "skipped": skipped,
         })
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Suppressed error during daily_digest cron logging: %s", type(e).__name__)
     logger.info("daily_digest done: tenants=%d sent=%d skipped=%d", len(tenants), sent, skipped)
 
 
@@ -191,8 +191,8 @@ async def _run_session_cleanup() -> None:
             "ok": err is None,
             "error": err,
         })
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Suppressed error during session_cleanup cron logging: %s", type(e).__name__)
     logger.info("session_cleanup done: deleted=%d", deleted)
 
 
@@ -284,8 +284,8 @@ async def shutdown() -> None:
     if _scheduler is not None:
         try:
             _scheduler.shutdown(wait=False)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Suppressed error during scheduler shutdown: %s", type(e).__name__)
         _scheduler = None
 
 

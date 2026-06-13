@@ -152,8 +152,8 @@ class DeepSeekClient:
                     body = e.response.text[:200] if e.response is not None else ""
                     if body:
                         msg += f" ({body.strip()})"
-                except Exception:
-                    pass
+                except Exception as inner_e:
+                    logger.warning("Suppressed error while reading provider response body: %s", type(inner_e).__name__)
                 errors.append(msg)
                 logger.warning("provider %s failed: %s — trying next", p.name, msg)
                 continue

@@ -169,13 +169,13 @@ async def lifespan(_app: FastAPI):
         try:
             from core import scheduler as _sch
             await _sch.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Suppressed error during scheduler shutdown: %s", type(e).__name__)
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
-            pass
+            logger.warning("Suppressed error during background task cancel: %s", asyncio.CancelledError.__name__)
         close_db()
 
 
@@ -794,8 +794,8 @@ async def _resolve_company_id(
             email = u.get("email") or ""
             if email:
                 return _auth_mod.derive_company_id(email)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Suppressed error during public tenant resolution: %s", type(e).__name__)
     return None
 
 
@@ -1972,8 +1972,8 @@ async def onboarding_save_profile(
                 {"id": saved["id"]},
                 {"$set": {"company_id": user.company_id, "owner_user_id": user.user_id}},
             )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Suppressed error during onboarding profile tenant attach: %s", type(e).__name__)
     return {"ok": True, "profile_id": saved["id"], "test_access": test_access}
 
 

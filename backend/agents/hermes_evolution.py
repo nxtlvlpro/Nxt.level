@@ -42,8 +42,8 @@ def _safe_int(v: Any, default: int) -> int:
             s = v.strip()
             digits = "".join(c for c in s if c.isdigit())
             return int(digits) if digits else default
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Suppressed error during integer coercion: %s", type(e).__name__)
     return default
 
 

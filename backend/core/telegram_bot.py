@@ -495,8 +495,8 @@ async def _handle_callback(update_cb: Dict[str, Any]) -> None:
                 {"digest_id": digest_id},
                 {"$set": {"status": "approved" if op == "digest_approve" else "edit_requested"}},
             )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Suppressed error during digest approval sync: %s", type(e).__name__)
         if cb_id:
             await _answer_callback(cb_id, "OK")
         if op == "digest_approve":

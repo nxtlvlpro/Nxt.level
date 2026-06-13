@@ -1,5 +1,28 @@
 # NXT8 — Release Notes
 
+## v1.18.21-observability-warning-logs — 2026-06-09
+
+**Status:** ✅ Ключевые silent `pass` в runtime-коде заменены на `logger.warning(...)`.
+
+### Changed
+- `backend/server.py`
+- `backend/core/auth.py`
+- `backend/agents/ai_mentor.py`
+- `backend/core/deepseek.py`
+- `backend/core/telegram_bot.py`
+- `backend/core/scheduler.py`
+- `backend/agents/hermes_evolution.py`
+
+### Effect
+- поведение осталось fail-silent
+- suppressed ошибки теперь наблюдаемы в логах
+
+### Validated
+- python lint on changed files → **PASS**
+- `python -m py_compile` on changed files → **PASS**
+
+---
+
 ## v1.18.20-legacy-source-cleanup — 2026-06-09
 
 **Status:** ✅ Мёртвые `LEGACY_SOURCE_DISABLED` блоки удалены из active shim-файлов.
