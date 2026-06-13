@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NXT8 Agent Room</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:#050810;
+  --panel:rgba(8,14,30,0.92);
+  --panel-strong:rgba(8,14,30,0.95);
+  --border:rgba(80,140,255,0.18);
+  --text:#e8eeff;
+  --muted:rgba(180,195,255,0.4);
+}
+body {
+  background:radial-gradient(circle at top, rgba(28,53,110,0.22), transparent 28%), var(--bg);
+  color:var(--text);
+  font-family:system-ui,sans-serif;
+  min-height:100vh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:10px 20px;
+  border-bottom:1px solid var(--border);
+  background:var(--panel-strong);
+  flex-shrink:0;
+  z-index:10;
+  backdrop-filter:blur(12px);
+}
+.logo { font-family:monospace; font-size:18px; font-weight:700; color:#00e5ff; letter-spacing:3px; }
+.room-label { color:rgba(180,195,255,0.35); font-size:11px; letter-spacing:2px; margin-left:12px; }
+.stats { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+.stat-val { font-family:monospace; font-size:15px; font-weight:700; }
+.stat-lbl { font-size:9px; color:rgba(180,195,255,0.4); letter-spacing:1px; }
+.live { display:flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; background:rgba(0,255,157,0.08); border:1px solid rgba(0,255,157,0.25); font-size:11px; color:#00ff9d; font-family:monospace; }
+.live-dot { width:6px; height:6px; border-radius:50%; background:#00ff9d; animation:blink 1.5s infinite; }
+.main { display:flex; flex:1; min-height:0; overflow:hidden; }
+.left { width:220px; flex-shrink:0; background:var(--panel); border-right:1px solid rgba(80,140,255,0.15); overflow-y:auto; }
+.panel-hdr { padding:10px 14px 6px; border-bottom:1px solid rgba(80,140,255,0.12); display:flex; justify-content:space-between; }
+.panel-hdr span { font-size:9px; text-transform:uppercase; letter-spacing:2px; color:rgba(180,195,255,0.4); }
+.panel-hdr em { font-style:normal; font-family:monospace; font-size:10px; color:#a855f7; }
+.agent-row { display:flex; align-items:center; gap:9px; padding:8px 12px; cursor:pointer; border-left:2px solid transparent; transition:background 0.2s ease, border-color 0.2s ease, transform 0.2s ease; }
+.agent-row:hover { background:rgba(79,143,255,0.06); transform:translateX(2px); }
+.agent-row.sel { border-left-color:var(--c); background:rgba(79,143,255,0.1); }
+.a-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+.a-name { font-size:12px; font-weight:500; }
+.a-sub { font-size:10px; color:rgba(180,195,255,0.4); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.a-stat { font-family:monospace; font-size:15px; font-weight:700; }
+.a-badge { font-size:8px; font-family:monospace; letter-spacing:1px; }
+#scene { flex:1; min-height:360px; }
+.scene-shell { flex:1; position:relative; min-width:0; }
+.right { width:210px; flex-shrink:0; background:var(--panel); border-left:1px solid rgba(80,140,255,0.15); padding:14px; overflow-y:auto; }
+.no-sel { color:rgba(180,195,255,0.3); font-size:12px; text-align:center; margin-top:50px; line-height:1.8; }
+.d-icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; margin:0 auto 8px; }
+.d-name { font-size:15px; font-weight:600; text-align:center; }
+.d-role { font-size:10px; color:rgba(180,195,255,0.4); text-transform:uppercase; letter-spacing:1px; text-align:center; margin-top:2px; }
+.metrics { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:12px; }
+.met { background:rgba(255,255,255,0.03); border:1px solid rgba(80,140,255,0.15); border-radius:8px; padding:9px 6px; text-align:center; }
+.met-v { font-family:monospace; font-size:20px; font-weight:700; }
+.met-l { font-size:9px; text-transform:uppercase; letter-spacing:1px; color:rgba(180,195,255,0.4); margin-top:2px; }
+.ls-hdr { font-size:9px; text-transform:uppercase; letter-spacing:2px; color:rgba(180,195,255,0.35); margin:12px 0 7px; }
+.ls-box { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; }
+.ls-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; animation:blink 1.5s infinite; }
+.ls-txt { font-size:10px; font-family:monospace; line-height:1.5; }
+.hint { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); font-size:10px; color:rgba(180,195,255,0.25); font-family:monospace; pointer-events:none; white-space:nowrap; text-align:center; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+@media (max-width: 1100px) {
+  body { overflow:auto; }
+  .main { flex-direction:column; overflow:auto; }
+  .left, .right { width:100%; border-left:none; border-right:none; }
+  .left { border-bottom:1px solid rgba(80,140,255,0.15); max-height:220px; }
+  .right { border-top:1px solid rgba(80,140,255,0.15); min-height:180px; }
+  .scene-shell { min-height:50vh; }
+  #scene { min-height:50vh; }
+  .hint { bottom:14px; width:calc(100% - 24px); white-space:normal; }
+}
+
+@media (max-width: 680px) {
+  header { flex-wrap:wrap; justify-content:center; padding:12px; }
+  .room-label { margin-left:8px; }
+  .stats { gap:14px; width:100%; }
+  .stat-val { font-size:14px; }
+  .live { margin-left:auto; margin-right:auto; }
+  .left { max-height:200px; }
+}
+</style>
+</head>
+<body data-testid="agents-room-page">
+<header data-testid="agents-room-header">
+  <div style="display:flex;align-items:center">
+    <span class="logo" data-testid="agents-room-logo">NXT8</span>
+    <span class="room-label" data-testid="agents-room-label">AI AGENT ROOM</span>
+  </div>
+  <div class="stats" data-testid="agents-room-stats">
+    <div data-testid="agents-room-stat-active"><div class="stat-val" id="h-active" style="color:#00ff9d">0</div><div class="stat-lbl">ACTIVE</div></div>
+    <div data-testid="agents-room-stat-today"><div class="stat-val" id="h-today" style="color:#00e5ff">0</div><div class="stat-lbl">TODAY</div></div>
+    <div data-testid="agents-room-stat-conv"><div class="stat-val" id="h-conv" style="color:#a855f7">0%</div><div class="stat-lbl">CONV</div></div>
+  </div>
+  <div class="live" data-testid="agents-room-live-indicator"><div class="live-dot"></div>LIVE</div>
+</header>
+<div class="main" data-testid="agents-room-layout">
+  <div class="left" data-testid="agents-room-team-panel">
+    <div class="panel-hdr"><span>Team</span><em>8 agents</em></div>
+    <div id="agent-list" data-testid="agents-room-agent-list"></div>
+  </div>
+  <div class="scene-shell" data-testid="agents-room-scene-shell">
+    <div id="scene" data-testid="agents-room-scene"></div>
+    <div class="hint" data-testid="agents-room-hint">drag · rotate &nbsp;|&nbsp; scroll · zoom &nbsp;|&nbsp; click · agent</div>
+  </div>
+  <div class="right" id="detail" data-testid="agents-room-detail-panel"><div class="no-sel">Выбери агента<br>для деталей</div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const AGENTS = [
+  {id:0,name:"Hermes",role:"Orchestrator",emoji:"⚡",color:0xa855f7,hex:"#a855f7",status:"active",statusText:"Routing workflows",active:47,today:23,conv:9.1,liveStatus:"Delegating to Pulse"},
+  {id:1,name:"Pulse",role:"Analytics",emoji:"📊",color:0x00e5ff,hex:"#00e5ff",status:"active",statusText:"Generating digest",active:38,today:17,conv:7.4,liveStatus:"Processing KPIs"},
+  {id:2,name:"Aria",role:"CRM Agent",emoji:"👤",color:0xff6b9d,hex:"#ff6b9d",status:"active",statusText:"Updating contacts",active:29,today:44,conv:11.2,liveStatus:"Syncing lead status"},
+  {id:3,name:"Scout",role:"Research",emoji:"🔍",color:0x4f8fff,hex:"#4f8fff",status:"active",statusText:"Scanning market",active:15,today:8,conv:5.6,liveStatus:"Fetching competitor data"},
+  {id:4,name:"Forge",role:"Content",emoji:"✍️",color:0x00ff9d,hex:"#00ff9d",status:"active",statusText:"Drafting proposals",active:21,today:31,conv:14.3,liveStatus:"Writing for Client #7"},
+  {id:5,name:"Ledger",role:"Finance",emoji:"💰",color:0xffb800,hex:"#ffb800",status:"busy",statusText:"Reconciling invoices",active:9,today:12,conv:6.8,liveStatus:"Processing Q2 data"},
+  {id:6,name:"Nexus",role:"Integration",emoji:"🔗",color:0xff8c42,hex:"#ff8c42",status:"active",statusText:"Syncing APIs",active:33,today:19,conv:8.9,liveStatus:"Webhook to Slack"},
+  {id:7,name:"Echo",role:"Memory",emoji:"🧠",color:0x7c3aed,hex:"#7c3aed",status:"idle",statusText:"Standby",active:0,today:5,conv:0,liveStatus:"All memories indexed"},
+];
+
+let metrics = AGENTS.map(a=>({active:a.active,today:a.today,conv:a.conv}));
+let selected = null;
+const robots = [];
+let dragDistance = 0;
+
+const container = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.setClearColor(0x050810);
+container.appendChild(renderer.domElement);
+renderer.domElement.style.width='100%';
+renderer.domElement.style.height='100%';
+renderer.domElement.setAttribute('data-testid', 'agents-room-canvas');
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x050810, 0.018);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+camera.position.set(0, 8, 16);
+camera.lookAt(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0x111133, 2));
+const dir = new THREE.DirectionalLight(0x4466ff, 1.5);
+dir.position.set(5, 10, 5);
+scene.add(dir);
+
+const gridHelper = new THREE.GridHelper(40, 40, 0x1a2a5a, 0x0d1530);
+gridHelper.position.y = -1.5;
+scene.add(gridHelper);
+
+const floorGeo = new THREE.PlaneGeometry(40, 40);
+const floorMat = new THREE.MeshLambertMaterial({color:0x050d1a, transparent:true, opacity:0.8});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI/2;
+floor.position.y = -1.51;
+scene.add(floor);
+
+function makeRobot(agent, pos) {
+  const group = new THREE.Group();
+  const c = agent.color;
+  const mat = (color, op=1) => new THREE.MeshLambertMaterial({color, transparent:op<1, opacity:op});
+  const box = (w,h,d) => new THREE.BoxGeometry(w,h,d);
+
+  const torso = new THREE.Mesh(box(0.9,1,0.6), mat(c, 0.9));
+  torso.position.y = 0.5;
+  group.add(torso);
+
+  const screenMat = new THREE.MeshLambertMaterial({color:c, emissive:new THREE.Color(c), emissiveIntensity:0.6});
+  const screen = new THREE.Mesh(box(0.5,0.35,0.05), screenMat);
+  screen.position.set(0, 0.55, 0.33);
+  group.add(screen);
+
+  const head = new THREE.Mesh(box(0.8,0.7,0.7), mat(c, 0.85));
+  head.position.y = 1.35;
+  group.add(head);
+
+  const eyeMat = new THREE.MeshLambertMaterial({color:0xffffff, emissive:new THREE.Color(c), emissiveIntensity:1.5});
+  [-0.18, 0.18].forEach(ex => {
+    const eye = new THREE.Mesh(box(0.15,0.12,0.05), eyeMat);
+    eye.position.set(ex, 1.42, 0.36);
+    group.add(eye);
+  });
+
+  const antStick = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.4), mat(c));
+  antStick.position.set(0, 1.9, 0);
+  group.add(antStick);
+  const antBall = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshLambertMaterial({color:c,emissive:new THREE.Color(c),emissiveIntensity:1}));
+  antBall.position.set(0, 2.15, 0);
+  group.add(antBall);
+
+  const armGeo = box(0.25,0.7,0.25);
+  const lArm = new THREE.Mesh(armGeo, mat(c, 0.8));
+  lArm.position.set(-0.62, 0.45, 0);
+  group.add(lArm);
+  const rArm = new THREE.Mesh(armGeo, mat(c, 0.8));
+  rArm.position.set(0.62, 0.45, 0);
+  group.add(rArm);
+
+  const legGeo = box(0.28,0.6,0.28);
+  const lLeg = new THREE.Mesh(legGeo, mat(c, 0.8));
+  lLeg.position.set(-0.22, -0.3, 0);
+  group.add(lLeg);
+  const rLeg = new THREE.Mesh(legGeo, mat(c, 0.8));
+  rLeg.position.set(0.22, -0.3, 0);
+  group.add(rLeg);
+
+  const deskTop = new THREE.Mesh(box(2, 0.08, 1.2), new THREE.MeshLambertMaterial({color:0x0d1a30}));
+  deskTop.position.set(0, -0.9, 0.3);
+  group.add(deskTop);
+
+  const edgeMat = new THREE.MeshLambertMaterial({color:c, emissive:new THREE.Color(c), emissiveIntensity:0.5});
+  const deskEdge = new THREE.Mesh(box(2.02,0.04,0.04), edgeMat);
+  deskEdge.position.set(0,-0.86,-0.26);
+  group.add(deskEdge);
+
+  const monitor = new THREE.Mesh(box(0.8,0.6,0.05), new THREE.MeshLambertMaterial({color:0x0a0f20}));
+  monitor.position.set(0.3, -0.4, -0.08);
+  group.add(monitor);
+  const monScreenMat = new THREE.MeshLambertMaterial({color:c, emissive:new THREE.Color(c), emissiveIntensity:0.7});
+  const monScreen = new THREE.Mesh(box(0.7,0.5,0.02), monScreenMat);
+  monScreen.position.set(0.3,-0.4,-0.05);
+  group.add(monScreen);
+
+  const ringGeo = new THREE.RingGeometry(0.8, 1.1, 32);
+  const ringMat = new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:0.2, side:THREE.DoubleSide});
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI/2;
+  ring.position.y = -1.48;
+  group.add(ring);
+
+  const light = new THREE.PointLight(c, 0.8, 4);
+  light.position.set(0, 1, 0);
+  group.add(light);
+
+  group.position.set(pos.x, pos.y, pos.z);
+  scene.add(group);
+
+  return { group, lArm, rArm, lLeg, rLeg, antBall, ring, monScreen, light, agent };
+}
+
+const positions = [
+  {x:-4.5,y:0,z:-3}, {x:-1.5,y:0,z:-3}, {x:1.5,y:0,z:-3}, {x:4.5,y:0,z:-3},
+  {x:-4.5,y:0,z: 2}, {x:-1.5,y:0,z: 2}, {x:1.5,y:0,z: 2}, {x:4.5,y:0,z: 2},
+];
+
+AGENTS.forEach((a,i) => robots.push(makeRobot(a, positions[i])));
+
+let isDragging=false, lastX=0, lastY=0;
+let camTheta=0.1, camPhi=0.5, camR=18;
+
+function updateCamera() {
+  camera.position.x = camR * Math.sin(camPhi) * Math.sin(camTheta);
+  camera.position.y = camR * Math.cos(camPhi);
+  camera.position.z = camR * Math.sin(camPhi) * Math.cos(camTheta);
+  camera.lookAt(0, 0, 0);
+}
+updateCamera();
+
+renderer.domElement.addEventListener('mousedown', e=>{isDragging=true;dragDistance=0;lastX=e.clientX;lastY=e.clientY;});
+window.addEventListener('mouseup', ()=>isDragging=false);
+window.addEventListener('mousemove', e=>{
+  if(!isDragging) return;
+  dragDistance += Math.abs(e.clientX-lastX) + Math.abs(e.clientY-lastY);
+  camTheta -= (e.clientX-lastX)*0.008;
+  camPhi = Math.max(0.2,Math.min(1.4,camPhi+(e.clientY-lastY)*0.005));
+  lastX=e.clientX; lastY=e.clientY;
+  updateCamera();
+});
+renderer.domElement.addEventListener('wheel', e=>{
+  camR = Math.max(6, Math.min(35, camR+e.deltaY*0.02));
+  updateCamera();
+}, { passive:true });
+
+let lastTX=0,lastTY=0;
+renderer.domElement.addEventListener('touchstart',e=>{dragDistance=0;lastTX=e.touches[0].clientX;lastTY=e.touches[0].clientY;},{passive:true});
+renderer.domElement.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  dragDistance += Math.abs(e.touches[0].clientX-lastTX) + Math.abs(e.touches[0].clientY-lastTY);
+  camTheta -= (e.touches[0].clientX-lastTX)*0.008;
+  camPhi = Math.max(0.2,Math.min(1.4,camPhi+(e.touches[0].clientY-lastTY)*0.005));
+  lastTX=e.touches[0].clientX; lastTY=e.touches[0].clientY;
+  updateCamera();
+},{passive:false});
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+renderer.domElement.addEventListener('click', e=>{
+  if (dragDistance > 8) {
+    dragDistance = 0;
+    return;
+  }
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((e.clientX-rect.left)/rect.width)*2-1;
+  mouse.y = -((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = [];
+  robots.forEach(r=>r.group.traverse(o=>{ if(o.isMesh) meshes.push(o); }));
+  const hits = raycaster.intersectObjects(meshes);
+  if(hits.length) {
+    const hit = hits[0].object;
+    let found = null;
+    robots.forEach((r,i)=>{ r.group.traverse(o=>{ if(o===hit) found=i; }); });
+    if(found!==null) { selected = found===selected?null:found; buildDetail(); buildList(); }
+  }
+});
+
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.016;
+
+  const cw = container.clientWidth;
+  const ch = Math.max(container.clientHeight, 320);
+  if(renderer.domElement.width !== cw*renderer.getPixelRatio() || renderer.domElement.height !== ch*renderer.getPixelRatio()) {
+    renderer.setSize(cw, ch, false);
+    camera.aspect = cw/ch;
+    camera.updateProjectionMatrix();
+  }
+
+  robots.forEach((r,i)=>{
+    const idle = r.agent.status==='idle';
+    const bob = idle ? 0 : Math.sin(t*1.2+i*1.3)*0.06;
+    r.group.position.y = positions[i].y + bob;
+
+    if(!idle) {
+      r.lArm.rotation.x = Math.sin(t*1.5+i)*0.3;
+      r.rArm.rotation.x = -Math.sin(t*1.5+i)*0.3;
+      r.lLeg.rotation.x = Math.sin(t*1.5+i)*0.15;
+      r.rLeg.rotation.x = -Math.sin(t*1.5+i)*0.15;
+    }
+
+    r.antBall.material.emissiveIntensity = idle ? 0.2 : 0.5+0.5*Math.abs(Math.sin(t*2+i));
+    r.monScreen.material.emissiveIntensity = idle ? 0.1 : 0.4+0.4*Math.abs(Math.sin(t*1.8+i*0.7));
+    r.ring.material.opacity = idle ? 0.05 : (selected===i ? 0.45+0.15*Math.sin(t*3) : 0.15+0.05*Math.sin(t*2+i));
+    r.light.intensity = idle ? 0.3 : (selected===i ? 1.5 : 0.7+0.3*Math.sin(t*2+i));
+  });
+
+  renderer.render(scene, camera);
+}
+animate();
+
+function buildList() {
+  const list = document.getElementById('agent-list');
+  list.innerHTML = '';
+  AGENTS.forEach((a,i)=>{
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'agent-row'+(selected===i?' sel':'');
+    row.style.setProperty('--c', a.hex);
+    row.setAttribute('data-testid', `agents-room-agent-${a.name.toLowerCase()}`);
+    row.setAttribute('aria-label', `${a.name} ${a.role}`);
+    row.innerHTML = `
+      <div class="a-icon" style="background:${a.hex}22;border:1px solid ${a.hex}44">${a.emoji}</div>
+      <div style="flex:1;min-width:0;text-align:left">
+        <div class="a-name">${a.name}</div>
+        <div class="a-sub">${a.statusText}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="a-badge" style="color:${a.status==='idle'?'#444':a.status==='busy'?'#ffb800':'#00ff9d'}">${a.status.toUpperCase()}</div>
+        <div class="a-stat" style="color:${a.hex}">${metrics[i].active}</div>
+      </div>`;
+    row.onclick = ()=>{ selected=i===selected?null:i; buildDetail(); buildList(); };
+    list.appendChild(row);
+  });
+
+  document.getElementById('h-active').textContent = AGENTS.filter(a=>a.status==='active').length;
+  document.getElementById('h-today').textContent = metrics.reduce((s,m)=>s+m.today,0);
+  document.getElementById('h-conv').textContent = (metrics.reduce((s,m)=>s+m.conv,0)/metrics.length).toFixed(1)+'%';
+}
+
+function buildDetail() {
+  const panel = document.getElementById('detail');
+  if(selected===null){ panel.innerHTML='<div class="no-sel">Выбери агента<br>для деталей</div>'; return; }
+  const a=AGENTS[selected], m=metrics[selected];
+  panel.innerHTML = `
+    <div data-testid="agents-room-detail-${a.name.toLowerCase()}">
+      <div class="d-icon" style="background:${a.hex}22;border:1px solid ${a.hex}44">${a.emoji}</div>
+      <div class="d-name">${a.name}</div>
+      <div class="d-role">${a.role}</div>
+      <div class="metrics">
+        <div class="met"><div class="met-v" style="color:${a.hex}">${m.active}</div><div class="met-l">ACTIVE</div></div>
+        <div class="met"><div class="met-v" style="color:#00e5ff">${m.today}</div><div class="met-l">TODAY</div></div>
+        <div class="met" style="grid-column:span 2"><div class="met-v" style="color:#00ff9d">${m.conv}%</div><div class="met-l">CONVERSION</div></div>
+      </div>
+      <div class="ls-hdr">Live Status</div>
+      <div class="ls-box" style="background:${a.hex}0d;border:1px solid ${a.hex}30" data-testid="agents-room-live-status">
+        <div class="ls-dot" style="background:${a.status==='idle'?'#444':a.hex};animation:${a.status==='idle'?'none':'blink 1.5s infinite'}"></div>
+        <span class="ls-txt" style="color:${a.hex}">${a.liveStatus}</span>
+      </div>
+    </div>`;
+}
+
+buildList();
+
+setInterval(()=>{
+  metrics = metrics.map((m,i)=>{
+    if(AGENTS[i].status==='idle') return m;
+    return {
+      active: Math.max(0,m.active+Math.floor(Math.random()*3)-1),
+      today: Math.random()<0.08?m.today+1:m.today,
+      conv: Math.max(0,+(m.conv+(Math.random()-0.5)*0.2).toFixed(1)),
+    };
+  });
+  buildList();
+  if(selected!==null) buildDetail();
+},2000);
+</script>
+</body>
+</html>

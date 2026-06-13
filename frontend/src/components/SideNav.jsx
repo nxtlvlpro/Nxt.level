@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   GitBranch,
   Activity,
+  Bot,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -71,6 +72,20 @@ export default function SideNav({ active, onChange, alertCount = 0 }) {
           </button>
         );
       })}
+      <div className="mt-auto pt-2">
+        <a
+          href="/agents-room/"
+          target="_blank"
+          rel="noreferrer"
+          data-testid="sidenav-agents-room-link"
+          className="group flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl text-brand-turquoise bg-brand-turquoise/5 border border-brand-turquoise/30 transition-colors hover:bg-brand-turquoise/10"
+        >
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center neo-icon-active">
+            <Bot className="w-5 h-5" strokeWidth={1.6} />
+          </div>
+          <span className="text-[9px] uppercase tracking-widest font-bold">🤖 Агенты</span>
+        </a>
+      </div>
     </aside>
   );
 }
