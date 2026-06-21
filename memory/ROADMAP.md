@@ -1,6 +1,11 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.18.32-3d-agent-room-live-sync (2026-06-21)
+**Текущая версия:** v1.18.33-phase1-plan-extraction (2026-06-21)
+
+## ✅ Done — Phase 1 Plan Extraction (2026-06-21)
+- Extracted `PLAN_ALIASES`, `PLANS`, `get_plan`, `_min_plan_for` into `backend/config/plans.py`
+- Preserved backward compatibility through existing legacy/personas exports
+- Verified no drift in alias resolution, fallback behavior, or persona plan gating
 
 ## ✅ Done — 3D Agent Room Live Sync (2026-06-21)
 - Added `/api/ops/live-agents` for authenticated tenant-aware live room state

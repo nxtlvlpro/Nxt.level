@@ -1,7 +1,31 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.32-3d-agent-room-live-sync
+**Current version:** v1.18.33-phase1-plan-extraction
 **Last updated:** 2026-06-21 by E1
+
+## What's new — v1.18.33 (2026-06-21)
+
+**Phase 1 extraction completed for the persona plan layer.** Вынесены только
+`PLAN_ALIASES`, `PLANS`, `get_plan`, `_min_plan_for` в новый модуль
+`backend/config/plans.py` с сохранением полной обратной совместимости.
+
+- Added:
+  - `backend/config/__init__.py`
+  - `backend/config/plans.py`
+- Updated:
+  - `backend/agents/legacy/personas_legacy.py`
+
+**Scope discipline preserved**
+- `PERSONAS` → untouched
+- `_FETCHER_DISPATCH` → untouched
+- fetcher functions → untouched
+- `legacy.run_persona` → untouched
+- No Phase 2+ work performed
+
+**Validation**
+- `backend/tests/test_plan_unification.py` → **PASS (12/12)**
+- backend verification suite → **PASS (45/45)**
+- plan aliases / fallback / `_min_plan_for` / tariff gate behavior preserved → **PASS**
 
 ## What's new — v1.18.32 (2026-06-21)
 

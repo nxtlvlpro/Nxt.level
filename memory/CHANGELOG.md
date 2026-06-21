@@ -1,5 +1,40 @@
 # NXT8 — Release Notes
 
+## v1.18.33-phase1-plan-extraction — 2026-06-21
+
+**Status:** ✅ Phase 1 extraction выполнен без изменения runtime behavior.
+
+### Added
+- **`backend/config/plans.py`**
+  - `PLAN_ALIASES`
+  - `build_canonical_plans()`
+  - `build_public_plans()`
+  - `canonicalize_plan_id()`
+  - `get_plan()`
+  - `min_plan_for()`
+- **`backend/config/__init__.py`**
+
+### Changed
+- **`backend/agents/legacy/personas_legacy.py`**
+  - plan-layer symbols now sourced from `config.plans`
+  - public compatibility preserved via legacy exports `PLAN_ALIASES`, `PLANS`, `get_plan`, `_min_plan_for`
+
+### Explicitly unchanged
+- `PERSONAS`
+- `_FETCHER_DISPATCH`
+- fetcher functions
+- `run_persona()`
+
+### Validated
+- `test_plan_unification.py` → **PASS**
+- phase1 backend verification → **PASS (45/45)**
+- scheduler / inter_agent imports → **PASS**
+- tariff gate behavior → **PASS**
+
+---
+
+## v1.18.32-3d-agent-room-live-sync — 2026-06-21
+
 ## v1.18.32-3d-agent-room-live-sync — 2026-06-21
 
 **Status:** ✅ 3D Agent Room подключена к реальному live payload.
