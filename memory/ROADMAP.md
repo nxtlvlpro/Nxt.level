@@ -1,6 +1,12 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.18.31-3d-agent-room-cinematic-v2 (2026-06-13)
+**Текущая версия:** v1.18.32-3d-agent-room-live-sync (2026-06-21)
+
+## ✅ Done — 3D Agent Room Live Sync (2026-06-21)
+- Added `/api/ops/live-agents` for authenticated tenant-aware live room state
+- Connected polling into `/agents-room/` every 4 seconds
+- Synced names, labels, counters, statuses and detail panel from real payload
+- Fixed `TenantAwareCRUD` wrapper bug impacting session lookups via wrapped collections
 
 ## ✅ Done — 3D Agent Room Cinematic v2 (2026-06-13)
 - Standalone room redesigned visually toward cinematic reference

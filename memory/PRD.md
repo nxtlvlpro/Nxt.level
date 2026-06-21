@@ -1,7 +1,38 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.31-3d-agent-room-cinematic-v2
-**Last updated:** 2026-06-13 by E1
+**Current version:** v1.18.32-3d-agent-room-live-sync
+**Last updated:** 2026-06-21 by E1
+
+## What's new — v1.18.32 (2026-06-21)
+
+**3D Agent Room now consumes real live agent state.** Реализован backend
+endpoint `/api/ops/live-agents` и подключён polling в `/agents-room/`.
+Статусы, лейблы, детали и цветовые сигналы теперь синхронизируются с реальным
+tenant-aware payload, а не только со статическим мок-набором.
+
+- Added backend live snapshot:
+  - `backend/server.py` → `GET /api/ops/live-agents`
+- Fixed tenant DB proxy bug affecting auth/session lookup:
+  - `backend/core/db.py`
+- Connected frontend polling:
+  - `frontend/public/agents-room/index.html`
+
+**Included in this delivery**
+- polling live data every 4 seconds
+- auth-protected live room payload
+- live mapping for status / counters / summary / labels / details
+- visual status sync for `active / busy / idle`
+- real NXT8 persona names and labels in the 3D room
+- fix for `TenantAwareCRUD` incorrectly dereferencing wrapped collections via `raw_collection`
+
+**Validated**
+- `/api/ops/live-agents` with authenticated session → **PASS**
+- 3D room loads with auth + live polling → **PASS**
+- detail panel updates from live-driven payload → **PASS**
+- independent frontend verification → **PASS**
+
+**Known note**
+- Для tenant без свежих событий live endpoint может корректно показывать mostly-zero metrics и `idle`-статусы. Это ожидаемо, не является багом.
 
 ## What's new — v1.18.31 (2026-06-13)
 

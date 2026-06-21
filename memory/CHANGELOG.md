@@ -1,5 +1,36 @@
 # NXT8 — Release Notes
 
+## v1.18.32-3d-agent-room-live-sync — 2026-06-21
+
+**Status:** ✅ 3D Agent Room подключена к реальному live payload.
+
+### Added
+- **Backend**
+  - `GET /api/ops/live-agents`
+    - tenant-aware snapshot по 8 core агентам
+    - aggregates from `requests`, `persona_requests`, `pending_approvals`, `analyst_findings`
+    - returns status / status_text / live_status / counters / confidence / summary
+
+### Changed
+- **`frontend/public/agents-room/index.html`**
+  - added auth-aware polling every 4s
+  - live mapping for names, labels, colors, metrics and detail panel
+- **`backend/core/db.py`**
+  - fixed `TenantAwareCRUD` wrapper handling bug that broke `user_sessions` / `users` lookups through wrapped collections
+
+### Validated
+- authenticated `/api/ops/live-agents` response → **PASS**
+- live-driven `/agents-room/` rendering → **PASS**
+- live detail panel selection → **PASS**
+- independent frontend verification → **PASS**
+
+### Note
+- zero metrics / idle states are valid when tenant has no fresh activity in tracked collections.
+
+---
+
+## v1.18.31-3d-agent-room-cinematic-v2 — 2026-06-13
+
 ## v1.18.31-3d-agent-room-cinematic-v2 — 2026-06-13
 
 **Status:** ✅ 3D Agent Room визуально переработана под cinematic reference.
