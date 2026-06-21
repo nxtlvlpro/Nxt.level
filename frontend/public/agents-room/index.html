@@ -821,15 +821,16 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script>
+    const API_BASE = `${window.location.origin}/api`;
     const AGENTS = [
       { id: 0, name: "Hermes", label: "Ops Orchestrator", role: "Chief orchestration core", emoji: "⚡", color: 0x9b6cff, hex: "#9b6cff", status: "active", statusText: "Routing workflows", active: 47, today: 23, conv: 9.1, liveStatus: "Delegating an escalation to Pulse", summary: "Координирует потоки задач, контекст и handoff между агентами NXT8." },
-      { id: 1, name: "Pulse", label: "Analytics Core", role: "Signal intelligence", emoji: "📊", color: 0x00e5ff, hex: "#00e5ff", status: "active", statusText: "Generating digest", active: 38, today: 17, conv: 7.4, liveStatus: "Processing KPI anomalies", summary: "Отслеживает ключевые сигналы, тренды и аномалии в операционном контуре." },
-      { id: 2, name: "Aria", label: "CRM Flow", role: "Client lifecycle agent", emoji: "👤", color: 0xff5aa5, hex: "#ff5aa5", status: "active", statusText: "Updating contacts", active: 29, today: 44, conv: 11.2, liveStatus: "Syncing new lead status", summary: "Держит клиентскую коммуникацию, воронку и follow-up в живом состоянии." },
-      { id: 3, name: "Scout", label: "Market Scout", role: "External research node", emoji: "🔍", color: 0x4c87ff, hex: "#4c87ff", status: "active", statusText: "Scanning market", active: 15, today: 8, conv: 5.6, liveStatus: "Fetching competitor signals", summary: "Ищет внешние сигналы, рынок и конкурентные паттерны без потери фокуса." },
-      { id: 4, name: "Forge", label: "Content Forge", role: "Offer crafting agent", emoji: "✍️", color: 0x4df6b2, hex: "#4df6b2", status: "active", statusText: "Drafting proposals", active: 21, today: 31, conv: 14.3, liveStatus: "Writing proposal draft #7", summary: "Собирает тексты, офферы и формулировки под бизнес-контекст компании." },
-      { id: 5, name: "Ledger", label: "Finance Node", role: "Revenue control layer", emoji: "💰", color: 0xffbb57, hex: "#ffbb57", status: "busy", statusText: "Reconciling invoices", active: 9, today: 12, conv: 6.8, liveStatus: "Reconciling Q2 figures", summary: "Контролирует финансовые движения, сводки, инвойсы и ROI-контур." },
-      { id: 6, name: "Nexus", label: "Integration Grid", role: "System bridge", emoji: "🔗", color: 0xff8c42, hex: "#ff8c42", status: "active", statusText: "Syncing APIs", active: 33, today: 19, conv: 8.9, liveStatus: "Syncing Slack webhook", summary: "Связывает внешние сервисы, вебхуки и внутренние системные контуры." },
-      { id: 7, name: "Echo", label: "Memory Vault", role: "Context preservation", emoji: "🧠", color: 0x7d6cff, hex: "#7d6cff", status: "idle", statusText: "Standby", active: 0, today: 5, conv: 0.0, liveStatus: "Memory graph indexed", summary: "Хранит накопленную память, связь решений и эволюцию контекста." },
+      { id: 1, name: "Mentor", label: "Mentor Loop", role: "Prompt learning coach", emoji: "🎓", color: 0x7d6cff, hex: "#7d6cff", status: "active", statusText: "Improving prompt skill", active: 38, today: 17, conv: 7.4, liveStatus: "Teaching from real workflow", summary: "Учит сотрудников работать с AI точнее и сильнее прямо в моменте задачи.", agentId: "hr_mentor" },
+      { id: 2, name: "Client", label: "Client Flow", role: "Client lifecycle agent", emoji: "🤝", color: 0xff5aa5, hex: "#ff5aa5", status: "active", statusText: "Managing follow-ups", active: 29, today: 44, conv: 11.2, liveStatus: "Syncing client commitments", summary: "Следит за клиентским потоком, SLA и follow-up без потери договорённостей.", agentId: "client_manager" },
+      { id: 3, name: "Project", label: "Project Grid", role: "Cross-team coordinator", emoji: "🧭", color: 0xff8c42, hex: "#ff8c42", status: "active", statusText: "Bridging teams", active: 15, today: 8, conv: 5.6, liveStatus: "Resolving cross-department handoff", summary: "Собирает внутренние задачи в связный проектный поток между отделами.", agentId: "project_coord" },
+      { id: 4, name: "Analyst", label: "Signal Analyst", role: "System intelligence", emoji: "📊", color: 0x00e5ff, hex: "#00e5ff", status: "active", statusText: "Scanning system health", active: 21, today: 31, conv: 14.3, liveStatus: "Tracking confidence shifts", summary: "Смотрит на здоровье системы, аномалии, эскалации и точки роста.", agentId: "analyst" },
+      { id: 5, name: "Bookkeeper", label: "Finance Node", role: "Revenue control layer", emoji: "💰", color: 0xffbb57, hex: "#ffbb57", status: "busy", statusText: "Reconciling ROI flows", active: 9, today: 12, conv: 6.8, liveStatus: "Reviewing cost pressure", summary: "Контролирует цифры, ROI, затраты и финансовые сигналы компании.", agentId: "bookkeeper" },
+      { id: 6, name: "Marketer", label: "Growth Pulse", role: "Growth signal agent", emoji: "📣", color: 0x4df6b2, hex: "#4df6b2", status: "active", statusText: "Shaping market signals", active: 33, today: 19, conv: 8.9, liveStatus: "Watching market opportunities", summary: "Выявляет рост, офферы, рыночные сигналы и точки усиления спроса.", agentId: "marketer" },
+      { id: 7, name: "Compliance", label: "Compliance Vault", role: "Risk control agent", emoji: "🛡️", color: 0x4c87ff, hex: "#4c87ff", status: "idle", statusText: "Standing by for review", active: 0, today: 5, conv: 0.0, liveStatus: "Review queue is clear", summary: "Отслеживает риски, документы и регуляторные требования без шума.", agentId: "compliance" },
     ];
 
     const container = document.getElementById("scene");
@@ -843,6 +844,7 @@
     let dragDistance = 0;
     const robots = [];
     const labelMap = new Map();
+    let livePollHandle = null;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -1237,7 +1239,7 @@
       label.type = "button";
       label.className = "agent-label";
       label.style.setProperty("--c", agent.hex);
-      label.setAttribute("data-testid", `agent-pod-label-${agent.name.toLowerCase()}`);
+      label.setAttribute("data-testid", `agent-pod-label-${(agent.agentId || agent.name).toLowerCase()}`);
       label.innerHTML = `
         <div class="label-role"><span class="label-dot"></span>${agent.label}</div>
         <div class="label-sub">${agent.name}</div>
@@ -1253,6 +1255,17 @@
       return "status-pill status-idle";
     }
 
+    function updateLabelContent(index) {
+      const agent = AGENTS[index];
+      const label = labelMap.get(index);
+      if (!label) return;
+      label.style.setProperty("--c", agent.hex);
+      label.innerHTML = `
+        <div class="label-role"><span class="label-dot"></span>${agent.label}</div>
+        <div class="label-sub">${agent.name}</div>
+      `;
+    }
+
     function buildList() {
       listEl.innerHTML = "";
       AGENTS.forEach((agent, index) => {
@@ -1260,7 +1273,7 @@
         row.type = "button";
         row.className = `agent-row${selected === index ? " sel" : ""}`;
         row.style.setProperty("--c", agent.hex);
-        row.setAttribute("data-testid", `agents-room-agent-${agent.name.toLowerCase()}`);
+        row.setAttribute("data-testid", `agents-room-agent-${(agent.agentId || agent.name).toLowerCase()}`);
         row.innerHTML = `
           <div class="agent-avatar" style="background:${agent.hex}22; box-shadow: 0 0 24px ${agent.hex}22; color:${agent.hex};">${agent.emoji}</div>
           <div>
@@ -1306,7 +1319,7 @@
         <div class="metrics-grid">
           <div class="metric-card"><div class="metric-value" style="color:${agent.hex}">${metric.active}</div><div class="metric-label">active load</div></div>
           <div class="metric-card"><div class="metric-value" style="color:var(--cyan)">${metric.today}</div><div class="metric-label">today tasks</div></div>
-          <div class="metric-card" style="grid-column: 1 / -1;"><div class="metric-value" style="color:var(--green)">${metric.conv}%</div><div class="metric-label">conversion signal</div></div>
+          <div class="metric-card" style="grid-column: 1 / -1;"><div class="metric-value" style="color:var(--green)">${metric.conv}%</div><div class="metric-label">confidence signal</div></div>
         </div>
         <div class="live-box" data-testid="agents-room-live-status">
           <div class="live-box-dot" style="color:${statusColor}; background:${statusColor};"></div>
@@ -1361,6 +1374,91 @@
         label.style.opacity = isVisible ? (selected === index || hovered === index ? 1 : 0.86) : 0;
         label.style.visibility = isVisible ? "visible" : "hidden";
       });
+    }
+
+    function applyLiveAgentPayload(payload) {
+      const list = Array.isArray(payload?.agents) ? payload.agents : [];
+      if (!list.length) return;
+
+      const byId = new Map(list.map((item) => [item.agent_id, item]));
+      AGENTS.forEach((agent, index) => {
+        const incoming = byId.get(agent.agentId || agent.name.toLowerCase());
+        if (!incoming) return;
+
+        agent.name = incoming.name || agent.name;
+        agent.role = incoming.role || agent.role;
+        agent.summary = incoming.summary || agent.summary;
+        agent.label = incoming.label || agent.label;
+        agent.emoji = incoming.emoji || agent.emoji;
+        agent.status = incoming.status || agent.status;
+        agent.statusText = incoming.status_text || agent.statusText;
+        agent.liveStatus = incoming.live_status || agent.liveStatus;
+
+        if (incoming.brand_hex) {
+          agent.hex = incoming.brand_hex;
+          agent.color = Number.parseInt(incoming.brand_hex.replace("#", "0x"), 16);
+        }
+
+        metrics[index] = {
+          active: Number.isFinite(incoming.active) ? incoming.active : metrics[index].active,
+          today: Number.isFinite(incoming.today) ? incoming.today : metrics[index].today,
+          conv: Number.isFinite(incoming.confidence_pct) ? +(incoming.confidence_pct / 10).toFixed(1) : metrics[index].conv,
+        };
+
+        const robot = robots[index];
+        if (robot) {
+          const accent = new THREE.Color(agent.hex);
+          robot.accent = accent;
+          robot.ring.material.color.set(accent);
+          robot.halo.material.color.set(accent);
+          robot.monitorScreen.material.color.set(accent);
+          robot.monitorScreen.material.emissive.set(accent);
+          robot.point.color.set(accent);
+          robot.haloIcon.material.opacity = agent.status === "idle" ? 0.12 : 0.24;
+        }
+        updateLabelContent(index);
+      });
+
+      if (payload?.summary) {
+        if (Number.isFinite(payload.summary.active_agents)) {
+          document.getElementById("h-active").textContent = payload.summary.active_agents;
+        }
+        if (Number.isFinite(payload.summary.today_total)) {
+          document.getElementById("h-today").textContent = payload.summary.today_total;
+        }
+        if (Number.isFinite(payload.summary.avg_confidence_pct)) {
+          document.getElementById("h-conv").textContent = `${(payload.summary.avg_confidence_pct / 10).toFixed(1)}%`;
+        }
+      }
+
+      buildList();
+      buildDetail();
+    }
+
+    async function fetchLiveAgents() {
+      try {
+        const response = await fetch(`${API_BASE}/ops/live-agents`, {
+          method: "GET",
+          credentials: "include",
+          headers: { "Accept": "application/json" },
+        });
+        if (response.status === 401) {
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(`live-agents ${response.status}`);
+        }
+        const payload = await response.json();
+        applyLiveAgentPayload(payload);
+      } catch (error) {
+        console.warn("[agents-room] live sync failed", error?.message || error);
+      }
+    }
+
+    function startLivePolling() {
+      fetchLiveAgents();
+      if (livePollHandle) window.clearInterval(livePollHandle);
+      livePollHandle = window.setInterval(fetchLiveAgents, 4000);
     }
 
     let isDragging = false;
@@ -1457,6 +1555,7 @@
 
     buildList();
     buildDetail();
+    startLivePolling();
 
     let t = 0;
     function animate() {
@@ -1475,10 +1574,10 @@
         robot.rightLeg.rotation.x = -Math.sin(t * 1.1 + index) * 0.08;
         robot.halo.rotation.z += 0.006;
         robot.ring.rotation.z -= 0.006;
-        robot.monitorScreen.material.emissiveIntensity = isSelected ? 2.1 : isHovered ? 1.7 : (robot.agent.status === "idle" ? 0.5 : 1.3 + Math.sin(t * 2 + index) * 0.16);
-        robot.point.intensity = isSelected ? 2.65 : isHovered ? 2.1 : robot.agent.status === "idle" ? 0.65 : 1.45;
-        robot.ring.material.opacity = isSelected ? 1 : isHovered ? 0.85 : robot.agent.status === "idle" ? 0.18 : 0.68;
-        robot.halo.material.opacity = isSelected ? 1 : isHovered ? 0.84 : 0.68;
+        robot.monitorScreen.material.emissiveIntensity = isSelected ? 2.1 : isHovered ? 1.7 : (robot.agent.status === "idle" ? 0.35 : robot.agent.status === "busy" ? 1.6 : 1.28 + Math.sin(t * 2 + index) * 0.16);
+        robot.point.intensity = isSelected ? 2.65 : isHovered ? 2.1 : robot.agent.status === "idle" ? 0.45 : robot.agent.status === "busy" ? 1.85 : 1.45;
+        robot.ring.material.opacity = isSelected ? 1 : isHovered ? 0.85 : robot.agent.status === "idle" ? 0.12 : robot.agent.status === "busy" ? 0.88 : 0.68;
+        robot.halo.material.opacity = isSelected ? 1 : isHovered ? 0.84 : robot.agent.status === "idle" ? 0.3 : robot.agent.status === "busy" ? 0.96 : 0.68;
         robot.group.scale.setScalar(isSelected ? 1.07 : isHovered ? 1.03 : 1);
       });
 
@@ -1490,18 +1589,6 @@
     }
     animate();
 
-    setInterval(() => {
-      metrics = metrics.map((item, index) => {
-        if (AGENTS[index].status === "idle") return item;
-        return {
-          active: Math.max(0, item.active + Math.floor(Math.random() * 3) - 1),
-          today: Math.random() < 0.07 ? item.today + 1 : item.today,
-          conv: Math.max(0, +(item.conv + (Math.random() - 0.5) * 0.3).toFixed(1)),
-        };
-      });
-      buildList();
-      buildDetail();
-    }, 2400);
   </script>
 </body>
 </html>

@@ -2632,6 +2632,344 @@ async def hermes_jobs_create(req: HermesJobRequest) -> Dict[str, Any]:
     return await hermes_agent.create_job(req.model_dump(exclude_none=True))
 
 
+LIVE_AGENT_ORDER = [
+    "hermes",
+    "hr_mentor",
+    "client_manager",
+    "project_coord",
+    "analyst",
+    "bookkeeper",
+    "marketer",
+    "compliance",
+]
+
+LIVE_AGENT_META: Dict[str, Dict[str, str]] = {
+    "hermes": {
+        "emoji": "⚡",
+        "label": "Hermes Core",
+        "brand_hex": "#9b6cff",
+    },
+    "hr_mentor": {
+        "emoji": "🎓",
+        "label": "Mentor Loop",
+        "brand_hex": "#7d6cff",
+    },
+    "client_manager": {
+        "emoji": "🤝",
+        "label": "Client Flow",
+        "brand_hex": "#ff5aa5",
+    },
+    "project_coord": {
+        "emoji": "🧭",
+        "label": "Project Grid",
+        "brand_hex": "#ff8c42",
+    },
+    "analyst": {
+        "emoji": "📊",
+        "label": "Signal Analyst",
+        "brand_hex": "#00e5ff",
+    },
+    "bookkeeper": {
+        "emoji": "💰",
+        "label": "Finance Node",
+        "brand_hex": "#ffbb57",
+    },
+    "marketer": {
+        "emoji": "📣",
+        "label": "Growth Pulse",
+        "brand_hex": "#4df6b2",
+    },
+    "compliance": {
+        "emoji": "🛡️",
+        "label": "Compliance Vault",
+        "brand_hex": "#4c87ff",
+    },
+}
+
+STATUS_HEX = {
+    "active": "#4df6b2",
+    "busy": "#ffbb57",
+    "idle": "#60708f",
+}
+
+
+def _parse_iso_ts(value: Optional[str]) -> Optional[datetime]:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _short_text(value: Optional[str], limit: int = 56) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    compact = re.sub(r"\s+", " ", text)
+    return compact if len(compact) <= limit else compact[: limit - 1].rstrip() + "…"
+
+
+@api.get("/ops/live-agents")
+async def ops_live_agents(
+    request: Request,
+) -> Dict[str, Any]:
+    """Tenant-aware live snapshot for the 3D Agent Room.
+
+    Aggregates real activity from existing collections and returns one compact
+    payload per core NXT8 agent/persona.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="session_invalid_or_expired")
+
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    cutoff_24h = (now - timedelta(hours=24)).isoformat()
+    cutoff_1h = now - timedelta(hours=1)
+
+    requests_rows = await db.requests.find(
+        {
+            "company_id": user.company_id,
+            "created_at": {"$gte": cutoff_24h},
+        },
+        {
+            "_id": 0,
+            "channel": 1,
+            "intent": 1,
+            "message": 1,
+            "response": 1,
+            "confidence": 1,
+            "mock": 1,
+            "created_at": 1,
+            "extra": 1,
+        },
+    ).sort("created_at", -1).limit(400).to_list(length=400)
+
+    persona_rows = await db.persona_requests.find(
+        {
+            "company_id": user.company_id,
+            "created_at": {"$gte": cutoff_24h},
+        },
+        {
+            "_id": 0,
+            "persona_id": 1,
+            "message": 1,
+            "response": 1,
+            "confidence": 1,
+            "mock": 1,
+            "created_at": 1,
+        },
+    ).sort("created_at", -1).limit(400).to_list(length=400)
+
+    approvals_rows = await db.pending_approvals.find(
+        {
+            "company_id": user.company_id,
+            "created_at": {"$gte": cutoff_24h},
+        },
+        {
+            "_id": 0,
+            "agent_id": 1,
+            "status": 1,
+            "action": 1,
+            "created_at": 1,
+        },
+    ).sort("created_at", -1).limit(200).to_list(length=200)
+
+    findings_rows = await db.analyst_findings.find(
+        {"company_id": user.company_id},
+        {
+            "_id": 0,
+            "timestamp": 1,
+            "summary": 1,
+            "urgency": 1,
+            "resolved": 1,
+        },
+    ).sort("timestamp", -1).limit(100).to_list(length=100)
+
+    stats: Dict[str, Dict[str, Any]] = {}
+    for agent_id in LIVE_AGENT_ORDER:
+        cfg = personas_agent.PERSONAS.get(agent_id) or {}
+        meta = LIVE_AGENT_META.get(agent_id) or {}
+        stats[agent_id] = {
+            "agent_id": agent_id,
+            "name": cfg.get("name") or agent_id,
+            "role": cfg.get("role") or "NXT8 agent",
+            "summary": cfg.get("description") or "",
+            "label": meta.get("label") or cfg.get("name") or agent_id,
+            "emoji": meta.get("emoji") or "•",
+            "brand_hex": meta.get("brand_hex") or "#9b6cff",
+            "today_count": 0,
+            "hour_count": 0,
+            "pending_count": 0,
+            "executed_count": 0,
+            "failed_count": 0,
+            "unresolved_findings": 0,
+            "confidence_values": [],
+            "mock_count": 0,
+            "latest_text": "",
+            "latest_at": None,
+        }
+
+    for row in persona_rows:
+        agent_id = row.get("persona_id")
+        if agent_id not in stats:
+            continue
+        created_at = _parse_iso_ts(row.get("created_at"))
+        bucket = stats[agent_id]
+        bucket["today_count"] += 1
+        if created_at and created_at >= cutoff_1h:
+            bucket["hour_count"] += 1
+        conf = row.get("confidence")
+        if isinstance(conf, (int, float)):
+            bucket["confidence_values"].append(float(conf))
+        if row.get("mock"):
+            bucket["mock_count"] += 1
+        if not bucket["latest_text"]:
+            bucket["latest_text"] = _short_text(row.get("message") or row.get("response"))
+        if created_at and (bucket["latest_at"] is None or created_at > bucket["latest_at"]):
+            bucket["latest_at"] = created_at
+
+    for row in requests_rows:
+        channel = (row.get("channel") or "").strip().lower()
+        intent = (row.get("intent") or "").strip().lower()
+        extra = row.get("extra") or {}
+        agent_id = None
+        if channel in {"hermes_chat", "hermes_ultra"} or intent.startswith("hermes"):
+            agent_id = "hermes"
+        elif isinstance(extra, dict):
+            persona_id = extra.get("persona_id")
+            if persona_id in stats:
+                agent_id = persona_id
+        if not agent_id or agent_id not in stats:
+            continue
+        created_at = _parse_iso_ts(row.get("created_at"))
+        bucket = stats[agent_id]
+        bucket["today_count"] += 1
+        if created_at and created_at >= cutoff_1h:
+            bucket["hour_count"] += 1
+        conf = row.get("confidence")
+        if isinstance(conf, (int, float)):
+            bucket["confidence_values"].append(float(conf))
+        if row.get("mock"):
+            bucket["mock_count"] += 1
+        if not bucket["latest_text"]:
+            bucket["latest_text"] = _short_text(row.get("message") or row.get("response"))
+        if created_at and (bucket["latest_at"] is None or created_at > bucket["latest_at"]):
+            bucket["latest_at"] = created_at
+
+    for row in approvals_rows:
+        agent_id = row.get("agent_id")
+        if agent_id not in stats:
+            continue
+        bucket = stats[agent_id]
+        status = (row.get("status") or "").strip().lower()
+        if status == "pending":
+            bucket["pending_count"] += 1
+        elif status == "executed":
+            bucket["executed_count"] += 1
+        elif status == "failed":
+            bucket["failed_count"] += 1
+
+    for row in findings_rows:
+        bucket = stats.get("analyst")
+        if not bucket:
+            break
+        if row.get("resolved"):
+            continue
+        bucket["unresolved_findings"] += 1
+        if not bucket["latest_text"]:
+            bucket["latest_text"] = _short_text(row.get("summary"))
+        created_at = _parse_iso_ts(row.get("timestamp"))
+        if created_at and (bucket["latest_at"] is None or created_at > bucket["latest_at"]):
+            bucket["latest_at"] = created_at
+
+    agents_payload: List[Dict[str, Any]] = []
+    for agent_id in LIVE_AGENT_ORDER:
+        bucket = stats[agent_id]
+        latest_at = bucket.get("latest_at")
+        minutes_since = None
+        if isinstance(latest_at, datetime):
+            minutes_since = int(max(0, (now - latest_at).total_seconds() // 60))
+
+        if bucket["pending_count"] > 0 or (agent_id == "analyst" and bucket["unresolved_findings"] > 0):
+            status = "busy"
+        elif bucket["hour_count"] > 0 or (minutes_since is not None and minutes_since <= 30):
+            status = "active"
+        else:
+            status = "idle"
+
+        if bucket["pending_count"] > 0:
+            status_text = f"{bucket['pending_count']} approvals waiting"
+        elif agent_id == "analyst" and bucket["unresolved_findings"] > 0:
+            status_text = f"{bucket['unresolved_findings']} unresolved findings"
+        elif bucket["hour_count"] > 0:
+            status_text = f"{bucket['hour_count']} turns in the last hour"
+        elif minutes_since is not None:
+            status_text = f"Last activity {minutes_since} min ago"
+        else:
+            status_text = "No recent activity"
+
+        if bucket["pending_count"] > 0:
+            live_status = f"Pending actions: {bucket['pending_count']}"
+        elif agent_id == "analyst" and bucket["unresolved_findings"] > 0:
+            live_status = f"Open findings: {bucket['unresolved_findings']}"
+        elif bucket["latest_text"]:
+            live_status = bucket["latest_text"]
+        else:
+            live_status = "Waiting for the next real task"
+
+        confidence_values = bucket["confidence_values"]
+        confidence_pct = int(round((sum(confidence_values) / len(confidence_values)) * 100)) if confidence_values else 0
+        if bucket["mock_count"] and status != "idle":
+            live_status += f" · mock {bucket['mock_count']}"
+
+        agents_payload.append(
+            {
+                "agent_id": agent_id,
+                "name": bucket["name"],
+                "role": bucket["role"],
+                "summary": bucket["summary"],
+                "label": bucket["label"],
+                "emoji": bucket["emoji"],
+                "brand_hex": bucket["brand_hex"],
+                "status": status,
+                "status_hex": STATUS_HEX[status],
+                "status_text": status_text,
+                "live_status": live_status,
+                "active": int(bucket["hour_count"] + bucket["pending_count"]),
+                "today": int(bucket["today_count"] + bucket["pending_count"]),
+                "confidence_pct": confidence_pct,
+                "pending_count": int(bucket["pending_count"]),
+                "unresolved_findings": int(bucket["unresolved_findings"]),
+                "last_seen_at": latest_at.isoformat() if isinstance(latest_at, datetime) else None,
+                "metric_labels": {
+                    "primary": "active load",
+                    "secondary": "today turns",
+                    "tertiary": "confidence",
+                },
+            }
+        )
+
+    active_count = sum(1 for item in agents_payload if item["status"] == "active")
+    total_today = sum(int(item["today"]) for item in agents_payload)
+    confidence_values_all = [int(item["confidence_pct"]) for item in agents_payload if int(item["confidence_pct"]) > 0]
+    avg_confidence = int(round(sum(confidence_values_all) / len(confidence_values_all))) if confidence_values_all else 0
+
+    return {
+        "ok": True,
+        "company_id": user.company_id,
+        "generated_at": now.isoformat(),
+        "poll_interval_sec": 4,
+        "summary": {
+            "active_agents": active_count,
+            "today_total": total_today,
+            "avg_confidence_pct": avg_confidence,
+        },
+        "agents": agents_payload,
+    }
+
+
 # =====================================================================
 # Personas Layer (marketing-aligned 8 agents + tariff gate)
 # =====================================================================

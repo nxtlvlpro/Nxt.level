@@ -61,7 +61,10 @@ class TenantAwareCRUD:
         *,
         force_admin: bool = False,
     ):
-        self.collection = getattr(collection, "raw_collection", collection)
+        if isinstance(collection, TenantAwareCollection):
+            self.collection = collection.raw_collection
+        else:
+            self.collection = collection
         self.company_id = get_request_company_id() if company_id is None else company_id
         self.force_admin = force_admin or get_request_force_admin()
 
