@@ -922,3 +922,107 @@ agent_communication:
     message: "Completed comprehensive frontend testing of updated 3D Agent Room v2 redesigned page at /agents-room/. All core requirements verified and working: (1) Page loads without blank screen or critical JS errors, (2) Desktop view shows all components: browser-like top bar with chrome dots, back button, and address bar; stats ribbon with ACTIVE/TODAY/CONV metrics and LIVE SYNC indicator; left panel 'TEAM MATRIX' with all 8 agents; center 3D scene with WebGL rendering active (1920x1080px canvas); right detail panel with empty state, (3) Agent selection works via floating labels - clicking Hermes label correctly updates detail panel with agent name, role, metrics (ACTIVE LOAD, TODAY TASKS, CONVERSION SIGNAL), live status, and 'INITIALIZE HERMES' button (data-testid='activate-agent-btn'), (4) All 8 floating labels present and visible over 3D agents with correct data-testid attributes (agent-pod-label-hermes, agent-pod-label-pulse, etc.), (5) Visual integrity excellent - cinematic dark theme with purple/cyan/turquoise accents, glass panels with backdrop blur, glowing elements, 3D robot agents in arc formation with desk pods and monitors, digital wall background, atmospheric effects. Minor issues noted: (a) Mobile (390x844) has 71px horizontal overflow due to floating labels - minor acceptable issue, (b) Tablet (768x1024) has 148px overflow, (c) Left panel agent list buttons dynamically rebuild every 2.4s (setInterval for live metrics) causing DOM element detachment - this is expected behavior, floating labels are the reliable selection method. Desktop experience is excellent. Static page (no live API) implementation is production-ready. All critical data-testid attributes present and correct."
 
 
+
+user_problem_statement: "Backend-only validation of Phase 2 extraction: list_personas moved to config/personas.py in NXT8"
+
+backend:
+  - task: "Phase 2 extraction: config/personas.py imports"
+    implemented: true
+    working: true
+    file: "backend/config/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Phase 2 extraction verified. New file config/personas.py imports cleanly. All dependent modules (config.personas, agents.legacy.personas_legacy, agents.personas, core.scheduler, agents.inter_agent) import successfully without errors or circular dependencies."
+
+  - task: "Phase 2 extraction: list_personas function behavior"
+    implemented: true
+    working: true
+    file: "backend/config/personas.py, backend/agents/legacy/personas_legacy.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ list_personas function behavior fully preserved. Tested with all plan_ids (None, personal, team, operations, headquarters, basic, simple, pro, enterprise). All return 8 personas with correct structure. Legacy aliases (basic→personal, simple→team, pro→operations, enterprise→headquarters) work correctly."
+
+  - task: "Phase 2 extraction: GET /api/personas endpoint"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/personas endpoint payload shape correct. Returns {plan, plans, personas} structure. Plan object has id and personas list. Personas list contains 8 items with all required fields. Endpoint calls personas_agent.list_personas(plan_id) which now uses extracted config.list_personas internally."
+
+  - task: "Phase 2 extraction: field preservation"
+    implemented: true
+    working: true
+    file: "backend/config/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All persona fields preserved correctly: id (string), name (string), role (string), description (string), icon (string|None), color (string|None), tools_count (int), available_on_plan (bool), min_plan (string). Verified for all 8 personas: hermes (31 tools, min_plan=personal), hr_mentor (6 tools, min_plan=team), client_manager (9 tools, min_plan=team), project_coord (9 tools, min_plan=headquarters), analyst (4 tools, min_plan=headquarters), bookkeeper (5 tools, min_plan=operations), marketer (6 tools, min_plan=operations), compliance (6 tools, min_plan=operations)."
+
+  - task: "Phase 2 extraction: persona ordering"
+    implemented: true
+    working: true
+    file: "backend/config/personas.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Persona ordering unchanged. Order preserved: ['hermes', 'hr_mentor', 'client_manager', 'project_coord', 'analyst', 'bookkeeper', 'marketer', 'compliance']. Python 3.7+ dict insertion order maintained through extraction."
+
+  - task: "Phase 2 extraction: plan-specific availability"
+    implemented: true
+    working: true
+    file: "backend/config/personas.py, backend/config/plans.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Plan-specific availability correct for all plans. Personal: [hermes]. Team: [hermes, hr_mentor, client_manager]. Operations: [hermes, hr_mentor, client_manager, bookkeeper, marketer, compliance]. Headquarters: all 8 personas. available_on_plan flag correctly set based on plan.personas list."
+
+  - task: "Phase 2 extraction: no Phase 3+ changes"
+    implemented: true
+    working: true
+    file: "backend/agents/legacy/personas_legacy.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ No Phase 3+ changes leaked. PERSONAS dict unchanged (8 personas). _FETCHER_DISPATCH unchanged (7 fetchers: mentor_overview, user_skill_profile, diagnostics_summary, roi_current, roi_dashboard, market_intel, compliance_context). run_persona function signature unchanged (persona_id, message, company_id, user_id, session_id, plan_id). All fetcher functions present (_fetch_mentor_overview, _fetch_diagnostics_summary, etc.). Only list_personas was extracted - no other changes."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.10"
+  test_sequence: 12
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Phase 2 extraction: list_personas moved to config/personas.py"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Completed comprehensive backend validation of Phase 2 extraction: list_personas moved to config/personas.py. All 7 backend tasks verified and working correctly. Created comprehensive test suite in /app/backend_test_phase2_extraction.py covering: (1) Python imports compile cleanly for config.personas, agents.legacy.personas_legacy, agents.personas, core.scheduler, agents.inter_agent - no circular dependencies, (2) GET /api/personas payload shape correct with {plan, plans, personas} structure, (3) list_personas behavior preserved for all plan_ids (None, personal, team, operations, headquarters, basic, simple, pro, enterprise) - all return 8 personas with correct fields, (4) All fields preserved with correct types: id, name, role, description, icon, color, tools_count, available_on_plan, min_plan - verified for all 8 personas with correct tools_count and min_plan values, (5) Persona ordering unchanged: ['hermes', 'hr_mentor', 'client_manager', 'project_coord', 'analyst', 'bookkeeper', 'marketer', 'compliance'], (6) Plan-specific availability correct: personal=[hermes], team=[hermes, hr_mentor, client_manager], operations=[hermes, hr_mentor, client_manager, bookkeeper, marketer, compliance], headquarters=all 8, (7) No Phase 3+ changes leaked: PERSONAS dict (8 personas), _FETCHER_DISPATCH (7 fetchers), run_persona signature, and all fetcher functions unchanged. Phase 2 extraction is clean and complete. No issues found. Implementation is production-ready."

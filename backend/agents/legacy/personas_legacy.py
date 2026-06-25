@@ -37,6 +37,7 @@ from agents.manifests import render_manifest_for_prompt
 from agents.prompt_policy_registry import PERSONA_PROMPT_FRAGMENT_REGISTRY
 from agents.persona_prompts import get_prompt as get_deep_prompt
 from agents.agent_charter import CHARTER
+from config.personas import list_personas as config_list_personas
 from config.plans import (
     PLAN_ALIASES,
     build_canonical_plans,
@@ -556,23 +557,7 @@ def _extract_tool_calls(content: str) -> List[Dict[str, Any]]:
 
 def list_personas(plan_id: Optional[str] = None) -> List[Dict[str, Any]]:
     plan = get_plan(plan_id)
-    allowed = set(plan["personas"])
-    items: List[Dict[str, Any]] = []
-    for pid, cfg in PERSONAS.items():
-        items.append(
-            {
-                "id": pid,
-                "name": cfg["name"],
-                "role": cfg["role"],
-                "description": cfg["description"],
-                "icon": cfg.get("icon"),
-                "color": cfg.get("color"),
-                "tools_count": len(cfg["allowed_tools"]),
-                "available_on_plan": pid in allowed,
-                "min_plan": _min_plan_for(pid),
-            }
-        )
-    return items
+    return config_list_personas(PERSONAS, plan, min_plan_for=_min_plan_for)
 
 
 def _min_plan_for(persona_id: str) -> str:
