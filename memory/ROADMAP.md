@@ -1,6 +1,11 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.18.33-phase1-plan-extraction (2026-06-21)
+**Текущая версия:** v1.18.34-phase2-list-personas-extraction (2026-06-21)
+
+## ✅ Done — Phase 2 list_personas Extraction (2026-06-21)
+- Extracted `list_personas` into `backend/config/personas.py`
+- Preserved existing legacy/public call sites via delegation from `personas_legacy.py`
+- Verified unchanged listing payload shape, ordering, and plan availability behavior
 
 ## ✅ Done — Phase 1 Plan Extraction (2026-06-21)
 - Extracted `PLAN_ALIASES`, `PLANS`, `get_plan`, `_min_plan_for` into `backend/config/plans.py`

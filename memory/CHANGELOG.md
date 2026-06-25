@@ -1,5 +1,33 @@
 # NXT8 — Release Notes
 
+## v1.18.34-phase2-list-personas-extraction — 2026-06-21
+
+**Status:** ✅ Phase 2 extraction выполнен без изменения listing/runtime behavior.
+
+### Added
+- **`backend/config/personas.py`**
+  - extracted pure `list_personas(personas, plan, *, min_plan_for)` function
+
+### Changed
+- **`backend/agents/legacy/personas_legacy.py`**
+  - `list_personas()` now delegates to `config.personas.list_personas`
+
+### Explicitly unchanged
+- `PERSONAS`
+- `_FETCHER_DISPATCH`
+- fetcher functions
+- `run_persona()`
+
+### Validated
+- `GET /api/personas` shape preserved → **PASS**
+- persona ordering preserved → **PASS**
+- plan/alias listing behavior preserved → **PASS**
+- independent backend verification → **PASS**
+
+---
+
+## v1.18.33-phase1-plan-extraction — 2026-06-21
+
 ## v1.18.33-phase1-plan-extraction — 2026-06-21
 
 **Status:** ✅ Phase 1 extraction выполнен без изменения runtime behavior.

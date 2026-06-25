@@ -1,7 +1,30 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.33-phase1-plan-extraction
+**Current version:** v1.18.34-phase2-list-personas-extraction
 **Last updated:** 2026-06-21 by E1
+
+## What's new — v1.18.34 (2026-06-21)
+
+**Phase 2 extraction completed for persona listing.** Вынесен только
+`list_personas` в новый модуль `backend/config/personas.py` с сохранением
+обратной совместимости и без изменений runtime behavior.
+
+- Added:
+  - `backend/config/personas.py`
+- Updated:
+  - `backend/agents/legacy/personas_legacy.py`
+
+**Scope discipline preserved**
+- `PERSONAS` → untouched
+- `_FETCHER_DISPATCH` → untouched
+- fetcher functions → untouched
+- `legacy.run_persona` → untouched
+- No Phase 3+ work performed
+
+**Validation**
+- `/api/personas` payload shape preserved → **PASS**
+- plan-specific listing behavior preserved for canonical + alias ids → **PASS**
+- backend verification suite for Phase 2 → **PASS**
 
 ## What's new — v1.18.33 (2026-06-21)
 
