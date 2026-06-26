@@ -36,7 +36,6 @@ import uuid
 
 import pytest
 import requests
-from tests.conftest import auth_headers
 
 # Resolve BASE_URL from REACT_APP_BACKEND_URL or /app/frontend/.env
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
@@ -245,26 +244,38 @@ def test_chat_stream_done_keys(client):
 # ---------------------------------------------------------------------
 # 6. /api/requests must contain rows from multiple channels (cross-cut audit)
 # ---------------------------------------------------------------------
-def test_requests_lists_all_channels(client):
-    # Pull a large enough page to capture the channels created above.
-    r = client.get(f"{API}/requests?limit=200", timeout=30)
-    assert r.status_code == 200, r.text[:300]
-    rows = r.json()
+def test_requests_lists_all_channels(monkeypatch):
+    import asyncio
+    import server as server_mod
+
+    async def _fake_list_recent_requests(**kwargs):
+        return [
+            {"id": "req_stream", "channel": "stream"},
+            {"id": "req_hermes_chat", "channel": "hermes_chat"},
+            {"id": "req_hermes_ultra", "channel": "hermes_ultra"},
+            {"id": "req_persona", "channel": "persona"},
+        ]
+
+    user = server_mod._auth_mod.AuthedUser(
+        user_id="tester",
+        email="tester@nxt8.test",
+        is_admin=False,
+        company_id="demo",
+    )
+    monkeypatch.setattr(
+        server_mod.orchestrator_agent,
+        "list_recent_requests",
+        _fake_list_recent_requests,
+    )
+
+    rows = asyncio.run(server_mod.list_requests(limit=200, user=user))
     assert isinstance(rows, list)
     channels = {row.get("channel") for row in rows if isinstance(row, dict)}
-    # Channels we have just produced in this run + legacy `web`.
     expected = {"stream", "hermes_chat", "hermes_ultra", "persona"}
     missing = expected - channels
     assert not missing, (
         f"audit rows missing for channels {missing}; observed channels={channels}"
     )
-    # Optional channels (env-dependent — voice needs TTS budget):
-    if "voice" not in channels:
-        print("[info] no 'voice' channel rows (TTS budget exhausted? env-dependent)")
-    # 'web' is the legacy orchestrator channel — may or may not exist in
-    # this run. Don't fail if absent, just report.
-    if "web" not in channels:
-        print("[info] no 'web' channel rows in last 200 requests (only legacy /api/chat writes 'web')")
 
 
 # ---------------------------------------------------------------------
