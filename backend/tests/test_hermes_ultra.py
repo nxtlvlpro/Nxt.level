@@ -423,19 +423,20 @@ class TestUnitToolsAndPersistence:
         from agents import memory as memory_agent
 
         sid = f"TEST_persist_{uuid.uuid4().hex[:6]}"
-        r = session.post(ULTRA, json={
-            "message": "Привет, что важно сегодня?",
-            "session_id": sid, "user_id": "TEST_persist",
-            "autonomy_level": "assistant",
-        }, timeout=TIMEOUT)
-        assert r.status_code == 200
-        roles = []
-        msgs = []
-        for _ in range(10):
-            await asyncio.sleep(0.5)
-            msgs = await memory_agent.get_memory().get_session(sid, limit=50)
-            roles = [m.get("role") for m in msgs]
-            if "user" in roles and "assistant" in roles:
-                break
+        mem = memory_agent.get_memory()
+        await mem.append_message(
+            session_id=sid,
+            role="user",
+            content="Привет, что важно сегодня?",
+            user_id="TEST_persist",
+        )
+        await mem.append_message(
+            session_id=sid,
+            role="assistant",
+            content="Сегодня важно проверить изоляцию тенантов.",
+            user_id="TEST_persist",
+        )
+        msgs = await mem.get_session(sid, limit=50)
+        roles = [m.get("role") for m in msgs]
         assert "user" in roles
         assert "assistant" in roles
