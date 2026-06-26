@@ -92,12 +92,12 @@ def test_is_public_path_whitelist() -> None:
     assert A.is_public_path("/api/chat/stream") is True
     assert A.is_public_path("/api/hermes/chat") is True
     assert A.is_public_path("/api/voice/stt") is True
-    assert A.is_public_path("/api/alerts") is True
     assert A.is_public_path("/api/onboarding/funnel") is True
     # NOT public:
     assert A.is_public_path("/api/seed") is False
     assert A.is_public_path("/api/telegram/connect") is False
     assert A.is_public_path("/api/whatsapp/status") is False
+    assert A.is_public_path("/api/alerts") is False
 
 
 # ---------------------------------------------------------------------

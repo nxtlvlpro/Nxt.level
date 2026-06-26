@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 14 — Security bug verification: Sessions/Alerts Owner Check. Verified that /api/sessions/{session_id} and /api/alerts now require authentication and enforce tenant isolation. All 6 unit tests in test_sessions_alerts_owner_check.py passed (owner access allowed, same-tenant different user blocked with 403, different tenant blocked with 404, admin can read any, alerts filtered by company, admin sees all alerts). HTTP-level tests (14 tests) all passed confirming: both endpoints return 401 without auth, invalid tokens rejected, public paths remain accessible, other protected endpoints also require auth.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sessions_alerts_owner_check.py",
+    "/app/backend/tests/test_security_owner_check_http.py",
+    "/app/test_reports/pytest/security_owner_check.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GET /api/sessions/{session_id} (server.py:609-632): Correctly checks user_id ownership for non-admin users. Returns 403 if same-tenant but different user, 404 if different tenant (via TenantAwareCRUD filtering).",
+    "GET /api/alerts (server.py:960-977): Now uses require_user dependency. Non-admin users see only their company's alerts via TenantAwareCRUD with company_id filter. Admin sees all with force_admin=True.",
+    "/api/alerts is NOT in PUBLIC_PATH_PATTERNS (core/auth.py:131-160) — correctly requires authentication.",
+    "X-Admin-Token header only works for endpoints using require_admin (like /api/seed), not require_user endpoints. This is correct security design — alerts/sessions need real user sessions."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_security_owner_check_http.py (new HTTP-level security tests)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (backend-only testing)"},
+  "test_credentials": "SEED_ADMIN_TOKEN from backend/.env used for admin endpoint tests",
+  "seed_data_creation": "Unit tests create temporary sessions/alerts with session_ids: sess_owner_demo, sess_other_demo, sess_other_tenant and alert_ids: alert_demo_1, alert_other_1",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Security bug fix verified. /api/sessions/{session_id} enforces owner check (403 for same-tenant different user, 404 for different tenant). /api/alerts requires auth and filters by company_id. Run pytest tests/test_sessions_alerts_owner_check.py tests/test_security_owner_check_http.py for regression. Note: test_auth.py has asyncio event loop issues in some tests but the security-specific tests pass.",
+  "rca of the issue": "Security bug was that /api/alerts was previously in PUBLIC_PATH_PATTERNS and /api/sessions/{session_id} did not check user_id ownership. Fix: (1) Removed /api/alerts from public paths, added require_user dependency. (2) Added owner check in get_session route that verifies session.user_id matches requesting user.user_id for non-admin users."
+}

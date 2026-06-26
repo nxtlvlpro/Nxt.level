@@ -153,7 +153,6 @@ PUBLIC_PATH_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"^/api/voice/stt/?$"),
     re.compile(r"^/api/voice/transcribe/?$"),
     re.compile(r"^/api/voice/tts/?$"),
-    re.compile(r"^/api/alerts/?$"),
     re.compile(r"^/api/onboarding/.+"),
     re.compile(r"^/api/personas/.+"),
     re.compile(r"^/api/tour/.+"),

@@ -611,6 +611,19 @@ async def get_session(
     session_id: str,
     user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
+    if not user.is_admin:
+        session_doc = await TenantAwareCRUD(
+            get_db().sessions,
+            company_id=user.company_id,
+        ).find_one(
+            {"session_id": session_id},
+            {"_id": 0, "user_id": 1, "company_id": 1},
+        )
+        if not session_doc:
+            raise HTTPException(status_code=404, detail="session_not_found")
+        if session_doc.get("user_id") not in {None, user.user_id}:
+            raise HTTPException(status_code=403, detail="access_denied")
+
     msgs = await memory_agent.get_memory().get_session(
         session_id,
         limit=200,
@@ -947,16 +960,13 @@ async def roi_record_interaction(
 @api.get("/alerts")
 async def list_alerts(
     limit: int = 20,
-    user: Optional["_auth_mod.AuthedUser"] = Depends(_auth_mod.optional_user),
+    user: "_auth_mod.AuthedUser" = Depends(_auth_mod.require_user),
 ) -> Dict[str, Any]:
-    if user and user.is_admin:
+    if user.is_admin:
         company_id = None
         force_admin = True
-    elif user:
-        company_id = user.company_id
-        force_admin = False
     else:
-        company_id = "demo"
+        company_id = user.company_id
         force_admin = False
 
     items = await TenantAwareCRUD(
