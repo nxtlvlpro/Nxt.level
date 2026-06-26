@@ -1,0 +1,47 @@
+{
+  "summary": "Verified TestRegressionHermesV12 stabilization: all 5 regression tests now use monkeypatch/AsyncMock instead of live HTTP/LLM calls. Tests pass consistently (3/3 runs). test_ultra_persists_session_messages is now unit-style using direct memory.append_message() calls.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_hermes_ultra.py",
+    "/app/test_reports/pytest/iter16_hermes_ultra.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "TestRegressionHermesV12 now mocks all internal async functions via monkeypatch - no live HTTP calls",
+    "test_hermes_chat_v12: mocks hermes_coo_agent.enhanced_chat and finalize_llm_turn",
+    "test_hermes_daily_digest: mocks hermes_coo_agent.enhanced_chat",
+    "test_hermes_health: mocks hermes_agent.health with AsyncMock",
+    "test_requests_feed: mocks orchestrator_agent.list_recent_requests",
+    "test_chat_orchestrator: mocks orchestrator_agent.route and _tenant_for_public_chat",
+    "test_ultra_persists_session_messages: direct memory.append_message() calls - no /api/hermes/ultra HTTP call"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (18/18 tests passed)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "TestRegressionHermesV12 stabilization verified. All 5 regression tests are now deterministic unit-style tests using monkeypatch. No live LLM/network dependencies remain in this class. Full test_hermes_ultra.py suite: 18/18 passed in ~56s.",
+  "mocked_apis_verification": {
+    "status": "VERIFIED",
+    "mocked_functions": [
+      "server.hermes_coo_agent.enhanced_chat",
+      "server.finalize_llm_turn",
+      "server.hermes_agent.health",
+      "server.orchestrator_agent.list_recent_requests",
+      "server.orchestrator_agent.route",
+      "server._tenant_for_public_chat"
+    ],
+    "determinism_test": "3 consecutive runs all passed with consistent timing (~1.2s)"
+  }
+}

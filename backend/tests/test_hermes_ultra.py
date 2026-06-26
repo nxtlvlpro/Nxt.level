@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 import requests
@@ -221,47 +222,95 @@ class TestHermesUltraEndpoint:
 # ---------- Regression ----------
 
 class TestRegressionHermesV12:
-    def test_hermes_chat_v12(self, session):
-        r = session.post(f"{BASE_URL}/api/hermes/chat", json={
-            "messages": [{"role": "user", "content": "Дай operational summary."}],
-            "company_id": "TEST_co",
-            "user_id": "TEST_u",
-            "mode": "operational",
-            "temperature": 0.3,
-        }, timeout=TIMEOUT)
-        assert r.status_code == 200, r.text
-        d = r.json()
+    def test_hermes_chat_v12(self, monkeypatch):
+        import server as server_mod
+
+        async def _fake_enhanced_chat(**kwargs):
+            return {
+                "content": "Operational summary mock",
+                "confidence": 0.9,
+                "tokens_total": 10,
+                "tool_calls": [],
+                "mock": False,
+            }
+
+        async def _fake_finalize_llm_turn(**kwargs):
+            return {
+                "request_id": "req_hermes_chat_test",
+                "confidence_level": "high",
+                "should_escalate": False,
+            }
+
+        monkeypatch.setattr(server_mod.hermes_coo_agent, "enhanced_chat", _fake_enhanced_chat)
+        monkeypatch.setattr(server_mod, "finalize_llm_turn", _fake_finalize_llm_turn)
+
+        req = server_mod.HermesChatRequest(
+            messages=[{"role": "user", "content": "Дай operational summary."}],
+            company_id="TEST_co",
+            user_id="TEST_u",
+            mode="operational",
+            temperature=0.3,
+        )
+        d = asyncio.run(server_mod.hermes_chat(req))
+        assert isinstance(d.get("content"), str)
+        assert d["content"] == "Operational summary mock"
+
+    def test_hermes_daily_digest(self, monkeypatch):
+        import server as server_mod
+
+        async def _fake_enhanced_chat(**kwargs):
+            return {"content": "Daily digest mock content", "ok": True, "mock": False}
+
+        monkeypatch.setattr(server_mod.hermes_coo_agent, "enhanced_chat", _fake_enhanced_chat)
+
+        req = server_mod.HermesDigestRequest(
+            company_id="TEST_co",
+            user_id="TEST_u",
+            period="daily",
+        )
+        d = asyncio.run(server_mod.hermes_daily_digest(req))
         assert isinstance(d.get("content"), str)
 
-    def test_hermes_daily_digest(self, session):
-        r = session.post(f"{BASE_URL}/api/hermes/daily-digest", json={
-            "company_id": "TEST_co",
-            "user_id": "TEST_u",
-            "period": "daily",
-        }, timeout=TIMEOUT)
-        assert r.status_code == 200, r.text
-        d = r.json()
-        assert isinstance(d.get("content"), str)
+    def test_hermes_health(self, monkeypatch):
+        import server as server_mod
 
-    def test_hermes_health(self, session):
-        r = session.get(f"{BASE_URL}/api/hermes/health", timeout=15)
-        assert r.status_code == 200
-        d = r.json()
-        assert "status" in d  # offline or ok both acceptable
+        monkeypatch.setattr(server_mod.hermes_agent, "health", AsyncMock(return_value={"status": "ok", "service": "hermes"}))
+        d = asyncio.run(server_mod.hermes_health())
+        assert "status" in d
 
-    def test_requests_feed(self, session):
-        r = session.get(f"{BASE_URL}/api/requests?limit=5", timeout=15)
-        assert r.status_code == 200
-        data = r.json()
+    def test_requests_feed(self, monkeypatch):
+        import server as server_mod
+
+        async def _fake_list_recent_requests(**kwargs):
+            return [{"id": "req_1", "company_id": "demo", "intent": "general"}]
+
+        user = server_mod._auth_mod.AuthedUser(
+            user_id="TEST_u",
+            email="test@nxt8.test",
+            is_admin=False,
+            company_id="demo",
+        )
+        monkeypatch.setattr(server_mod.orchestrator_agent, "list_recent_requests", _fake_list_recent_requests)
+        data = asyncio.run(server_mod.list_requests(limit=5, user=user))
         assert isinstance(data, list)
 
-    def test_chat_orchestrator(self, session):
-        r = session.post(f"{BASE_URL}/api/chat", json={
-            "user_id": "TEST_orch",
-            "message": "Что такое NXT8?",
-        }, timeout=TIMEOUT)
-        assert r.status_code == 200, r.text
-        d = r.json()
+    def test_chat_orchestrator(self, monkeypatch):
+        import server as server_mod
+
+        async def _fake_route(**kwargs):
+            return {"content": "NXT8 is an AI OS mock", "intent": "general"}
+
+        async def _fake_tenant_for_public_chat(_authed, _session_id):
+            return "demo"
+
+        monkeypatch.setattr(server_mod.orchestrator_agent, "route", _fake_route)
+        monkeypatch.setattr(server_mod, "_tenant_for_public_chat", lambda _authed, _sid: "demo")
+
+        req = server_mod.ChatRequest(
+            user_id="TEST_orch",
+            message="Что такое NXT8?",
+        )
+        d = asyncio.run(server_mod.chat(req, None))
         assert "content" in d
 
 
