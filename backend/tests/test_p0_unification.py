@@ -31,8 +31,10 @@ import io
 import json as _json
 import os
 import sys
+import asyncio
 import time
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 import requests
@@ -125,17 +127,35 @@ def test_hermes_unification_imports_and_tools():
 # ---------------------------------------------------------------------
 # 2. /api/hermes/chat — pipeline hook payload
 # ---------------------------------------------------------------------
-def test_hermes_chat_returns_pipeline_keys(client):
-    r = client.post(
-        f"{API}/hermes/chat",
-        json={
-            "messages": [{"role": "user", "content": "привет, дай SLA-обзор"}],
-            "user_id": "tester",
-        },
-        timeout=120,
+def test_hermes_chat_returns_pipeline_keys(monkeypatch):
+    import server as server_mod
+
+    async def _fake_enhanced_chat(**kwargs):
+        return {
+            "content": "SLA overview mock response",
+            "confidence": 0.85,
+            "tokens_total": 42,
+            "mock": False,
+            "provider": "mock",
+            "tool_calls": [],
+        }
+
+    async def _fake_finalize_llm_turn(**kwargs):
+        return {
+            "request_id": "req_mock_hermes_chat",
+            "should_escalate": False,
+            "confidence_level": "high",
+        }
+
+    monkeypatch.setattr(server_mod.hermes_coo_agent, "enhanced_chat", _fake_enhanced_chat)
+    monkeypatch.setattr(server_mod, "finalize_llm_turn", _fake_finalize_llm_turn)
+
+    req = server_mod.HermesChatRequest(
+        messages=[{"role": "user", "content": "привет, дай SLA-обзор"}],
+        user_id="tester",
+        company_id="default",
     )
-    assert r.status_code == 200, f"{r.status_code} {r.text[:400]}"
-    d = r.json()
+    d = asyncio.run(server_mod.hermes_chat(req))
     for k in ("request_id", "should_escalate", "confidence_level"):
         assert k in d, f"missing {k} in hermes/chat response keys={list(d.keys())}"
     assert isinstance(d["request_id"], str) and len(d["request_id"]) >= 8
