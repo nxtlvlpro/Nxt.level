@@ -345,13 +345,14 @@ async def seed_demo(
     """
     DEMO_COMPANY_ID = "demo"
     mem = memory_agent.get_memory()
-    memories = TenantAwareCRUD(get_db().memories, company_id=DEMO_COMPANY_ID, force_admin=True)
+    memories = TenantAwareCRUD(get_db().memories, company_id=DEMO_COMPANY_ID)
     interactions = TenantAwareCRUD(get_db().interactions, company_id=DEMO_COMPANY_ID, force_admin=True)
 
-    # idempotent
+    # Idempotent per component: previous runs could seed only part of the
+    # demo tenant. We therefore top up each dataset independently instead of
+    # bailing out early after checking only memories.
     existing = await memories.count_documents({})
-    if existing > 5:
-        return {"status": "already_seeded", "memories": existing}
+    status = "already_seeded" if existing > 5 else "seeded"
 
     corporate_docs = [
         ("Политика возвратов: возврат возможен в течение 14 дней с момента покупки при наличии чека.",
@@ -367,9 +368,10 @@ async def seed_demo(
         ("SLA для enterprise клиентов: 99.9% uptime, ответ в течение 15 минут.",
          {"department": "support", "priority": "high"}),
     ]
-    for content, meta in corporate_docs:
-        await mem.store_memory(content, memory_type="corporate", metadata=meta,
-                               company_id=DEMO_COMPANY_ID)
+    if existing < len(corporate_docs):
+        for content, meta in corporate_docs:
+            await mem.store_memory(content, memory_type="corporate", metadata=meta,
+                                   company_id=DEMO_COMPANY_ID)
 
     employees = [
         {"employee_id": "emp_alex", "name": "Alex Morgan", "department": "sales",
@@ -381,71 +383,132 @@ async def seed_demo(
         {"employee_id": "emp_jr", "name": "Junior Lee", "department": "support",
          "level": "junior", "experience_months": 3, "skills": []},
     ]
+    employees_crud = TenantAwareCRUD(
+        get_db().employees,
+        company_id=DEMO_COMPANY_ID,
+        force_admin=True,
+    )
     for e in employees:
-        await mentor_agent.upsert_employee(e, company_id=DEMO_COMPANY_ID)
+        employee_doc = {
+            "employee_id": e["employee_id"],
+            "company_id": DEMO_COMPANY_ID,
+            "name": e.get("name", "Unnamed"),
+            "department": e.get("department", "general"),
+            "level": e.get("level", "junior"),
+            "experience_months": int(e.get("experience_months", 0)),
+            "hire_date": e.get("hire_date", datetime.now(timezone.utc).isoformat()),
+            "manager_id": e.get("manager_id"),
+            "skills": e.get("skills", []),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await employees_crud.update_one(
+            {"employee_id": e["employee_id"]},
+            {"$set": employee_doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
 
     # performance for junior — intentionally weak to trigger patterns
     base = datetime.now(timezone.utc)
-    for i in range(4):
-        await mentor_agent.record_performance({
-            "employee_id": "emp_jr",
-            "period_start": (base - timedelta(weeks=i + 1)).isoformat(),
-            "period_end": (base - timedelta(weeks=i)).isoformat(),
-            "accuracy": 0.55 - i * 0.02,
-            "speed": 1.7,
-            "escalation_rate": 0.42,
-            "error_repeat": 2,
-            "tasks_completed": 30,
-            "tasks_reviewed": 18,
-        }, company_id=DEMO_COMPANY_ID)
+    demo_perf_count = await TenantAwareCRUD(
+        get_db().performance,
+        company_id=DEMO_COMPANY_ID,
+        force_admin=True,
+    ).count_documents({"company_id": DEMO_COMPANY_ID})
+    if demo_perf_count == 0:
+        for i in range(4):
+            await mentor_agent.record_performance({
+                "employee_id": "emp_jr",
+                "period_start": (base - timedelta(weeks=i + 1)).isoformat(),
+                "period_end": (base - timedelta(weeks=i)).isoformat(),
+                "accuracy": 0.55 - i * 0.02,
+                "speed": 1.7,
+                "escalation_rate": 0.42,
+                "error_repeat": 2,
+                "tasks_completed": 30,
+                "tasks_reviewed": 18,
+            }, company_id=DEMO_COMPANY_ID)
     # healthy performance for senior
-    for i in range(4):
-        await mentor_agent.record_performance({
-            "employee_id": "emp_alex",
-            "period_start": (base - timedelta(weeks=i + 1)).isoformat(),
-            "period_end": (base - timedelta(weeks=i)).isoformat(),
-            "accuracy": 0.93,
-            "speed": 0.8,
-            "escalation_rate": 0.04,
-            "error_repeat": 0,
-            "tasks_completed": 45,
-            "tasks_reviewed": 2,
-        }, company_id=DEMO_COMPANY_ID)
+        for i in range(4):
+            await mentor_agent.record_performance({
+                "employee_id": "emp_alex",
+                "period_start": (base - timedelta(weeks=i + 1)).isoformat(),
+                "period_end": (base - timedelta(weeks=i)).isoformat(),
+                "accuracy": 0.93,
+                "speed": 0.8,
+                "escalation_rate": 0.04,
+                "error_repeat": 0,
+                "tasks_completed": 45,
+                "tasks_reviewed": 2,
+            }, company_id=DEMO_COMPANY_ID)
 
     # demo deals + interactions
-    for i, value in enumerate([2400, 600, 1800, 950]):
-        deal_id = f"deal_demo_{i}"
-        # interactions BEFORE the deal close (1-4 days before)
-        for day, agent in enumerate(["orchestrator", "memory", "orchestrator"]):
-            await interactions.insert_one({
-                "id": str(uuid.uuid4()),
-                "deal_id": deal_id,
-                "agent": agent,
-                "interaction_type": "touch",
-                "interaction_time": (base - timedelta(days=day + 1, hours=i)).isoformat(),
-                "attributed_revenue": None,
-                "company_id": DEMO_COMPANY_ID,
-            })
-        await roi_agent.record_deal(
-            deal_id=deal_id,
-            value_usd=float(value),
-            team="sales",
-            closed_at=(base - timedelta(hours=i)).isoformat(),
-            company_id=DEMO_COMPANY_ID,
-        )
+    demo_deals_count = await TenantAwareCRUD(
+        get_db().deals,
+        company_id=DEMO_COMPANY_ID,
+        force_admin=True,
+    ).count_documents({"company_id": DEMO_COMPANY_ID})
+    if demo_deals_count == 0:
+        for i, value in enumerate([2400, 600, 1800, 950]):
+            deal_id = f"deal_demo_{i}"
+            # interactions BEFORE the deal close (1-4 days before)
+            for day, agent in enumerate(["orchestrator", "memory", "orchestrator"]):
+                await interactions.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "deal_id": deal_id,
+                    "agent": agent,
+                    "interaction_type": "touch",
+                    "interaction_time": (base - timedelta(days=day + 1, hours=i)).isoformat(),
+                    "attributed_revenue": None,
+                    "company_id": DEMO_COMPANY_ID,
+                })
+            await roi_agent.record_deal(
+                deal_id=deal_id,
+                value_usd=float(value),
+                team="sales",
+                closed_at=(base - timedelta(hours=i)).isoformat(),
+                company_id=DEMO_COMPANY_ID,
+            )
 
     # synthetic costs over last hour to make ROI non-zero
-    for _ in range(40):
-        await roi_agent.record_api_cost(
-            "orchestrator", tokens=15000, company_id=DEMO_COMPANY_ID
-        )
-    for _ in range(8):
-        await roi_agent.record_escalation_cost(
-            "support", minutes=5.0, company_id=DEMO_COMPANY_ID
-        )
+    demo_costs_count = await TenantAwareCRUD(
+        get_db().costs,
+        company_id=DEMO_COMPANY_ID,
+        force_admin=True,
+    ).count_documents({"company_id": DEMO_COMPANY_ID})
+    if demo_costs_count == 0:
+        for _ in range(40):
+            await roi_agent.record_api_cost(
+                "orchestrator", tokens=15000, company_id=DEMO_COMPANY_ID
+            )
+        for _ in range(8):
+            await roi_agent.record_escalation_cost(
+                "support", minutes=5.0, company_id=DEMO_COMPANY_ID
+            )
 
     # detect weak patterns for junior
-    await mentor_agent.detect_weak_patterns("emp_jr", company_id=DEMO_COMPANY_ID)
+    demo_patterns_count = await TenantAwareCRUD(
+        get_db().weak_patterns,
+        company_id=DEMO_COMPANY_ID,
+        force_admin=True,
+    ).count_documents({"company_id": DEMO_COMPANY_ID, "employee_id": "emp_jr", "resolved": False})
+    if demo_patterns_count == 0:
+        await mentor_agent.detect_weak_patterns("emp_jr", company_id=DEMO_COMPANY_ID)
+
+    demo_alerts = TenantAwareCRUD(
+        get_db().alerts,
+        company_id=DEMO_COMPANY_ID,
+        force_admin=True,
+    )
+    demo_alerts_count = await demo_alerts.count_documents({"company_id": DEMO_COMPANY_ID})
+    if demo_alerts_count == 0:
+        await demo_alerts.insert_one({
+            "id": str(uuid.uuid4()),
+            "source": "seed",
+            "severity": "info",
+            "message": "Demo tenant seeded and ready for validation.",
+            "company_id": DEMO_COMPANY_ID,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
 
     # generate first roi snapshot
     await roi_agent.calculate_hourly_roi(company_id=DEMO_COMPANY_ID)
@@ -457,8 +520,8 @@ async def seed_demo(
         logger.warning("market seed failed: %s", e)
 
     return {
-        "status": "seeded",
-        "memories": len(corporate_docs),
+        "status": status,
+        "memories": await memories.count_documents({}),
         "employees": len(employees),
         "deals": 4,
     }
@@ -470,14 +533,20 @@ async def seed_demo(
 
 
 @api.post("/chat")
-async def chat(req: ChatRequest) -> Dict[str, Any]:
+async def chat(
+    req: ChatRequest,
+    authed: "Optional[_auth_mod.AuthedUser]" = Depends(_auth_mod.optional_user),
+) -> Dict[str, Any]:
     session_id = req.session_id or f"sess_{uuid.uuid4().hex[:12]}"
+    company_id = _tenant_for_public_chat(authed, session_id)
+    effective_user_id = authed.user_id if authed else req.user_id
     return await orchestrator_agent.route(
-        user_id=req.user_id,
+        user_id=effective_user_id,
         session_id=session_id,
         message=req.message,
         channel=req.channel,
         context=req.context,
+        company_id=company_id,
     )
 
 
@@ -1359,7 +1428,10 @@ async def voice_converse_stream(
 
 
 @api.post("/chat/stream")
-async def chat_stream(req: ChatRequest) -> StreamingResponse:
+async def chat_stream(
+    req: ChatRequest,
+    authed: "Optional[_auth_mod.AuthedUser]" = Depends(_auth_mod.optional_user),
+) -> StreamingResponse:
     """Server-Sent Events stream of an orchestrator response.
 
     Frame format:
@@ -1372,6 +1444,8 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
     import time as _time
 
     session_id = req.session_id or f"sess_{uuid.uuid4().hex[:12]}"
+    stream_company_id = _tenant_for_public_chat(authed, session_id)
+    effective_user_id = authed.user_id if authed else req.user_id
 
     async def gen():
         t0 = _time.time()
@@ -1379,9 +1453,8 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
         mem = memory_agent.get_memory()
 
         try:
-            stream_company_id = await _resolve_company_id(req.user_id)
             await mem.append_message(session_id, "user", req.message,
-                                     user_id=req.user_id, company_id=stream_company_id)
+                                     user_id=effective_user_id, company_id=stream_company_id)
             ctx = await mem.get_optimal_context(req.message, session_id, max_chars=6000,
                                                 company_id=stream_company_id)
 
@@ -1424,7 +1497,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
 
             full = "".join(full_chunks)
             await mem.append_message(session_id, "assistant", full,
-                                     user_id=req.user_id, company_id=stream_company_id)
+                                     user_id=effective_user_id, company_id=stream_company_id)
 
             # Long-term memory: store the user/assistant exchange in MemPalace
             # under chats/{session_id}. Fire-and-forget; never blocks streaming.
@@ -1436,7 +1509,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                             wing="chats",
                             logical_room=session_id,
                             metadata={
-                                "user_id": req.user_id,
+                                "user_id": effective_user_id,
                                 "intent": intent,
                                 "channel": "stream",
                             },
@@ -1463,11 +1536,10 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                 prompt_chars = sum(len(m.get("content", "")) for m in messages_for_llm)
                 stream_tokens = max(1, (prompt_chars + len(full)) // 4)
             total_tokens = intent_tokens + stream_tokens
-            company_id = await _resolve_company_id(req.user_id)
             hook_res = await finalize_llm_turn(
                 channel="stream",
                 agent="orchestrator_stream",
-                user_id=req.user_id,
+                user_id=effective_user_id,
                 session_id=session_id,
                 message=req.message,
                 response_text=full,
@@ -1480,7 +1552,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                 agent_chain=["orchestrator(stream)"],
                 mock=False,
                 latency_ms=latency_ms,
-                company_id=company_id,
+                company_id=stream_company_id,
             )
 
             done_payload = {

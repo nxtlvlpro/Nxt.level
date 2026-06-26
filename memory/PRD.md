@@ -1,7 +1,50 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.36-voice-stt-public-fix
+**Current version:** v1.18.37-test-harness-auth-fix
 **Last updated:** 2026-06-26 by E1
+
+## What's new — v1.18.37 (2026-06-26)
+
+**P1 test harness recovery resumed and `backend_test.py` is green again.**
+Блокирующая причина была двойной: auth-lookup шёл через tenant-aware proxy для
+`users/user_sessions`, а публичные `/api/chat` и `/api/chat/stream` не
+прокидывали auth-derived tenant в session memory при авторизованном клиенте.
+
+### Fixed
+- `backend/core/auth.py`
+  - auth DB lookups switched to `TenantAwareCRUD(..., force_admin=True)` for
+    `users` and `user_sessions`
+- `backend/server.py`
+  - `/api/chat` and `/api/chat/stream` now derive tenant from authenticated
+    user via `_tenant_for_public_chat(...)`
+  - `seed_demo()` made component-idempotent instead of exiting early on partial
+    demo state
+  - demo seed now restores employees / performance / deals / costs / weak
+    patterns / starter alert for tenant `demo`
+- `backend/tests/conftest.py`
+  - added a real authenticated pytest session in tenant `demo`
+- `backend/tests/backend_test.py`
+  - requests session now carries auth headers
+  - multipart session now carries auth headers
+  - raw unauthenticated cross-dept request replaced with authenticated client
+  - outdated Hermes proxy assertions aligned with current graceful-degradation
+    contract
+
+### Root cause found
+- `require_user()` resolved sessions through tenant-aware collections before a
+  request tenant context existed, so valid session tokens looked expired
+- old test client had no valid auth session for protected endpoints
+- public chat routes stored session history without the authenticated user's
+  tenant scope
+- `seed_demo()` could return too early after checking only demo memories,
+  leaving other demo fixtures absent
+
+### Validation
+- `pytest -q /app/backend/tests/backend_test.py` → **41/41 PASS**
+- targeted recovery smoke for auth/session/memory/stream flow → **PASS**
+- manual preview verification:
+  - `GET /api/auth/me` with Bearer session → **PASS**
+  - `GET /api/memory/list?type=corporate` for tenant `demo` → **PASS**
 
 ## What's new — v1.18.36 (2026-06-26)
 

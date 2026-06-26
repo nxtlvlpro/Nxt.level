@@ -38,7 +38,7 @@ import httpx
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 logger = logging.getLogger("nxt8.auth")
 
@@ -206,11 +206,12 @@ async def _upsert_user(profile: Dict[str, Any]) -> Dict[str, Any]:
     """Look up by email; create if missing. Always returns a clean dict
     with the custom `user_id` (UUID) — never the Mongo `_id`."""
     db = get_db()
+    users = TenantAwareCRUD(db.users, force_admin=True)
     email = (profile.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="email_missing_from_oauth")
 
-    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    existing = await users.find_one({"email": email}, {"_id": 0})
     is_admin = email in _admin_emails()
     company_id = derive_company_id(email)
     now = _now()
@@ -223,7 +224,7 @@ async def _upsert_user(profile: Dict[str, Any]) -> Dict[str, Any]:
             "company_id": existing.get("company_id") or company_id,
             "last_login_at": now.isoformat(),
         }
-        await db.users.update_one({"user_id": existing["user_id"]}, {"$set": update})
+        await users.update_one({"user_id": existing["user_id"]}, {"$set": update})
         existing.update(update)
         return existing
 
@@ -238,12 +239,13 @@ async def _upsert_user(profile: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": now.isoformat(),
         "last_login_at": now.isoformat(),
     }
-    await db.users.insert_one(doc)
+    await users.insert_one(doc)
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
 async def _create_session(user_id: str, session_token: str) -> Dict[str, Any]:
     db = get_db()
+    sessions = TenantAwareCRUD(db.user_sessions, force_admin=True)
     expires_at = _now() + timedelta(days=SESSION_TTL_DAYS)
     sess = {
         "user_id": user_id,
@@ -252,14 +254,14 @@ async def _create_session(user_id: str, session_token: str) -> Dict[str, Any]:
         "created_at": _now().isoformat(),
     }
     # If Emergent reuses session_tokens across calls, upsert defensively.
-    await db.user_sessions.update_one(
+    await sessions.update_one(
         {"session_token": session_token}, {"$set": sess}, upsert=True
     )
     return sess
 
 
 async def _delete_session(session_token: str) -> int:
-    res = await get_db().user_sessions.delete_many({"session_token": session_token})
+    res = await TenantAwareCRUD(get_db().user_sessions, force_admin=True).delete_many({"session_token": session_token})
     return int(res.deleted_count or 0)
 
 
@@ -296,7 +298,9 @@ def _extract_token(
 
 async def _resolve_user_from_token(token: str) -> Optional[AuthedUser]:
     db = get_db()
-    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    sessions = TenantAwareCRUD(db.user_sessions, force_admin=True)
+    users = TenantAwareCRUD(db.users, force_admin=True)
+    sess = await sessions.find_one({"session_token": token}, {"_id": 0})
     if not sess:
         return None
     expires_at = sess.get("expires_at")
@@ -310,7 +314,7 @@ async def _resolve_user_from_token(token: str) -> Optional[AuthedUser]:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         if expires_at < _now():
             return None
-    user = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0})
+    user = await users.find_one({"user_id": sess["user_id"]}, {"_id": 0})
     if not user:
         return None
     # Backfill company_id lazily for legacy users created before
@@ -318,7 +322,7 @@ async def _resolve_user_from_token(token: str) -> Optional[AuthedUser]:
     company_id = user.get("company_id") or derive_company_id(user.get("email", ""))
     if not user.get("company_id"):
         try:
-            await db.users.update_one(
+            await users.update_one(
                 {"user_id": user["user_id"]},
                 {"$set": {"company_id": company_id}},
             )
