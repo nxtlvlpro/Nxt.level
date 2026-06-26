@@ -429,8 +429,13 @@ class TestUnitToolsAndPersistence:
             "autonomy_level": "assistant",
         }, timeout=TIMEOUT)
         assert r.status_code == 200
-        time.sleep(1.0)
-        msgs = await memory_agent.get_memory().get_session(sid, limit=50)
-        roles = [m.get("role") for m in msgs]
+        roles = []
+        msgs = []
+        for _ in range(10):
+            await asyncio.sleep(0.5)
+            msgs = await memory_agent.get_memory().get_session(sid, limit=50)
+            roles = [m.get("role") for m in msgs]
+            if "user" in roles and "assistant" in roles:
+                break
         assert "user" in roles
         assert "assistant" in roles
