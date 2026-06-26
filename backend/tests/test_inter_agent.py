@@ -84,6 +84,35 @@ def test_ask_colleague_rejects_self_and_hermes():
     assert r3["ok"] is False
 
 
+def test_inter_agent_tools_require_company_id():
+    from agents import inter_agent
+
+    async def run():
+        delegate_res = await inter_agent.delegate_to_agent({
+            "from_agent": "hermes",
+            "agent_id": "analyst",
+            "task": "test without tenant",
+        })
+        ask_res = await inter_agent.ask_colleague({
+            "from_agent": "bookkeeper",
+            "agent_id": "analyst",
+            "question": "test without tenant",
+        })
+        escalate_res = await inter_agent.escalate_to_hermes({
+            "from_agent": "analyst",
+            "reason": "test without tenant",
+        })
+        return delegate_res, ask_res, escalate_res
+
+    delegate_res, ask_res, escalate_res = asyncio.run(run())
+    assert delegate_res["ok"] is False
+    assert ask_res["ok"] is False
+    assert escalate_res["ok"] is False
+    assert "company_id" in delegate_res["error"].lower()
+    assert "company_id" in ask_res["error"].lower()
+    assert "company_id" in escalate_res["error"].lower()
+
+
 def test_delegate_depth_resets_after_success(monkeypatch):
     import agents.personas as personas
     from agents import inter_agent

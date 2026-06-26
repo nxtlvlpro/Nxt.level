@@ -39,6 +39,13 @@ delegation_depth = contextvars.ContextVar("delegation_depth", default=0)
 MAX_DELEGATION_DEPTH = 3
 
 
+def _require_company_id(args: Dict[str, Any], *, tool_name: str) -> Optional[str]:
+    company_id = (args.get("company_id") or "").strip()
+    if company_id:
+        return company_id
+    return None
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -118,7 +125,12 @@ async def delegate_to_agent(args: Dict[str, Any]) -> Dict[str, Any]:
     context_block = (args.get("context") or "").strip()
     user_message = task if not context_block else f"{task}\n\n## Контекст от Hermes (CEO)\n{context_block}"
 
-    company_id = args.get("company_id") or "default"
+    company_id = _require_company_id(args, tool_name="delegate_to_agent")
+    if not company_id:
+        return {
+            "ok": False,
+            "error": "company_id is required for delegation; fallback to 'default' is disabled for security",
+        }
     user_id = args.get("user_id") or "hermes-delegation"
 
     depth = delegation_depth.get()
@@ -200,7 +212,12 @@ async def escalate_to_hermes(args: Dict[str, Any]) -> Dict[str, Any]:
 
     evidence = (args.get("evidence") or "").strip()
     question = (args.get("question") or "").strip()
-    company_id = args.get("company_id") or "default"
+    company_id = _require_company_id(args, tool_name="escalate_to_hermes")
+    if not company_id:
+        return {
+            "ok": False,
+            "error": "company_id is required; fallback to 'default' is disabled for security",
+        }
     user_id = args.get("user_id") or "agent-escalation"
 
     db = get_db()
@@ -344,7 +361,12 @@ async def ask_colleague(args: Dict[str, Any]) -> Dict[str, Any]:
     if context_block:
         framed += f"\n\n## Контекст от `{from_agent}`\n{context_block}"
 
-    company_id = args.get("company_id") or "default"
+    company_id = _require_company_id(args, tool_name="ask_colleague")
+    if not company_id:
+        return {
+            "ok": False,
+            "error": "company_id is required; fallback to 'default' is disabled for security",
+        }
     user_id = args.get("user_id") or f"peer-{from_agent}"
 
     depth = delegation_depth.get()
