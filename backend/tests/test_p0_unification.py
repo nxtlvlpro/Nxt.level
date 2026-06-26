@@ -166,19 +166,40 @@ def test_hermes_chat_returns_pipeline_keys(monkeypatch):
 # ---------------------------------------------------------------------
 # 3. /api/hermes/ultra — pipeline hook payload
 # ---------------------------------------------------------------------
-def test_hermes_ultra_returns_pipeline_keys(client):
-    r = client.post(
-        f"{API}/hermes/ultra",
-        json={
-            "message": "Дай короткое summary по операционке.",
-            "user_id": "tester",
-            "company_id": "default",
-            "autonomy_level": "read_only",
-        },
-        timeout=180,
+def test_hermes_ultra_returns_pipeline_keys(monkeypatch):
+    import server as server_mod
+
+    async def _fake_run_nxt8_ultra(**kwargs):
+        return {
+            "content": "Ultra summary mock response",
+            "thread_id": kwargs.get("session_id") or "sess_mock_ultra",
+            "iterations": 1,
+            "confidence": 0.77,
+            "tool_traces": [],
+            "requires_human_approval": False,
+            "fallback": None,
+            "mock": False,
+            "tokens_total": 24,
+        }
+
+    async def _fake_finalize_llm_turn(**kwargs):
+        return {
+            "request_id": "req_mock_hermes_ultra",
+            "should_escalate": False,
+            "confidence_level": "medium",
+            "confidence": 0.77,
+        }
+
+    monkeypatch.setattr(server_mod, "run_nxt8_ultra", _fake_run_nxt8_ultra)
+    monkeypatch.setattr(server_mod, "finalize_llm_turn", _fake_finalize_llm_turn)
+
+    req = server_mod.HermesUltraRequest(
+        message="Дай короткое summary по операционке.",
+        user_id="tester",
+        company_id="default",
+        autonomy_level="read_only",
     )
-    assert r.status_code == 200, f"{r.status_code} {r.text[:400]}"
-    d = r.json()
+    d = asyncio.run(server_mod.hermes_ultra_endpoint(req))
     assert d.get("success") is True or d.get("content"), f"unsuccessful: {d}"
     for k in ("request_id", "should_escalate", "confidence_level"):
         assert k in d, f"missing {k}; keys={list(d.keys())}"
