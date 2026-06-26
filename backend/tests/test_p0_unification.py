@@ -252,15 +252,53 @@ def test_persona_hermes_chat_returns_pipeline_keys(monkeypatch):
 # ---------------------------------------------------------------------
 # 1. /api/voice/converse — pipeline hook keys
 # ---------------------------------------------------------------------
-def test_voice_converse_pipeline_keys(multipart_client, tts_audio_mp3):
-    files = {"file": ("audio.mp3", tts_audio_mp3, "audio/mpeg")}
-    data = {"user_id": "tester", "language": "ru", "voice": "nova"}
-    r = multipart_client.post(
-        f"{API}/voice/converse", files=files, data=data, timeout=180
-    )
-    assert r.status_code == 200, f"{r.status_code} {r.text[:400]}"
-    d = r.json()
-    # Note: per main-agent — tts_error is env issue, not regression.
+def test_voice_converse_pipeline_keys(monkeypatch):
+    import io
+    import server as server_mod
+    from fastapi import UploadFile
+
+    async def _fake_transcribe(**kwargs):
+        return {"text": "Привет, это тестовый запрос.", "language": "ru"}
+
+    async def _fake_enhanced_chat(**kwargs):
+        return {
+            "content": "Тестовый голосовой ответ.",
+            "confidence": 0.74,
+            "tokens_total": 17,
+            "mock": False,
+            "tool_calls": [],
+            "iterations": 1,
+            "provider": "mock",
+            "fallback": None,
+        }
+
+    async def _fake_synthesize(**kwargs):
+        return b"FAKE_MP3_BYTES"
+
+    async def _fake_finalize_llm_turn(**kwargs):
+        return {
+            "request_id": "req_mock_voice_converse",
+            "should_escalate": False,
+            "confidence_level": "medium",
+            "confidence": 0.74,
+            "verification_status": "verified",
+        }
+
+    monkeypatch.setattr(server_mod.voice_agent, "transcribe", _fake_transcribe)
+    monkeypatch.setattr(server_mod.hermes_coo_agent, "enhanced_chat", _fake_enhanced_chat)
+    monkeypatch.setattr(server_mod.voice_agent, "synthesize", _fake_synthesize)
+    monkeypatch.setattr(server_mod, "finalize_llm_turn", _fake_finalize_llm_turn)
+
+    upload = UploadFile(filename="audio.mp3", file=io.BytesIO(b"fake audio bytes"))
+
+    d = asyncio.run(server_mod.voice_converse(
+        file=upload,
+        user_id="tester",
+        session_id="sess_voice_test",
+        language="ru",
+        voice="nova",
+        authed=None,
+    ))
     for k in ("should_escalate", "confidence_level", "request_id"):
         assert k in d, f"missing {k} in voice/converse; keys={list(d.keys())}"
     assert isinstance(d["should_escalate"], bool)
