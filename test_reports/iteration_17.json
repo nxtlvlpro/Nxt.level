@@ -1,0 +1,50 @@
+{
+  "summary": "Verified NXT8 backend test-suite stabilization: all 6 converted deterministic tests in test_p0_unification.py pass consistently (3/3 runs, ~1.25s each). Tests no longer depend on live network/LLM behavior.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "N/A", "issue": "3 other tests in test_p0_unification.py fail due to missing seeded data (test_roi_current_by_agent_cost_covers_channels, test_documents_list_and_get, test_mempalace_search_finds_uploaded_document) - these are live integration tests outside the scope of this verification"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_p0_unification.py",
+    "/app/test_reports/pytest/iter17_p0_unification.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "All 6 converted tests use monkeypatch to mock internal async functions - no live HTTP/LLM calls",
+    "test_requests_lists_all_channels: mocks orchestrator_agent.list_recent_requests with fake channel data",
+    "test_hermes_chat_returns_pipeline_keys: mocks hermes_coo_agent.enhanced_chat and finalize_llm_turn",
+    "test_hermes_ultra_returns_pipeline_keys: mocks run_nxt8_ultra and finalize_llm_turn",
+    "test_persona_hermes_chat_returns_pipeline_keys: mocks personas_agent.run_persona and finalize_llm_turn",
+    "test_voice_converse_pipeline_keys: mocks voice_agent.transcribe, hermes_coo_agent.enhanced_chat, voice_agent.synthesize, and finalize_llm_turn",
+    "test_create_followup_lands_in_tasks_collection: directly calls HERMES_TOOLS['create_followup'] without LLM - pure DB write test"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% for converted tests (6/6 passed), 77% overall (10/13 passed)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_p0_unification.py stabilization verified. The 6 converted tests are now deterministic unit-style tests using monkeypatch. The 3 failing tests (test_roi_current_by_agent_cost_covers_channels, test_documents_list_and_get, test_mempalace_search_finds_uploaded_document) are live integration tests that require seeded data and are outside the scope of this verification.",
+  "mocked_apis_verification": {
+    "status": "VERIFIED",
+    "mocked_functions": [
+      "server.hermes_coo_agent.enhanced_chat",
+      "server.finalize_llm_turn",
+      "server.run_nxt8_ultra",
+      "server.personas_agent.run_persona",
+      "server.voice_agent.transcribe",
+      "server.voice_agent.synthesize",
+      "server.orchestrator_agent.list_recent_requests"
+    ],
+    "determinism_test": "3 consecutive runs all passed with consistent timing (~1.25-1.27s)"
+  }
+}

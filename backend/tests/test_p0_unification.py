@@ -407,67 +407,40 @@ def test_roi_current_by_agent_cost_covers_channels(client):
 # ---------------------------------------------------------------------
 # 9. Unified collection — followup tool-call lands in db.tasks (kind=followup)
 # ---------------------------------------------------------------------
-def test_create_followup_lands_in_tasks_collection(client):
-    """Ask Hermes to schedule a follow-up; verify db.tasks gets a kind=followup."""
+def test_create_followup_lands_in_tasks_collection():
+    """Deterministic: real Hermes tool writes kind=followup into unified db.tasks."""
+    from agents.hermes import HERMES_TOOLS
+    from core.db import TenantAwareCRUD, get_db
+
     marker = f"TEST_FU_{uuid.uuid4().hex[:8]}"
-    msg = (
-        "Запланируй follow-up через 1 час: позвонить клиенту ACME по вопросу "
-        f"тестового маркера {marker}. Обязательно вызови инструмент create_followup."
-    )
-    r = client.post(
-        f"{API}/hermes/chat",
-        json={"messages": [{"role": "user", "content": msg}],
-              "user_id": "tester"},
-        timeout=180,
-    )
-    assert r.status_code == 200, r.text[:400]
-    d = r.json()
-    tool_calls = d.get("tool_calls") or d.get("tool_traces") or []
-    # Bird-eye sanity: model may or may not pick create_followup. If it didn't,
-    # we still assert it could have — check the DB directly.
-    # Read via Motor (in-process) — same DB the API writes to.
-    sys.path.insert(0, "/app/backend")
-    # Load backend env for direct DB access (uvicorn loads it but our pytest may not)
-    try:
-        from dotenv import load_dotenv
-        load_dotenv("/app/backend/.env")
-    except Exception:
-        # Manual fallback
-        try:
-            with open("/app/backend/.env") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        os.environ.setdefault(k.strip(), v.strip())
-        except Exception:
-            pass
+    title = f"Follow-up for ACME {marker}"
 
-    import asyncio
-    from core.db import get_db
+    async def _run():
+        tasks = TenantAwareCRUD(get_db().tasks, company_id="default", force_admin=True)
+        await tasks.delete_many({"title": title})
 
-    async def _check():
-        db = get_db()
-        rows = await db.tasks.find(
-            {"kind": "followup"}, {"_id": 0}
-        ).sort("created_at", -1).limit(50).to_list(length=50)
-        try:
-            names = await db.list_collection_names()
-            legacy = await db.followups.count_documents({}) if "followups" in names else 0
-        except Exception:
-            legacy = -1
-        return rows, legacy
+        res = await HERMES_TOOLS["create_followup"]({
+            "title": title,
+            "message": f"Позвонить клиенту ACME по вопросу маркера {marker}",
+            "recipients": ["client@acme.test"],
+            "priority": "high",
+            "due_in_days": 1,
+            "company_id": "default",
+        })
 
-    loop = asyncio.new_event_loop()
-    try:
-        rows, legacy = loop.run_until_complete(_check())
-    finally:
-        loop.close()
-    assert rows, (
-        "db.tasks contains zero kind='followup' rows; tool_calls="
-        f"{tool_calls}; reply={d.get('content','')[:300]}"
-    )
-    print(f"[info] db.tasks kind=followup rows={len(rows)}; legacy db.followups count={legacy}")
+        row = None
+        if res.get("ok") and res.get("followup_id"):
+            row = await tasks.find_one({"id": res["followup_id"]}, {"_id": 0})
+        return res, row
+
+    res, row = asyncio.run(_run())
+
+    assert res.get("ok") is True, f"create_followup failed: {res}"
+    assert row is not None, f"no unified followup row created: {res}"
+    assert row.get("kind") == "followup"
+    assert row.get("title") == title
+    assert row.get("company_id") == "default"
+    assert marker in (row.get("description") or "")
 
 
 # ---------------------------------------------------------------------
