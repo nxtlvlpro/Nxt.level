@@ -33,3 +33,15 @@ def event_loop():
 @pytest.fixture(scope="session")
 def company_id():
     return TEST_COMPANY_ID
+
+
+@pytest.fixture(scope="session")
+def admin_token():
+    token = os.environ.get("SEED_ADMIN_TOKEN", "").strip()
+    assert token, "SEED_ADMIN_TOKEN is required for admin-only test flows"
+    return token
+
+
+@pytest.fixture(scope="session")
+def admin_headers(admin_token):
+    return {"X-Admin-Token": admin_token}

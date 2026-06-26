@@ -35,9 +35,9 @@ def client():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _seed(client):
+def _seed(client, admin_headers):
     # Idempotent seed — required by other tests
-    r = client.post(f"{API}/seed", timeout=60)
+    r = client.post(f"{API}/seed", headers=admin_headers, timeout=60)
     assert r.status_code == 200, f"seed failed: {r.status_code} {r.text}"
     return r.json()
 
@@ -64,8 +64,8 @@ def test_health(client):
     assert v.get("tts_model") == "tts-1"
 
 
-def test_seed_idempotent(client, _seed):
-    r = client.post(f"{API}/seed", timeout=30)
+def test_seed_idempotent(client, _seed, admin_headers):
+    r = client.post(f"{API}/seed", headers=admin_headers, timeout=30)
     assert r.status_code == 200
     data = r.json()
     assert data["status"] in {"seeded", "already_seeded"}
