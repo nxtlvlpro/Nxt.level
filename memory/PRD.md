@@ -1,7 +1,40 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.37-test-harness-auth-fix
+**Current version:** v1.18.38-red-sessions-alerts-owner-check
 **Last updated:** 2026-06-26 by E1
+
+## What's new — v1.18.38 (2026-06-26)
+
+**RED security fix: Sessions/Alerts Owner Check completed and independently verified.**
+
+### Fixed
+- `GET /api/sessions/{session_id}`
+  - non-admin users now require both tenant visibility **and** session ownership
+  - same-tenant but different `user_id` now returns **403 access_denied**
+  - different-tenant access now returns **404 session_not_found**
+- `GET /api/alerts`
+  - endpoint is no longer public
+  - now requires authenticated user via `require_user`
+  - non-admin users see only their own `company_id` alerts
+  - admins retain global visibility
+- `backend/core/auth.py`
+  - `/api/alerts` removed from `PUBLIC_PATH_PATTERNS`
+
+### Added tests
+- `backend/tests/test_sessions_alerts_owner_check.py`
+  - owner / same-tenant-other-user / cross-tenant / admin coverage
+- HTTP-level verification file created by testing subagent:
+  - `backend/tests/test_security_owner_check_http.py`
+
+### Independent verification
+- Testing subagent report: `/app/test_reports/iteration_14.json`
+- Result: **100% backend pass for the reported security bug**
+- Verified behaviors:
+  - unauthenticated `/api/alerts` → **401**
+  - unauthenticated `/api/sessions/{session_id}` → **401**
+  - foreign same-tenant session access → **403**
+  - foreign cross-tenant session access → **404**
+  - alerts filtered by company for non-admin, global for admin
 
 ## What's new — v1.18.37 (2026-06-26)
 
