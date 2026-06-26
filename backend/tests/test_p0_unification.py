@@ -209,20 +209,44 @@ def test_hermes_ultra_returns_pipeline_keys(monkeypatch):
 # ---------------------------------------------------------------------
 # 4. /api/personas/hermes/chat (plan_id=enterprise) — pipeline hook payload
 # ---------------------------------------------------------------------
-def test_persona_hermes_chat_returns_pipeline_keys(client):
-    r = client.post(
-        f"{API}/personas/hermes/chat",
-        json={
-            "message": "Дай 1-строчный SLA-обзор",
-            "user_id": "tester",
-            "plan_id": "enterprise",
-        },
-        timeout=180,
+def test_persona_hermes_chat_returns_pipeline_keys(monkeypatch):
+    import server as server_mod
+
+    async def _fake_run_persona(**kwargs):
+        return {
+            "success": True,
+            "content": "Hermes persona mock response",
+            "confidence": 0.81,
+            "tokens_total": 33,
+            "tool_traces": [],
+            "mock": False,
+            "plan_id": kwargs.get("plan_id"),
+            "session_id": kwargs.get("session_id") or "persona_mock_session",
+            "iterations": 1,
+        }
+
+    async def _fake_finalize_llm_turn(**kwargs):
+        return {
+            "request_id": "req_mock_persona_hermes",
+            "should_escalate": False,
+            "confidence_level": "high",
+        }
+
+    monkeypatch.setattr(server_mod.personas_agent, "run_persona", _fake_run_persona)
+    monkeypatch.setattr(server_mod, "finalize_llm_turn", _fake_finalize_llm_turn)
+
+    req = server_mod.PersonaChatRequest(
+        message="Дай 1-строчный SLA-обзор",
+        user_id="tester",
+        company_id="default",
+        plan_id="enterprise",
     )
-    assert r.status_code == 200, f"{r.status_code} {r.text[:400]}"
-    d = r.json()
+    d = asyncio.run(server_mod.persona_chat("hermes", req))
     for k in ("request_id", "should_escalate", "confidence_level"):
         assert k in d, f"missing {k}; keys={list(d.keys())}"
+    assert d["request_id"] == "req_mock_persona_hermes"
+    assert isinstance(d["should_escalate"], bool)
+    assert d["confidence_level"] in ("low", "medium", "high")
 
 
 # ---------------------------------------------------------------------
