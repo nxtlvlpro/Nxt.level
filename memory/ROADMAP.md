@@ -1,6 +1,10 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.18.35-voice-path-fishaudio-tuning (2026-06-26)
+**Текущая версия:** v1.18.36-voice-stt-public-fix (2026-06-26)
+
+## ✅ Done — Voice STT Public Allowlist Fix (2026-06-26)
+- Added `/api/voice/stt` to auth public allowlist
+- Restored anonymous preview microphone flow after website voice-path rewrite
 
 ## ✅ Done — Website Voice Path Simplification + Fish Audio Tuning (2026-06-26)
 - Rewired website voice flows to `voiceStt + hermesTalk` instead of slower `/api/voice/converse*` path

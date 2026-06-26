@@ -1,5 +1,26 @@
 # NXT8 — Release Notes
 
+## v1.18.36-voice-stt-public-fix — 2026-06-26
+
+**Status:** ✅ Microphone auth regression fixed for anonymous preview flow.
+
+### Changed
+- **`backend/core/auth.py`**
+  - added `^/api/voice/stt/?$` to `PUBLIC_PATH_PATTERNS`
+
+### Findings
+- Website microphone was failing not because of STT logic itself, but because the new STT endpoint path was still protected by auth middleware
+- This regression appeared only after the website voice flow was rewired away from `/api/voice/converse*`
+
+### Validated
+- no immediate 401 on `/api/voice/stt` → **PASS**
+- preview voice UI reachable → **PASS**
+- independent frontend verification → **PASS**
+
+---
+
+## v1.18.35-voice-path-fishaudio-tuning — 2026-06-26
+
 ## v1.18.35-voice-path-fishaudio-tuning — 2026-06-26
 
 **Status:** ✅ Website voice flow simplified; Fish Audio tuned for lower latency and steadier delivery.

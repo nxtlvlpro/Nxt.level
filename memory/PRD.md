@@ -1,7 +1,28 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.35-voice-path-fishaudio-tuning
+**Current version:** v1.18.36-voice-stt-public-fix
 **Last updated:** 2026-06-26 by E1
+
+## What's new — v1.18.36 (2026-06-26)
+
+**Preview microphone flow fixed after voice-path rewrite.** После перехода сайта
+на `voiceStt(...) + hermesTalk(...)` выяснилось, что `/api/voice/stt` не был
+ включён в public auth allowlist, из-за чего анонимный preview flow падал с
+ `не удалось обработать запись`.
+
+### Fixed
+- `backend/core/auth.py`
+  - added `/api/voice/stt` to `PUBLIC_PATH_PATTERNS`
+
+### Root cause found
+- New website voice path used `/api/voice/stt`
+- Auth middleware still treated `/api/voice/stt` as protected
+- Result: anonymous preview microphone flow received **401** before STT could run
+
+### Validation
+- no immediate 401 on `/api/voice/stt` in preview → **PASS**
+- homepage + voice UI reachable → **PASS**
+- independent frontend verification of auth allowlist fix → **PASS**
 
 ## What's new — v1.18.35 (2026-06-26)
 
