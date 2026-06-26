@@ -1,5 +1,42 @@
 # NXT8 — Release Notes
 
+## v1.18.35-voice-path-fishaudio-tuning — 2026-06-26
+
+**Status:** ✅ Website voice flow simplified; Fish Audio tuned for lower latency and steadier delivery.
+
+### Changed
+- **`frontend/src/components/views/HomeView.jsx`**
+  - removed website dependency on `/api/voice/converse_stream`
+  - now uses `voiceStt(...) + hermesTalk(...)`
+- **`frontend/src/components/views/MicView.jsx`**
+  - removed website dependency on `/api/voice/converse`
+  - now uses `voiceStt(...) + hermesTalk(...)`
+- **`backend/agents/voice.py`**
+  - tuned Fish Audio payload:
+    - `speed=0.98`
+    - `normalize_loudness=True`
+    - `chunk_length=260`
+    - `temperature=0.35`
+    - `top_p=0.7`
+    - `repetition_penalty=1.18`
+    - `min_chunk_length=70`
+    - `condition_on_previous_chunks=True`
+    - `early_stop_threshold=1`
+
+### Findings
+- Website had a slower voice-response path than necessary
+- Existing `/api/hermes/talk` live stream path was more appropriate for “живой деловой профессиональный внимательный” delivery
+- No frontend regressions found after rewiring
+
+### Validated
+- preview homepage loads → **PASS**
+- preview mobile homepage loads → **PASS**
+- independent frontend voice verification → **PASS**
+
+---
+
+## v1.18.34-phase2-list-personas-extraction — 2026-06-21
+
 ## v1.18.34-phase2-list-personas-extraction — 2026-06-21
 
 **Status:** ✅ Phase 2 extraction выполнен без изменения listing/runtime behavior.

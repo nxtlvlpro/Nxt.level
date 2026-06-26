@@ -1,6 +1,11 @@
 # NXT8 — Roadmap
 
-**Текущая версия:** v1.18.34-phase2-list-personas-extraction (2026-06-21)
+**Текущая версия:** v1.18.35-voice-path-fishaudio-tuning (2026-06-26)
+
+## ✅ Done — Website Voice Path Simplification + Fish Audio Tuning (2026-06-26)
+- Rewired website voice flows to `voiceStt + hermesTalk` instead of slower `/api/voice/converse*` path
+- Tuned Fish Audio payload for faster and steadier professional speech
+- Verified old website voice endpoints are no longer used by HomeView and MicView
 
 ## ✅ Done — Phase 2 list_personas Extraction (2026-06-21)
 - Extracted `list_personas` into `backend/config/personas.py`

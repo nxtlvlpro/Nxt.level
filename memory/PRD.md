@@ -1,7 +1,35 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.34-phase2-list-personas-extraction
-**Last updated:** 2026-06-21 by E1
+**Current version:** v1.18.35-voice-path-fishaudio-tuning
+**Last updated:** 2026-06-26 by E1
+
+## What's new — v1.18.35 (2026-06-26)
+
+**Website voice pipeline simplified and Fish Audio tuned.** Найден лишний/более
+медленный веб-путь voice response: сайт использовал `/api/voice/converse*`
+flows, которые делали STT + full reply + TTS на backend, вместо уже существующего
+более живого пути `voiceStt(...) + /api/hermes/talk`.
+
+### Fixed
+- `frontend/src/components/views/HomeView.jsx`
+  - voice mode rewired from `voiceConverseStream(...)` to `voiceStt(...) + hermesTalk(...)`
+- `frontend/src/components/views/MicView.jsx`
+  - mic flow rewired from `voiceConverse(...)` to `voiceStt(...) + hermesTalk(...)`
+- `backend/agents/voice.py`
+  - Fish Audio TTS payload tuned for faster and more stable professional delivery
+
+### Root cause found
+- **Extra response-processing hop on website voice path**:
+  - old website path → `/api/voice/converse_stream` or `/api/voice/converse`
+  - this added extra backend orchestration before playback
+- faster live path already existed:
+  - `voiceStt(...)` → transcript
+  - `hermesTalk(...)` → incremental text + incremental voice
+
+### Validation
+- frontend smoke on desktop/mobile → **PASS**
+- independent frontend voice-path verification → **PASS**
+- old website voice endpoints no longer used by HomeView/MicView → **PASS**
 
 ## What's new — v1.18.34 (2026-06-21)
 
