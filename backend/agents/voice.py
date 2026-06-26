@@ -98,8 +98,9 @@ FISH_BUILTIN_VOICE = {
 # attentive — thoughtful slight pauses on punctuation. Numbers tuned for a
 # calm operations-director delivery (slightly slower than natural reading).
 FISH_PROSODY_DEFAULT = {
-    "speed": 0.95,    # 1.0 = natural; <1 = a touch slower → "thoughtful"
-    "volume": 0,      # dB offset; 0 = neutral
+    "speed": 0.98,
+    "volume": 0,
+    "normalize_loudness": True,
 }
 
 
@@ -109,11 +110,15 @@ def _fish_payload(text: str, voice_id: str) -> dict:
         "text": text,
         "format": "mp3",
         "mp3_bitrate": 128,
-        # `balanced` favours latency (good for streaming / chat replies).
         "latency": "balanced",
-        "chunk_length": 200,
-        # `normalize` keeps punctuation pauses natural (the "thoughtful" feel).
+        "chunk_length": 260,
         "normalize": True,
+        "temperature": 0.35,
+        "top_p": 0.7,
+        "repetition_penalty": 1.18,
+        "min_chunk_length": 70,
+        "condition_on_previous_chunks": True,
+        "early_stop_threshold": 1,
         "prosody": dict(FISH_PROSODY_DEFAULT),
     }
     if voice_id:

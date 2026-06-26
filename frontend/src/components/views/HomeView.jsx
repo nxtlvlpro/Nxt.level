@@ -720,92 +720,65 @@ function VoiceRecorder({ onUserTranscript, onAssistantReply, onError, onSessionI
         stream.getTracks().forEach((tr) => tr.stop());
         setActiveStream(null);
         setState("processing");
-        // Audio playback queue — sequential, in-order.
-        const audioQueue = [];
-        let isPlaying = false;
         let assistantText = "";
         let assistantAppended = false;
-
-        const playNext = () => {
-          if (isPlaying || audioQueue.length === 0) return;
-          const item = audioQueue.shift();
-          isPlaying = true;
-          setState("speaking");
-          onPhase?.("speaking");
-          const a = new Audio(`data:audio/mp3;base64,${item}`);
-          // crossOrigin is required for Web Audio analyser on data: URLs
-          // in some Chromium builds. Harmless on others.
-          try { a.crossOrigin = "anonymous"; } catch { /* ignore */ }
-          audioRef.current = a;
-          // Feed Waveform with the currently-playing element so the bars
-          // dance to the actual TTS amplitude.
-          setActiveAudio(a);
-          a.onended = () => {
-            isPlaying = false;
-            if (audioQueue.length > 0) {
-              playNext();
-            } else {
-              setActiveAudio(null);
-              setState("idle");
-              onPhase?.("idle");
-            }
-          };
-          a.onerror = () => {
-            isPlaying = false;
-            setActiveAudio(null);
-            setState("idle");
-            onPhase?.("idle");
-          };
-          a.play().catch(() => {
-            isPlaying = false;
-            setActiveAudio(null);
-            setState("idle");
-            onPhase?.("idle");
-          });
-        };
 
         try {
           const blob = new Blob(chunksRef.current, {
             type: mime || "audio/webm",
           });
-          await api.voiceConverseStream(
-            blob,
-            {
-              session_id: sessionId,
-              user_id: getOrCreateUserId(),
-              language: lang,
-            },
-            (frame) => {
-              if (!frame || !frame.type) return;
-              if (frame.type === "meta" && frame.session_id) {
-                onSessionId?.(frame.session_id);
-              } else if (frame.type === "transcript" && frame.text) {
-                onUserTranscript?.(frame.text);
-              } else if (frame.type === "reply_text" && frame.text) {
-                assistantText = frame.text;
-                onAssistantReply?.(assistantText);
-                assistantAppended = true;
-                // Bubble is on screen — show "preparing voice" until the
-                // first audio chunk actually starts playing.
-                setState("synthesizing");
-                onPhase?.("synthesizing");
-              } else if (frame.type === "audio_chunk" && frame.audio_b64) {
-                audioQueue.push(frame.audio_b64);
-                playNext();
-              } else if (frame.type === "error") {
-                const msg = frame.message || t("voice.error.process");
-                onError?.(msg);
-                setErrorMsg(msg);
-                setState("error");
-              }
+          const stt = await api.voiceStt(blob, {
+            filename: mime?.includes("ogg") ? "speech.ogg" : mime?.includes("mp4") ? "speech.mp4" : "speech.webm",
+            language: lang,
+          });
+          const transcript = (stt?.text || "").trim();
+          if (!transcript) {
+            const msg = t("voice.error.process");
+            onError?.(msg);
+            setErrorMsg(msg);
+            setState("error");
+            return;
+          }
+          onUserTranscript?.(transcript);
+          setState("synthesizing");
+          onPhase?.("synthesizing");
+
+          const ctl = hermesTalk({
+            backendUrl: process.env.REACT_APP_BACKEND_URL,
+            message: transcript,
+            userId: getOrCreateUserId(),
+            sessionId,
+            lang,
+          });
+          let liveText = "";
+          ctl.onText((delta) => {
+            liveText += delta;
+          });
+          ctl.onVoice(() => {
+            if (!assistantAppended && liveText.trim()) {
+              assistantText = liveText.trim();
+              onAssistantReply?.(assistantText);
+              assistantAppended = true;
             }
-          );
-          if (!assistantAppended && assistantText) {
-            onAssistantReply?.(assistantText);
-          }
-          if (audioQueue.length === 0 && !isPlaying) {
+            setActiveAudio(null);
+            setState("speaking");
+            onPhase?.("speaking");
+          });
+          ctl.onDone(() => {
+            if (!assistantAppended && liveText.trim()) {
+              onAssistantReply?.(liveText.trim());
+              assistantAppended = true;
+            }
+            setActiveAudio(null);
             setState("idle");
-          }
+            onPhase?.("idle");
+          });
+          ctl.onError((err) => {
+            const msg = err?.message || t("voice.error.process");
+            onError?.(msg);
+            setErrorMsg(msg);
+            setState("error");
+          });
         } catch (e) {
           const msg = t("voice.error.process");
           setErrorMsg(msg);

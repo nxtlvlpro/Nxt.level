@@ -3,6 +3,7 @@ import { Mic, Square, Loader2, Volume2, AlertTriangle } from "lucide-react";
 import api from "../../lib/api";
 import CollapsibleCard from "../CollapsibleCard";
 import { useT } from "../../i18n/LanguageContext";
+import { hermesTalk } from "../../lib/hermesTalk";
 
 const STATES = {
   IDLE: "idle",
@@ -82,6 +83,7 @@ export default function MicView() {
   const analyserRef = useRef(null);
   const rafRef = useRef(null);
   const audioElRef = useRef(null);
+  const talkCtlRef = useRef(null);
   // VAD: auto-stop after sustained silence once user has actually spoken
   const SILENCE_THRESHOLD = 0.06; // input level (0..1) considered "silence"
   const SPEECH_THRESHOLD = 0.12; // input level that confirms user is speaking
@@ -107,6 +109,11 @@ export default function MicView() {
         audioCtxRef.current?.close();
       } catch (err) {
         devError("audio context close failed", err);
+      }
+      try {
+        talkCtlRef.current?.stop();
+      } catch (err) {
+        devError("talk stream stop failed", err);
       }
     };
   }, []);
@@ -215,36 +222,45 @@ export default function MicView() {
         setState(STATES.ERROR);
         return;
       }
-      const data = await api.voiceConverse(blob, {
+      const stt = await api.voiceStt(blob, {
         filename: filenameFromMime(mime),
-        session_id: sessionRef.current || undefined,
         language: lang,
-        voice: "onyx",
       });
-      sessionRef.current = data.session_id || sessionRef.current;
-      setTranscript(data.transcript || "");
-      setReply(data.reply || "");
-      setConfidence(typeof data.confidence === "number" ? data.confidence : null);
-
-      if (data.audio_b64) {
-        const src = `data:audio/mp3;base64,${data.audio_b64}`;
-        if (audioElRef.current) {
-          audioElRef.current.src = src;
-          audioElRef.current.onended = () => setState(STATES.IDLE);
-          audioElRef.current.onerror = () => setState(STATES.IDLE);
-          setState(STATES.SPEAKING);
-          try {
-            await audioElRef.current.play();
-          } catch (err) {
-            devError("audio playback failed", err);
-            setState(STATES.IDLE);
-          }
-        } else {
-          setState(STATES.IDLE);
-        }
-      } else {
-        setState(STATES.IDLE);
+      const transcriptText = (stt?.text || "").trim();
+      if (!transcriptText) {
+        setError(t("voice.too_short"));
+        setState(STATES.ERROR);
+        return;
       }
+
+      setTranscript(transcriptText);
+      setReply("");
+      setConfidence(null);
+
+      const ctl = hermesTalk({
+        backendUrl: process.env.REACT_APP_BACKEND_URL,
+        message: transcriptText,
+        sessionId: sessionRef.current || undefined,
+        lang,
+      });
+      talkCtlRef.current = ctl;
+      let full = "";
+      ctl.onText((delta) => {
+        full += delta;
+      });
+      ctl.onVoice(() => {
+        if (full.trim()) setReply(full.trim());
+        setState(STATES.SPEAKING);
+      });
+      ctl.onDone(() => {
+        if (full.trim()) setReply(full.trim());
+        setState(STATES.IDLE);
+      });
+      ctl.onError((err) => {
+        const msg = err?.message || "voice pipeline failed";
+        setError(msg);
+        setState(STATES.ERROR);
+      });
     } catch (e) {
       const msg = e?.response?.data?.detail || e?.message || "voice pipeline failed";
       setError(typeof msg === "string" ? msg : JSON.stringify(msg));
