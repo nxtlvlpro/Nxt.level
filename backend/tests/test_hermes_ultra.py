@@ -21,6 +21,8 @@ import pytest
 import requests
 from dotenv import load_dotenv
 
+from tests.conftest import auth_headers
+
 # Load backend .env so direct-module tests (mongo, memory) work
 load_dotenv("/app/backend/.env")
 
@@ -33,9 +35,9 @@ sys.path.insert(0, "/app/backend")
 
 
 @pytest.fixture(scope="module")
-def session() -> requests.Session:
+def session(auth_headers) -> requests.Session:
     s = requests.Session()
-    s.headers.update({"Content-Type": "application/json"})
+    s.headers.update({"Content-Type": "application/json", **auth_headers})
     return s
 
 
