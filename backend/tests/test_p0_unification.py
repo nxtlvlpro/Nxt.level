@@ -36,6 +36,7 @@ import uuid
 
 import pytest
 import requests
+from tests.conftest import auth_headers
 
 # Resolve BASE_URL from REACT_APP_BACKEND_URL or /app/frontend/.env
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
@@ -52,15 +53,17 @@ API = f"{BASE_URL}/api"
 
 
 @pytest.fixture(scope="session")
-def client():
+def client(auth_headers):
     s = requests.Session()
-    s.headers.update({"Content-Type": "application/json"})
+    s.headers.update({"Content-Type": "application/json", **auth_headers})
     return s
 
 
 @pytest.fixture(scope="session")
-def multipart_client():
-    return requests.Session()
+def multipart_client(auth_headers):
+    s = requests.Session()
+    s.headers.update(auth_headers)
+    return s
 
 
 @pytest.fixture(scope="session")
