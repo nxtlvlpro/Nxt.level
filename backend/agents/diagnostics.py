@@ -103,11 +103,13 @@ async def scan_contradictions(
     top = findings[:30]
 
     contradictions = TenantAwareCRUD(get_db().contradictions, company_id=company_id)
-    # persist new contradictions (idempotent on pair ids; use joined string to avoid multikey)
+    # persist new contradictions (tenant-scoped idempotency on pair ids)
     for f in top:
         a = f["a_id"] or ""
         b = f["b_id"] or ""
-        pair_key = "|".join(sorted([a, b]))
+        base_pair_key = "|".join(sorted([a, b]))
+        tenant_scope = company_id or "__global__"
+        pair_key = f"{tenant_scope}|{base_pair_key}"
         await contradictions.update_one(
             {"pair_key": pair_key},
             {"$set": {**f, "pair_key": pair_key, "company_id": company_id,
