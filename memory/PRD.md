@@ -1,7 +1,33 @@
 # NXT8 — Product Requirements Document
 
-**Current version:** v1.18.38-red-sessions-alerts-owner-check
+**Current version:** v1.18.39-red-inter-agent-company-id-guard
 **Last updated:** 2026-06-26 by E1
+
+## What's new — v1.18.39 (2026-06-26)
+
+**RED security fix: removed inter-agent fallback to `default` company_id.**
+
+### Fixed
+- `backend/agents/inter_agent.py`
+  - `delegate_to_agent` no longer uses `company_id or "default"`
+  - `ask_colleague` no longer uses `company_id or "default"`
+  - `escalate_to_hermes` no longer uses `company_id or "default"`
+  - added fail-closed guard: missing `company_id` now returns explicit error
+    instead of silently delegating into the default tenant
+
+### Added tests
+- `backend/tests/test_inter_agent.py`
+  - added `test_inter_agent_tools_require_company_id`
+  - validates all 3 inter-agent tools reject missing `company_id`
+
+### Independent verification
+- Testing subagent report: `/app/test_reports/iteration_15.json`
+- Result: **100% backend pass** for this RED security bug
+- Verified by testing subagent:
+  - no remaining `or "default"` / `or 'default'` fallback patterns in
+    `inter_agent.py`
+  - all 3 functions fail closed when `company_id` is absent
+  - regression test coverage is present and passing
 
 ## What's new — v1.18.38 (2026-06-26)
 
