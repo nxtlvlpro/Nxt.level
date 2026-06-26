@@ -37,9 +37,17 @@ def client(auth_headers):
 @pytest.fixture(scope="session", autouse=True)
 def _seed(client, admin_headers):
     # Idempotent seed — required by other tests
-    r = client.post(f"{API}/seed", headers=admin_headers, timeout=60)
-    assert r.status_code == 200, f"seed failed: {r.status_code} {r.text}"
-    return r.json()
+    last_error = None
+    for _ in range(8):
+        try:
+            r = client.post(f"{API}/seed", headers=admin_headers, timeout=30)
+            if r.status_code == 200:
+                return r.json()
+            last_error = f"seed failed: {r.status_code} {r.text[:300]}"
+        except requests.RequestException as e:
+            last_error = str(e)
+        time.sleep(2)
+    pytest.fail(f"seed bootstrap failed after retries: {last_error}")
 
 
 # ---------------- System ----------------

@@ -17,6 +17,7 @@ Collections:
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextvars import ContextVar, Token
 from typing import Any, Optional
@@ -26,8 +27,19 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, Asyn
 
 _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None
+_client_loop_id: int | None = None
 _request_company_id: ContextVar[Optional[str]] = ContextVar("request_company_id", default=None)
 _request_force_admin: ContextVar[bool] = ContextVar("request_force_admin", default=False)
+
+
+def _current_loop_id() -> int | None:
+    try:
+        return id(asyncio.get_running_loop())
+    except RuntimeError:
+        try:
+            return id(asyncio.get_event_loop_policy().get_event_loop())
+        except RuntimeError:
+            return None
 
 
 def set_request_company_context(
@@ -223,10 +235,18 @@ class TenantAwareDatabaseProxy:
 
 
 def get_db() -> AsyncIOMotorDatabase:
-    global _client, _db
+    global _client, _db, _client_loop_id
+    current_loop_id = _current_loop_id()
+    if _client is not None and _client_loop_id is not None and current_loop_id is not None:
+        if _client_loop_id != current_loop_id:
+            _client.close()
+            _client = None
+            _db = None
+            _client_loop_id = None
     if _db is None:
         _client = AsyncIOMotorClient(os.environ["MONGO_URL"])
         _db = _client[os.environ["DB_NAME"]]
+        _client_loop_id = current_loop_id
     assert _db is not None  # for type checkers
     return TenantAwareDatabaseProxy(_db)
 
@@ -303,8 +323,9 @@ async def ensure_indexes() -> None:
 
 
 def close_db() -> None:
-    global _client, _db
+    global _client, _db, _client_loop_id
     if _client is not None:
         _client.close()
     _client = None
     _db = None
+    _client_loop_id = None

@@ -37,6 +37,7 @@ import logging
 import math
 import os
 import random
+import json as _json
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -280,7 +281,13 @@ class DeepSeekClient:
                 json=payload,
             )
             r.raise_for_status()
-            return r.json()
+            try:
+                return r.json()
+            except _json.JSONDecodeError as e:
+                body = (r.text or "")[:500]
+                raise httpx.HTTPError(
+                    f"non_json_response:{p.name}:{e}: {body}"
+                ) from e
 
     async def _call_stream(
         self,

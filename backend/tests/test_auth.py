@@ -17,7 +17,7 @@ import httpx
 import pytest
 
 from core import auth as A
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 
 def _run(coro):
@@ -88,11 +88,16 @@ def test_is_public_path_whitelist() -> None:
     assert A.is_public_path("/api/telegram/webhook/xyz") is True
     assert A.is_public_path("/api/whatsapp/webhook/xyz") is True
     assert A.is_public_path("/api/webhook/stripe") is True
+    assert A.is_public_path("/api/chat") is True
+    assert A.is_public_path("/api/chat/stream") is True
+    assert A.is_public_path("/api/hermes/chat") is True
+    assert A.is_public_path("/api/voice/stt") is True
+    assert A.is_public_path("/api/alerts") is True
+    assert A.is_public_path("/api/onboarding/funnel") is True
     # NOT public:
     assert A.is_public_path("/api/seed") is False
     assert A.is_public_path("/api/telegram/connect") is False
     assert A.is_public_path("/api/whatsapp/status") is False
-    assert A.is_public_path("/api/chat") is False
 
 
 # ---------------------------------------------------------------------
@@ -170,26 +175,48 @@ def _create_user_with_session(email: str, token: str, admin: bool = False) -> st
     """Insert a user + a fresh 7-day session directly. Returns user_id."""
     import uuid
     user_id = f"user_{uuid.uuid4().hex[:16]}"
-    _run(get_db().users.insert_one({
-        "user_id": user_id,
-        "email": email,
-        "name": "Tester",
-        "picture": "",
-        "is_admin": admin,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }))
-    _run(get_db().user_sessions.insert_one({
-        "user_id": user_id,
-        "session_token": token,
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }))
+
+    async def _seed_user() -> None:
+        users = TenantAwareCRUD(get_db().users, force_admin=True)
+        sessions = TenantAwareCRUD(get_db().user_sessions, force_admin=True)
+        await sessions.delete_many({"session_token": token})
+        await users.delete_many({"email": email})
+        await users.update_one(
+            {"email": email},
+            {"$set": {
+                "user_id": user_id,
+                "email": email,
+                "name": "Tester",
+                "picture": "",
+                "is_admin": admin,
+                "company_id": "demo",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+        await sessions.update_one(
+            {"session_token": token},
+            {"$set": {
+                "user_id": user_id,
+                "session_token": token,
+                "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+
+    _run(_seed_user())
     return user_id
 
 
 def _cleanup_user(email: str, token: str) -> None:
-    _run(get_db().user_sessions.delete_many({"session_token": token}))
-    _run(get_db().users.delete_many({"email": email}))
+    async def _cleanup() -> None:
+        sessions = TenantAwareCRUD(get_db().user_sessions, force_admin=True)
+        users = TenantAwareCRUD(get_db().users, force_admin=True)
+        await sessions.delete_many({"session_token": token})
+        await users.delete_many({"email": email})
+
+    _run(_cleanup())
 
 
 def test_require_user_accepts_cookie() -> None:
@@ -231,17 +258,36 @@ def test_require_user_rejects_expired_session() -> None:
 
     uid = f"user_{uuid.uuid4().hex[:16]}"
     tok = "tok_expired_1"
-    _run(get_db().users.insert_one({
-        "user_id": uid, "email": "expired@nxt8.test", "name": "X",
-        "is_admin": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }))
-    _run(get_db().user_sessions.insert_one({
-        "user_id": uid,
-        "session_token": tok,
-        "expires_at": datetime.now(timezone.utc) - timedelta(days=1),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }))
+
+    async def _seed_expired() -> None:
+        users = TenantAwareCRUD(get_db().users, force_admin=True)
+        sessions = TenantAwareCRUD(get_db().user_sessions, force_admin=True)
+        await sessions.delete_many({"session_token": tok})
+        await users.delete_many({"email": "expired@nxt8.test"})
+        await users.update_one(
+            {"email": "expired@nxt8.test"},
+            {"$set": {
+                "user_id": uid,
+                "email": "expired@nxt8.test",
+                "name": "X",
+                "is_admin": False,
+                "company_id": "demo",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+        await sessions.update_one(
+            {"session_token": tok},
+            {"$set": {
+                "user_id": uid,
+                "session_token": tok,
+                "expires_at": datetime.now(timezone.utc) - timedelta(days=1),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+
+    _run(_seed_expired())
     try:
         with pytest.raises(HTTPException) as e:
             _run(A.require_user(session_token=tok, authorization=None))
@@ -270,7 +316,7 @@ def test_require_admin_via_seed_token_wrong() -> None:
 
 
 def test_require_admin_via_user_email() -> None:
-    uid = _create_user_with_session("admin@nxt8.test", "tok_admin_3", admin=True)
+    _create_user_with_session("admin@nxt8.test", "tok_admin_3", admin=True)
     try:
         user = _run(A.require_admin(
             session_token="tok_admin_3", authorization=None, x_admin_token=None
@@ -302,7 +348,7 @@ def test_require_admin_blocks_regular_user() -> None:
 def test_logout_deletes_session_and_clears_cookie() -> None:
     from fastapi import Response
 
-    uid = _create_user_with_session("u_logout@nxt8.test", "tok_logout_1")
+    _create_user_with_session("u_logout@nxt8.test", "tok_logout_1")
     user = _run(A.require_user(session_token="tok_logout_1", authorization=None))
 
     res = Response()

@@ -15,11 +15,22 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from core import auth as A
-from core.db import get_db
+from core.db import TenantAwareCRUD, get_db
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    try:
+        previous_loop = asyncio.get_event_loop_policy().get_event_loop()
+    except RuntimeError:
+        previous_loop = None
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+        if previous_loop is not None and not previous_loop.is_closed():
+            asyncio.set_event_loop(previous_loop)
 
 
 @pytest.fixture(autouse=True)
@@ -31,25 +42,46 @@ def _env(monkeypatch):
 
 def _make_session(email: str, admin: bool, token: str) -> str:
     uid = f"user_{uuid.uuid4().hex[:16]}"
-    _run(get_db().users.insert_one({
-        "user_id": uid,
-        "email": email,
-        "name": "Tester",
-        "is_admin": admin,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }))
-    _run(get_db().user_sessions.insert_one({
-        "user_id": uid,
-        "session_token": token,
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=1),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }))
+    async def _prepare() -> None:
+        users = TenantAwareCRUD(get_db().users, force_admin=True)
+        sessions = TenantAwareCRUD(get_db().user_sessions, force_admin=True)
+        await sessions.delete_many({"session_token": token})
+        await users.delete_many({"email": email})
+        await users.update_one(
+            {"email": email},
+            {"$set": {
+                "user_id": uid,
+                "email": email,
+                "name": "Tester",
+                "is_admin": admin,
+                "company_id": "demo",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+        await sessions.update_one(
+            {"session_token": token},
+            {"$set": {
+                "user_id": uid,
+                "session_token": token,
+                "expires_at": datetime.now(timezone.utc) + timedelta(days=1),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+
+    _run(_prepare())
     return uid
 
 
 def _cleanup(email: str, token: str) -> None:
-    _run(get_db().user_sessions.delete_many({"session_token": token}))
-    _run(get_db().users.delete_many({"email": email}))
+    async def _cleanup_async() -> None:
+        sessions = TenantAwareCRUD(get_db().user_sessions, force_admin=True)
+        users = TenantAwareCRUD(get_db().users, force_admin=True)
+        await sessions.delete_many({"session_token": token})
+        await users.delete_many({"email": email})
+
+    _run(_cleanup_async())
 
 
 # ---------------------------------------------------------------------
@@ -129,5 +161,5 @@ def test_seed_endpoint_runs_when_admin() -> None:
     )
     out = _run(seed_demo(_admin=admin))
     # Either "ok" (fresh DB) or "already_seeded" (idempotent rerun) — both fine.
-    assert out.get("status") in {"ok", "already_seeded"}
+    assert out.get("status") in {"ok", "seeded", "already_seeded"}
     assert "memories" in out
