@@ -21,8 +21,6 @@ import pytest
 import requests
 from dotenv import load_dotenv
 
-from tests.conftest import auth_headers
-
 # Load backend .env so direct-module tests (mongo, memory) work
 load_dotenv("/app/backend/.env")
 
