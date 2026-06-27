@@ -2,12 +2,12 @@
 NXT8 Ultra orchestrator on LangGraph.
 
 Graph layout:
-    supervisor → [router] → END | hermes | tools | human_approval
-    hermes / tools / human_approval → supervisor
+    supervisor → [router] → END | hermes | tools
+    hermes / tools → supervisor
 
 Router rules:
 - autonomy_level=read_only AND hermes already answered → END
-- requires_human_approval=True AND not yet approved → human_approval (one-shot)
+- requires_human_approval=True AND not yet approved → END
 - last assistant message has tool_calls (and not yet executed) → tools
 - iterations >= MAX_ITER → END
 - no assistant yet → hermes
@@ -196,26 +196,6 @@ async def tools_node(state: AgentState) -> Dict[str, Any]:
     }
 
 
-async def human_approval_node(state: AgentState) -> Dict[str, Any]:
-    """Pilot stub: surface the pending tool calls and clear approval flag.
-    Real production would block here for an out-of-band approval signal."""
-    pending = state.get("pending_tool_calls") or []
-    return {
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "⚠ Human approval required for "
-                    f"{len(pending)} critical action(s): "
-                    f"{', '.join(tc.get('name', '?') for tc in pending)}."
-                ),
-            }
-        ],
-        "requires_human_approval": True,
-        "pending_tool_calls": [],
-    }
-
-
 # =====================================================================
 # Router
 # =====================================================================
@@ -227,7 +207,7 @@ def _router(state: AgentState):
     if iterations >= MAX_ITER:
         return END
     if state.get("requires_human_approval") and not state.get("approved"):
-        return "human_approval"
+        return END
     if state.get("pending_tool_calls"):
         return "tools"
     # FIX (architect audit P0-2): after tools executed, return to Hermes so
@@ -255,7 +235,6 @@ def _build_graph():
     workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("hermes", hermes_node)
     workflow.add_node("tools", tools_node)
-    workflow.add_node("human_approval", human_approval_node)
 
     workflow.set_entry_point("supervisor")
     workflow.add_conditional_edges(
@@ -264,13 +243,11 @@ def _build_graph():
         {
             "hermes": "hermes",
             "tools": "tools",
-            "human_approval": "human_approval",
             END: END,
         },
     )
     workflow.add_edge("hermes", "supervisor")
     workflow.add_edge("tools", "supervisor")
-    workflow.add_edge("human_approval", "supervisor")
 
     if MemorySaver is not None:
         return workflow.compile(checkpointer=MemorySaver())
