@@ -28,6 +28,7 @@ class AgentState(TypedDict, total=False):
     confidence: float
     allowed_tools: List[str]
     iterations: int
+    tool_counts: Dict[str, int]
     mock: bool
 
 
@@ -155,14 +156,16 @@ async def tools_node(state: AgentState) -> Dict[str, Any]:
     company_id = state.get("company_id", "default")
     user_id = state.get("user_id", "anonymous")
     session_id = state.get("session_id", "")
+    counts = dict(state.get("tool_counts", {}))
 
     tool_calls = _extract_tool_calls(content, allowed_tools)
     if not tool_calls:
-        return {"messages": state.get("messages", [])}
+        return {"messages": state.get("messages", []), "tool_counts": counts}
 
     tool_messages = []
     for tc in tool_calls:
         name = tc["name"]
+        counts[name] = counts.get(name, 0) + 1
         args = dict(tc.get("args") or {})
         args.setdefault("company_id", company_id)
         args.setdefault("user_id", user_id)
@@ -181,17 +184,21 @@ async def tools_node(state: AgentState) -> Dict[str, Any]:
             )
             continue
 
-        fn = HERMES_TOOLS.get(name)
-        if not fn:
-            result = {"ok": False, "error": f"unknown tool: {name}"}
+        # Guard: Prevent runaway loops on search_memory
+        if name == "search_memory" and counts[name] > 1:
+            result = {"ok": True, "skipped": True, "reason": "search_memory limit reached. Use existing context."}
         else:
-            try:
-                logger.info("tool %s executing with args=%s", name, args)
-                result = await fn(args)
-                logger.info("tool %s completed ok=%s", name, result.get("ok"))
-            except Exception as e:  # noqa: BLE001
-                logger.exception("tool %s failed", name)
-                result = {"ok": False, "error": str(e)}
+            fn = HERMES_TOOLS.get(name)
+            if not fn:
+                result = {"ok": False, "error": f"unknown tool: {name}"}
+            else:
+                try:
+                    logger.info("tool %s executing with args=%s", name, args)
+                    result = await fn(args)
+                    logger.info("tool %s completed ok=%s", name, result.get("ok"))
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("tool %s failed", name)
+                    result = {"ok": False, "error": str(e)}
 
         tool_messages.append(
             {
@@ -206,6 +213,7 @@ async def tools_node(state: AgentState) -> Dict[str, Any]:
         "messages": state.get("messages", []) + tool_messages,
         "iterations": state.get("iterations", 0),
         "allowed_tools": allowed_tools,
+        "tool_counts": counts,
     }
 
 
