@@ -47,6 +47,7 @@ from config.plans import (
     min_plan_for as config_min_plan_for,
 )
 from core.company_context import get_settings as get_company_settings, render_company_block
+from core.access_guard import check_access
 from core.db import get_db
 from core.deepseek import get_deepseek
 
@@ -759,11 +760,15 @@ async def run_persona(
                 if not fn:
                     result = {"ok": False, "error": f"unknown tool: {name}"}
                 else:
-                    try:
-                        result = await fn(args)
-                    except Exception as e:  # noqa: BLE001
-                        logger.exception("persona %s tool %s failed", persona_id, name)
-                        result = {"ok": False, "error": str(e)}
+                    allowed, reason = check_access(persona_id, name)
+                    if not allowed:
+                        result = {"ok": False, "error": reason}
+                    else:
+                        try:
+                            result = await fn(args)
+                        except Exception as e:  # noqa: BLE001
+                            logger.exception("persona %s tool %s failed", persona_id, name)
+                            result = {"ok": False, "error": str(e)}
             tool_traces.append({"name": name, "args": args, "result": result})
             if name == "search_memory":
                 memory_search_calls += 1
