@@ -2106,38 +2106,6 @@ async def onboarding_funnel(days: int = 30) -> Dict[str, Any]:
     return await _onb.funnel_stats(days)
 
 
-# =====================================================================
-# Hermes Constitutional Graph v2 (see agents/hermes_graph_v2.py)
-# =====================================================================
-
-
-class GraphV2RunRequest(BaseModel):
-    task: str
-    intent: Optional[str] = None
-    task_type: str = "execute"
-    context: Optional[Dict[str, Any]] = None
-
-
-@api.post("/graph/v2/run")
-async def graph_v2_run(req: GraphV2RunRequest) -> Dict[str, Any]:
-    """Run the Constitutional Graph end-to-end.
-
-    Returns the FULL final `GraphState` so callers can inspect the audit
-    trail (`status.history`), the plan, every executor step, the
-    reviewer/Hermes verdicts, and the packed `final_output`.
-    """
-    from agents import hermes_graph_v2 as _g
-    if not (req.task or "").strip():
-        raise HTTPException(status_code=400, detail="task is required")
-    state = await _g.run_graph_v2(
-        task_description=req.task,
-        intent=req.intent or req.task,
-        context=req.context,
-        task_type=req.task_type,
-    )
-    return state
-
-
 @api.get("/llm/router-stats")
 async def llm_router_stats() -> Dict[str, Any]:
     """Distribution of deepseek-chat vs deepseek-reasoner since process start."""
