@@ -32,7 +32,7 @@ from agents import market_radar as market_agent
 from agents import memory as memory_agent
 from agents import mentor as mentor_agent
 from agents import roi as roi_agent
-from agents.hermes_max_tools_and_coo import HERMES_TOOLS
+from agents.hermes import HERMES_TOOLS
 from agents.manifests import render_manifest_for_prompt
 from agents.prompt_policy_registry import PERSONA_PROMPT_FRAGMENT_REGISTRY
 from agents.persona_prompts import get_prompt as get_deep_prompt

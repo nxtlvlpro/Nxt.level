@@ -55,7 +55,7 @@ except Exception as e:  # noqa: BLE001
     add_messages = lambda a, b: (a or []) + (b or [])  # type: ignore # noqa: E731
     logger.warning("LangGraph не удалось загрузить: %s", e)
 
-from agents.hermes_max_tools_and_coo import HERMES_TOOLS, hermes_coo_chat
+from agents.hermes import HERMES_TOOLS, hermes_coo_chat
 
 
 # =====================================================================

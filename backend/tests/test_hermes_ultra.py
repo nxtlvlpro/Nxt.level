@@ -385,7 +385,7 @@ class TestUnitToolsAndPersistence:
     async def test_communication_tools_real_llm_backed(self):
         """Previously-stub tools are now real LLM-backed (no `mock=True` flag
         unless provider chain falls through to the mock client)."""
-        from agents.hermes_max_tools_and_coo import HERMES_TOOLS
+        from agents.hermes import HERMES_TOOLS
 
         # generate_communication_summary
         res = await HERMES_TOOLS["generate_communication_summary"]({
@@ -433,7 +433,7 @@ class TestUnitToolsAndPersistence:
     @pytest.mark.asyncio
     async def test_communication_tools_validate_input(self):
         """Real tools must reject empty input (no more no-op stubs)."""
-        from agents.hermes_max_tools_and_coo import HERMES_TOOLS
+        from agents.hermes import HERMES_TOOLS
         # empty args → ok=False with explicit error
         for name in ("generate_communication_summary",
                      "suggest_next_best_action",
@@ -452,7 +452,7 @@ class TestUnitToolsAndPersistence:
         from core import db as _db_mod
         _db_mod._client = None
         _db_mod._db = None
-        from agents.hermes_max_tools_and_coo import HERMES_TOOLS
+        from agents.hermes import HERMES_TOOLS
 
         res = await HERMES_TOOLS["search_memory"]({"query": "политика", "top_k": 3})
         assert res.get("ok") is True, res
