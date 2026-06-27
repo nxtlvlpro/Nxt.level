@@ -27,6 +27,7 @@ logger = logging.getLogger("nxt8.complexity_router")
 MODEL_CHEAP = "deepseek-chat"
 MODEL_REASONER = "deepseek-reasoner"
 ANALYTICAL_INTENTS = {"analyst", "bookkeeper"}
+HARD_REASONER_INTENTS = {"analyst", "bookkeeper"}
 INTENT_REASONER_HINTS = {"planner", "deep_reasoning", "validation", "analyst"}
 
 # ---------------------------------------------------------------------
@@ -152,6 +153,10 @@ def pick_model(
     ).strip()
     body_len = len(blob)
     intent_norm = (intent or "").strip().lower()
+    # Hard override: Analytical roles ALWAYS need reasoning power.
+    if intent_norm in HARD_REASONER_INTENTS:
+        _bump(MODEL_REASONER)
+        return MODEL_REASONER
     role_norm = (role or "").strip().lower()
 
     # Cheap-bias signals.
