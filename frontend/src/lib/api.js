@@ -421,31 +421,41 @@ export const api = {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let event = "message";
+    let dataLine = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf("\n\n")) !== -1) {
-        const frame = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        let event = "message";
-        let dataLine = "";
-        for (const line of frame.split("\n")) {
-          if (line.startsWith("event:")) event = line.slice(6).trim();
-          else if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+      let boundary = buffer.indexOf("\n");
+      while (boundary !== -1) {
+        let line = buffer.slice(0, boundary);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        buffer = buffer.slice(boundary + 1);
+
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+        else if (line === "") {
+          if (dataLine) {
+            let data;
+            try {
+              data = JSON.parse(dataLine);
+            } catch {
+              dataLine = "";
+              event = "message";
+              boundary = buffer.indexOf("\n");
+              continue;
+            }
+            if (event === "meta") onMeta?.(data);
+            else if (event === "delta") onDelta?.(data.text || "");
+            else if (event === "done") onDone?.(data);
+            else if (event === "error") onError?.(data.message || "error");
+          }
+          event = "message";
+          dataLine = "";
         }
-        if (!dataLine) continue;
-        let data;
-        try {
-          data = JSON.parse(dataLine);
-        } catch {
-          continue;
-        }
-        if (event === "meta") onMeta?.(data);
-        else if (event === "delta") onDelta?.(data.text || "");
-        else if (event === "done") onDone?.(data);
-        else if (event === "error") onError?.(data.message || "error");
+
+        boundary = buffer.indexOf("\n");
       }
     }
   },
