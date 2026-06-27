@@ -29,8 +29,20 @@ class LLMUnavailable(Exception):
 
 def _allow_mock() -> bool:
     import os
-    raw = (os.environ.get("ALLOW_LLM_MOCK") or "true").strip().lower()
+    raw = (os.environ.get("ALLOW_LLM_MOCK") or "false").strip().lower()
     return raw in {"1", "true", "yes", "on"}
+
+
+def _is_production_env() -> bool:
+    import os
+
+    raw = (
+        os.environ.get("ENV")
+        or os.environ.get("APP_ENV")
+        or os.environ.get("ENVIRONMENT")
+        or ""
+    ).strip().lower()
+    return raw == "production"
 
 
 import logging
@@ -127,6 +139,8 @@ class DeepSeekClient:
         request_logprobs: bool = True,
         model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if _is_production_env() and _allow_mock():
+            raise RuntimeError("Mock mode forbidden in production")
         if self.mock_mode:
             if _allow_mock():
                 return self._mock_response(messages)
@@ -196,6 +210,8 @@ class DeepSeekClient:
         usage metadata). Used by ROI accounting in /chat/stream so we
         stop under-counting LLM cost by ~98%.
         """
+        if _is_production_env() and _allow_mock():
+            raise RuntimeError("Mock mode forbidden in production")
         if self.mock_mode:
             if _allow_mock():
                 content = self._mock_response(messages)["content"]
